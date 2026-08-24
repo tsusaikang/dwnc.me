@@ -1,0 +1,58 @@
+---
+import SiteFooter from '../components/SiteFooter.astro';
+import SiteHeader from '../components/SiteHeader.astro';
+import SearchDialog from '../components/SearchDialog.astro';
+import '../styles/global.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+  canonicalPath?: string;
+  image?: string;
+  article?: boolean;
+  activeCategoryId?: string;
+}
+
+const {
+  title = 'dwnc.me',
+  description = '자동차와 수영, 생활의 발견과 생각을 기록하는 개인 블로그.',
+  canonicalPath = Astro.url.pathname,
+  image,
+  article = false,
+  activeCategoryId,
+} = Astro.props;
+const fullTitle = title === 'dwnc.me' ? title : `${title} — dwnc.me`;
+const canonical = new URL(canonicalPath, Astro.site ?? Astro.url.origin);
+const socialImage = image ? new URL(image, Astro.site ?? Astro.url.origin) : undefined;
+---
+
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="theme-color" content="#f2eee3" />
+    <title>{fullTitle}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="alternate" type="application/rss+xml" title="dwnc.me RSS" href="/rss.xml" />
+    <meta property="og:locale" content="ko_KR" />
+    <meta property="og:type" content={article ? 'article' : 'website'} />
+    <meta property="og:site_name" content="dwnc.me" />
+    <meta property="og:title" content={fullTitle} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    {socialImage && <meta property="og:image" content={socialImage} />}
+    <meta name="twitter:card" content={socialImage ? 'summary_large_image' : 'summary'} />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">본문 바로가기</a>
+    <SiteHeader activeCategoryId={activeCategoryId} />
+    <main id="main">
+      <slot />
+    </main>
+    <SiteFooter />
+    <SearchDialog />
+  </body>
+</html>

@@ -1,0 +1,41 @@
+---
+import type { PostEntry } from '../lib/posts';
+import type { TagNode } from '../lib/taxonomy';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Breadcrumbs from './Breadcrumbs.astro';
+import Pagination from './Pagination.astro';
+import PostCard from './PostCard.astro';
+
+interface Props {
+  tag: TagNode;
+  posts: PostEntry[];
+  page: number;
+  totalPages: number;
+}
+
+const { tag, posts, page, totalPages } = Astro.props;
+const basePath = `/tag/${tag.slug}`;
+---
+
+<BaseLayout
+  title={page === 1 ? `#${tag.label}` : `#${tag.label} ${page}쪽`}
+  description={`${tag.label} 태그의 글 ${tag.count}편`}
+  canonicalPath={page === 1 ? basePath : `${basePath}/page/${page}`}
+>
+  <header class="page-header tag-page-header">
+    <div class="shell">
+      <Breadcrumbs items={[{ label: '태그', href: '/tags' }, { label: `#${tag.label}` }]} />
+      <p class="eyebrow">Tag · {tag.count}</p>
+      <h1>#{tag.label}</h1>
+      {page > 1 && <p>{page} / {totalPages}쪽</p>}
+    </div>
+  </header>
+  <section class="section">
+    <div class="shell posts-grid">
+      {posts.map((post) => <PostCard post={post} />)}
+    </div>
+    <div class="shell">
+      <Pagination basePath={basePath} page={page} totalPages={totalPages} label={`#${tag.label}`} />
+    </div>
+  </section>
+</BaseLayout>

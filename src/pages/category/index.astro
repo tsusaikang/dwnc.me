@@ -1,0 +1,57 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getPublicPosts } from '../../lib/posts';
+import { categoryStats, taxonomyChildren, taxonomyRoots } from '../../lib/taxonomy';
+
+const posts = await getPublicPosts();
+const stats = categoryStats(posts);
+const statsById = new Map(stats.map((category) => [category.id, category]));
+const roots = taxonomyRoots();
+---
+
+<BaseLayout title="갈래" description="dwnc.me의 글을 주제의 갈래로 찾아봅니다." canonicalPath="/category">
+  <header class="page-header category-index-header">
+    <div class="shell">
+      <p class="eyebrow">Subjects · {roots.length}</p>
+      <h1>갈래</h1>
+      <p>큰 주제에서 세부 기록으로 이어지는 {posts.length}편의 글입니다.</p>
+    </div>
+  </header>
+
+  <section class="section category-index-section">
+    <div class="shell category-tree-index">
+      {roots.map((root, rootIndex) => {
+        const rootStat = statsById.get(root.id)!;
+        const children = taxonomyChildren(root.id);
+        return (
+          <section class="category-tree-index__root">
+            <a class="category-tree-index__root-link" href={`/category/${root.slug}`}>
+              <span>{String(rootIndex + 1).padStart(2, '0')}</span>
+              <strong>{root.label}</strong>
+              <small>
+                {rootStat.directCount === rootStat.totalCount
+                  ? `${rootStat.totalCount}편`
+                  : `직접 ${rootStat.directCount} · 전체 ${rootStat.totalCount}편`}
+              </small>
+            </a>
+            {children.length > 0 && (
+              <ol class="category-tree-index__children">
+                {children.map((child) => {
+                  const childStat = statsById.get(child.id)!;
+                  return (
+                    <li>
+                      <a href={`/category/${child.slug}`}>
+                        <strong>{child.label}</strong>
+                        <small>{childStat.totalCount}편</small>
+                      </a>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  </section>
+</BaseLayout>

@@ -1,0 +1,25 @@
+---
+interface Props {
+  canonicalPath: string;
+}
+
+const { canonicalPath } = Astro.props;
+const canonicalUrl = new URL(canonicalPath, Astro.site).href;
+const redirectScript = `window.location.replace(${JSON.stringify(canonicalPath)});`;
+---
+
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>글로 이동합니다</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <meta http-equiv="refresh" content={`0;url=${canonicalPath}`} />
+    <link rel="canonical" href={canonicalUrl} />
+    <script is:inline set:html={redirectScript}></script>
+  </head>
+  <body>
+    <p>글로 이동합니다. <a href={canonicalPath}>계속하기</a></p>
+  </body>
+</html>

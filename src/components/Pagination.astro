@@ -1,0 +1,40 @@
+---
+import { pagedPath } from '../lib/taxonomy';
+
+interface Props {
+  basePath: string;
+  page: number;
+  totalPages: number;
+  label: string;
+}
+
+const { basePath, page, totalPages, label } = Astro.props;
+const pageNumbers = Array.from({ length: totalPages }, (_, index) => index + 1);
+---
+
+{totalPages > 1 && (
+  <nav class="pagination" aria-label={`${label} 페이지`}>
+    <a
+      class:list={['pagination__direction', { 'is-disabled': page === 1 }]}
+      href={page > 1 ? pagedPath(basePath, page - 1) : undefined}
+      rel={page > 1 ? 'prev' : undefined}
+      aria-disabled={page === 1 ? 'true' : undefined}
+    >이전</a>
+    <ol>
+      {pageNumbers.map((pageNumber) => (
+        <li>
+          <a
+            href={pagedPath(basePath, pageNumber)}
+            aria-current={pageNumber === page ? 'page' : undefined}
+          >{pageNumber}</a>
+        </li>
+      ))}
+    </ol>
+    <a
+      class:list={['pagination__direction', { 'is-disabled': page === totalPages }]}
+      href={page < totalPages ? pagedPath(basePath, page + 1) : undefined}
+      rel={page < totalPages ? 'next' : undefined}
+      aria-disabled={page === totalPages ? 'true' : undefined}
+    >다음</a>
+  </nav>
+)}

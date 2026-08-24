@@ -1,0 +1,28 @@
+node_modules/
+dist/
+.astro/
+.DS_Store
+
+# Immutable source captures can be large and may contain private material.
+migration/raw/
+migration/private/
+
+# Local migration scratch files.
+migration/tmp/
+*.log
+*.pid
+*.tmp
+*.temp
+.env
+.env.*
+!.env.example
+.cache/
+.vite/
+coverage/
+
+# Large generated media is validated by the inventory but stored outside Git.
+public/media/tistory/
+public/media/naver/
+
+# Contains titles and metadata for private Naver posts.
+migration/source-inventory/naver-posts.json

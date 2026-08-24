@@ -1,0 +1,52 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getPublicPosts } from '../../lib/posts';
+import { collectTags } from '../../lib/taxonomy';
+
+const posts = await getPublicPosts();
+const tags = collectTags(posts);
+---
+
+<BaseLayout title="태그" description={`dwnc.me의 태그 ${tags.length}개`} canonicalPath="/tags">
+  <header class="page-header tag-index-header">
+    <div class="shell">
+      <p class="eyebrow">Index · {tags.length}</p>
+      <h1>태그</h1>
+      <p>구체적인 낱말로 기록을 좁혀 봅니다.</p>
+    </div>
+  </header>
+  <section class="section tag-index-section">
+    <div class="shell tag-index">
+      <label for="tag-filter">태그 찾기</label>
+      <input id="tag-filter" type="search" placeholder="태그 이름을 입력하세요" autocomplete="off" data-tag-filter />
+      <p class="tag-index__status" data-tag-status aria-live="polite">전체 {tags.length}개</p>
+      <ol data-tag-list>
+        {tags.map((tag) => (
+          <li data-tag-item data-tag-label={tag.label.toLocaleLowerCase('ko-KR')}>
+            <a href={`/tag/${tag.slug}`}>
+              <strong>#{tag.label}</strong>
+              <small>{tag.count}편</small>
+            </a>
+          </li>
+        ))}
+      </ol>
+    </div>
+  </section>
+</BaseLayout>
+
+<script>
+  const input = document.querySelector<HTMLInputElement>('[data-tag-filter]');
+  const items = [...document.querySelectorAll<HTMLElement>('[data-tag-item]')];
+  const status = document.querySelector<HTMLElement>('[data-tag-status]');
+
+  input?.addEventListener('input', () => {
+    const query = input.value.trim().toLocaleLowerCase('ko-KR');
+    let visible = 0;
+    for (const item of items) {
+      const matches = !query || (item.dataset.tagLabel ?? '').includes(query);
+      item.hidden = !matches;
+      if (matches) visible += 1;
+    }
+    if (status) status.textContent = query ? `${visible}개 찾음` : `전체 ${items.length}개`;
+  });
+</script>

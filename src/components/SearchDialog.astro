@@ -1,0 +1,94 @@
+<dialog class="search-dialog" data-search-dialog>
+  <div class="search-dialog__panel">
+    <div class="search-dialog__header">
+      <label for="site-search">기록에서 찾기</label>
+      <button type="button" data-search-close aria-label="검색 닫기">닫기</button>
+    </div>
+    <input id="site-search" type="search" placeholder="제목, 내용, 카테고리, 태그" autocomplete="off" />
+    <p class="search-dialog__hint">두 글자 이상 입력하면 결과가 나타납니다.</p>
+    <div class="search-results" data-search-results aria-live="polite"></div>
+  </div>
+</dialog>
+
+<script>
+  interface SearchItem {
+    title: string;
+    description: string;
+    path: string;
+    date: string;
+    categories: string[];
+    searchText: string;
+  }
+
+  const dialog = document.querySelector<HTMLDialogElement>('[data-search-dialog]');
+  const openers = document.querySelectorAll<HTMLElement>('[data-search-open]');
+  const closer = dialog?.querySelector<HTMLButtonElement>('[data-search-close]');
+  const input = dialog?.querySelector<HTMLInputElement>('input[type="search"]');
+  const results = dialog?.querySelector<HTMLElement>('[data-search-results]');
+  let indexPromise: Promise<SearchItem[]> | undefined;
+  let lastOpener: HTMLElement | null = null;
+
+  const entities: Record<string, string> = {
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;',
+  };
+  const escapeHtml = (value: string) =>
+    value.replace(/[&<>'"]/g, (character) => entities[character] ?? character);
+
+  const loadIndex = () => {
+    indexPromise ??= fetch('/search-index.json').then((response) => response.json() as Promise<SearchItem[]>);
+    return indexPromise;
+  };
+
+  const closeDialog = () => {
+    if (dialog?.open) dialog.close();
+  };
+
+  openers.forEach((opener) => opener.addEventListener('click', () => {
+    lastOpener = opener;
+    dialog?.showModal();
+    requestAnimationFrame(() => input?.focus());
+  }));
+
+  closer?.addEventListener('click', closeDialog);
+  dialog?.addEventListener('click', (event) => {
+    if (event.target === dialog) closeDialog();
+  });
+  dialog?.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    closeDialog();
+  });
+  dialog?.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    closeDialog();
+  });
+  dialog?.addEventListener('close', () => {
+    const opener = lastOpener;
+    lastOpener = null;
+    if (opener?.isConnected) opener.focus();
+  });
+
+  input?.addEventListener('input', async () => {
+    const query = input.value.trim().toLocaleLowerCase('ko-KR');
+    if (!results) return;
+    if (query.length < 2) {
+      results.innerHTML = '';
+      return;
+    }
+
+    const index = await loadIndex();
+    const matches = index
+      .filter((item) => item.searchText.includes(query))
+      .slice(0, 12);
+
+    results.innerHTML = matches.length
+      ? matches.map((item) => `
+          <a href="${encodeURI(item.path)}">
+            <span>${escapeHtml(item.date)} · ${escapeHtml(item.categories.join(' / '))}</span>
+            <strong>${escapeHtml(item.title)}</strong>
+            <p>${escapeHtml(item.description)}</p>
+          </a>
+        `).join('')
+      : '<p class="search-results__empty">일치하는 기록이 없습니다.</p>';
+  });
+</script>

@@ -1,0 +1,117 @@
+---
+import CategoryTree from './CategoryTree.astro';
+
+interface Props {
+  activeCategoryId?: string;
+}
+
+const { activeCategoryId } = Astro.props;
+---
+
+<dialog class="category-drawer" id="category-drawer" data-category-dialog aria-labelledby="category-drawer-title">
+  <div class="category-drawer__panel">
+    <header class="category-drawer__header">
+      <div>
+        <p>Subjects</p>
+        <h2 id="category-drawer-title">갈래</h2>
+      </div>
+      <button type="button" data-category-close>닫기</button>
+    </header>
+    <nav aria-label="글 갈래">
+      <CategoryTree activeCategoryId={activeCategoryId} />
+    </nav>
+    <a class="category-drawer__all" href="/category">모든 갈래 한눈에 보기 <span aria-hidden="true">↗</span></a>
+  </div>
+</dialog>
+
+<script>
+  const dialog = document.querySelector<HTMLDialogElement>('[data-category-dialog]');
+  const openers = document.querySelectorAll<HTMLButtonElement>('[data-category-open]');
+  const closer = dialog?.querySelector<HTMLButtonElement>('[data-category-close]');
+  let lastOpener: HTMLButtonElement | null = null;
+  let lockedScrollY = 0;
+
+  const getFocusableElements = () => dialog
+    ? Array.from(dialog.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter((element) => element.getClientRects().length > 0 && !element.closest('[hidden]'))
+    : [];
+
+  const setOpenState = (open: boolean) => {
+    openers.forEach((opener) => opener.setAttribute('aria-expanded', String(open)));
+    document.documentElement.classList.toggle('category-drawer-open', open);
+  };
+
+  const closeDialog = () => {
+    if (dialog?.open) dialog.close();
+  };
+
+  openers.forEach((opener) => opener.addEventListener('click', () => {
+    lastOpener = opener;
+    lockedScrollY = window.scrollY;
+    dialog?.showModal();
+    setOpenState(true);
+    window.scrollTo(0, lockedScrollY);
+    requestAnimationFrame(() => {
+      window.scrollTo(0, lockedScrollY);
+      closer?.focus({ preventScroll: true });
+    });
+  }));
+
+  closer?.addEventListener('click', closeDialog);
+  dialog?.addEventListener('click', (event) => {
+    if (event.target === dialog) closeDialog();
+  });
+  dialog?.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeDialog();
+      return;
+    }
+
+    if (event.key !== 'Tab') return;
+    const focusableElements = getFocusableElements();
+    const firstElement = focusableElements.at(0);
+    const lastElement = focusableElements.at(-1);
+    if (!firstElement || !lastElement) {
+      event.preventDefault();
+      closer?.focus({ preventScroll: true });
+      return;
+    }
+
+    if (event.shiftKey && (document.activeElement === firstElement || !dialog.contains(document.activeElement))) {
+      event.preventDefault();
+      lastElement.focus({ preventScroll: true });
+    } else if (!event.shiftKey && (document.activeElement === lastElement || !dialog.contains(document.activeElement))) {
+      event.preventDefault();
+      firstElement.focus({ preventScroll: true });
+    }
+  });
+  dialog?.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    closeDialog();
+  });
+  dialog?.addEventListener('close', () => {
+    setOpenState(false);
+    const opener = lastOpener;
+    lastOpener = null;
+    window.scrollTo(0, lockedScrollY);
+    if (opener?.isConnected) opener.focus({ preventScroll: true });
+    window.scrollTo(0, lockedScrollY);
+  });
+
+  dialog?.querySelectorAll<HTMLButtonElement>('[data-category-branch-toggle]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const targetId = button.getAttribute('aria-controls');
+      const target = targetId ? document.getElementById(targetId) : null;
+      if (!target) return;
+      const expanded = button.getAttribute('aria-expanded') === 'true';
+      button.setAttribute('aria-expanded', String(!expanded));
+      target.hidden = expanded;
+      const symbol = button.querySelector<HTMLElement>('[aria-hidden="true"]');
+      const label = button.querySelector<HTMLElement>('.visually-hidden');
+      if (symbol) symbol.textContent = expanded ? '+' : '−';
+      if (label) label.textContent = label.textContent?.replace(expanded ? '접기' : '펼치기', expanded ? '펼치기' : '접기') ?? '';
+    });
+  });
+</script>

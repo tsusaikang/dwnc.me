@@ -1,0 +1,115 @@
+---
+import type { PostEntry } from '../lib/posts';
+import { formatCompactDate, formatDate } from '../lib/posts';
+import { publicPostPath, type PublicPostAddress } from '../lib/public-address';
+import type { TagNode } from '../lib/taxonomy';
+import { resolvePostCategory, taxonomyLineage } from '../lib/taxonomy';
+import BaseLayout from './BaseLayout.astro';
+import Breadcrumbs from '../components/Breadcrumbs.astro';
+
+interface Props {
+  post: PostEntry;
+  address: PublicPostAddress;
+  publicMetadata: { description: string; bodyText: string; visibleImageCount: number };
+  tagNodes: TagNode[];
+  related: PostEntry[];
+  previous: PostEntry | null;
+  next: PostEntry | null;
+}
+
+const { post, address, publicMetadata, tagNodes, related, previous, next } = Astro.props;
+const { data } = post;
+const category = resolvePostCategory(post);
+const categoryLineage = taxonomyLineage(category.id);
+const breadcrumbItems = [
+  { label: '갈래', href: '/category' },
+  ...categoryLineage.slice(0, -1).map((node) => ({ label: node.label, href: `/category/${node.slug}` })),
+  { label: category.label, href: `/category/${category.slug}` },
+  { label: data.title },
+];
+const { description, bodyText, visibleImageCount } = publicMetadata;
+const sourceBody = post.body ?? '';
+const imageCount = visibleImageCount;
+const textLength = bodyText.length;
+const isShortVisualPost = imageCount >= 1 && imageCount <= 3 && textLength < 120;
+const isPhotoEssay = imageCount >= 8
+  || (imageCount >= 4 && textLength / imageCount < 400)
+  || isShortVisualPost;
+const readingMinutes = Math.max(1, Math.ceil(textLength / 500));
+const showCover = Boolean(data.cover && !sourceBody.includes(data.cover));
+---
+
+<BaseLayout
+  title={data.title}
+  description={description}
+  canonicalPath={address.canonicalPath}
+  image={data.cover}
+  article
+  activeCategoryId={category.id}
+>
+  <article
+    class:list={['article-page', isPhotoEssay ? 'article-page--photo' : 'article-page--longform']}
+    data-category-id={category.id}
+  >
+    <header class="post-header">
+      <div class="post-header__inner">
+        <Breadcrumbs items={breadcrumbItems} />
+        <p class="post-header__kicker">{category.label}</p>
+        <p class="post-header__meta">
+          <a href={`/category/${category.slug}`}>{category.label}</a>
+          <time datetime={data.publishedAt.toISOString()}>{formatDate(data.publishedAt)}</time>
+          <span>읽는 데 {readingMinutes}분</span>
+        </p>
+        <h1>{data.title}</h1>
+      </div>
+    </header>
+
+    {showCover && <img class="post-cover" src={data.cover} alt={data.coverAlt} decoding="async" />}
+
+    <div class="prose">
+      <slot />
+    </div>
+
+    <footer class="post-footer">
+      <div class="post-footer__inner">
+        <div class="post-tags" aria-label="분류와 태그">
+          <a href={`/category/${category.slug}`}>{category.label}</a>
+          {tagNodes.map((tag) => <a rel="tag" href={`/tag/${tag.slug}`}>#{tag.label}</a>)}
+        </div>
+        {related.length > 0 && (
+          <section class="post-related" aria-labelledby="post-related-title">
+            <h2 id="post-related-title">같은 갈래의 글</h2>
+            <ol>
+              {related.map((item) => (
+                <li>
+                  <a href={publicPostPath(item)}>{item.data.title}</a>
+                  <time datetime={item.data.publishedAt.toISOString()}>{formatCompactDate(item.data.publishedAt)}</time>
+                </li>
+              ))}
+            </ol>
+          </section>
+        )}
+        {(previous || next) && (
+          <nav class="post-sequence" aria-label="시간순 글 이동">
+            {previous
+              ? (
+                <a rel="prev" href={publicPostPath(previous)}>
+                  <span>이전 글</span>
+                  <strong>{previous.data.title}</strong>
+                  <time datetime={previous.data.publishedAt.toISOString()}>{formatCompactDate(previous.data.publishedAt)}</time>
+                </a>
+              )
+              : <span />}
+            {next && (
+              <a rel="next" href={publicPostPath(next)}>
+                <span>다음 글</span>
+                <strong>{next.data.title}</strong>
+                <time datetime={next.data.publishedAt.toISOString()}>{formatCompactDate(next.data.publishedAt)}</time>
+              </a>
+            )}
+          </nav>
+        )}
+      </div>
+    </footer>
+  </article>
+</BaseLayout>

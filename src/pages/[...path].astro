@@ -1,0 +1,73 @@
+---
+import { getPublicPosts } from '../lib/posts';
+import { derivePublicPostMetadata, preparePublicPostHtml } from '../lib/public-post';
+import { createPublicLinkRegistry } from '../lib/public-links';
+import { publicAddressEntries, publicAddressForPost } from '../lib/public-address';
+import LegacyRedirect from '../components/LegacyRedirect.astro';
+import PostLayout from '../layouts/PostLayout.astro';
+import {
+  chronologicalNeighbors,
+  collectTags,
+  relatedPosts,
+  tagNodesForPost,
+} from '../lib/taxonomy';
+
+export async function getStaticPaths() {
+  const posts = await getPublicPosts();
+  const publicLinkRegistry = createPublicLinkRegistry(publicAddressEntries().map((address) => ({
+    ...address,
+    visibility: 'public' as const,
+  })));
+  const tags = collectTags(posts);
+  const articlePaths = await Promise.all(posts.map(async (post) => {
+    const address = publicAddressForPost(post);
+    const neighbors = chronologicalNeighbors(posts, post);
+    return {
+      params: { path: address.canonicalPath.replace(/^\//, '') },
+      props: {
+        post,
+        address,
+        publicPostHtml: await preparePublicPostHtml(post, publicLinkRegistry),
+        publicMetadata: await derivePublicPostMetadata(post, publicLinkRegistry),
+        tagNodes: tagNodesForPost(post, tags),
+        related: relatedPosts(posts, post, 5),
+        ...neighbors,
+      },
+    };
+  }));
+  const legacyPaths = publicAddressEntries().flatMap((address) => (
+    address.legacyPaths.map((legacyPath) => ({
+      params: { path: legacyPath.replace(/^\//, '') },
+      props: { redirectCanonicalPath: address.canonicalPath },
+    }))
+  ));
+  return [...articlePaths, ...legacyPaths];
+}
+
+const {
+  redirectCanonicalPath,
+  post,
+  address,
+  publicPostHtml,
+  publicMetadata,
+  tagNodes,
+  related,
+  previous,
+  next,
+} = Astro.props;
+const articlePost = post!;
+const articleAddress = address!;
+const articleMetadata = publicMetadata!;
+const articleTagNodes = tagNodes ?? [];
+const articleRelated = related ?? [];
+const articlePrevious = previous ?? null;
+const articleNext = next ?? null;
+---
+
+{redirectCanonicalPath ? (
+  <LegacyRedirect canonicalPath={redirectCanonicalPath} />
+) : (
+  <PostLayout post={articlePost} address={articleAddress} publicMetadata={articleMetadata} tagNodes={articleTagNodes} related={articleRelated} previous={articlePrevious} next={articleNext}>
+    <Fragment set:html={publicPostHtml} />
+  </PostLayout>
+)}

@@ -1,0 +1,31 @@
+---
+import CategoryListing from '../../../../components/CategoryListing.astro';
+import { getPublicPosts } from '../../../../lib/posts';
+import {
+  CATEGORY_PAGE_SIZE,
+  categoryStats,
+  paginateItems,
+  postsForCategory,
+} from '../../../../lib/taxonomy';
+
+export async function getStaticPaths() {
+  const posts = await getPublicPosts();
+  const stats = categoryStats(posts);
+
+  return stats.flatMap((category) => {
+    const categoryPosts = postsForCategory(posts, category.id);
+    const totalPages = Math.ceil(categoryPosts.length / CATEGORY_PAGE_SIZE);
+    return Array.from({ length: Math.max(0, totalPages - 1) }, (_, index) => {
+      const slice = paginateItems(categoryPosts, index + 2, CATEGORY_PAGE_SIZE);
+      return {
+        params: { category: category.slug, page: String(slice.page) },
+        props: { category, ...slice },
+      };
+    });
+  });
+}
+
+const { category, items: posts, page, totalPages } = Astro.props;
+---
+
+<CategoryListing category={category} posts={posts} page={page} totalPages={totalPages} />

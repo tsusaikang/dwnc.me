@@ -1,0 +1,52 @@
+---
+import type { PostEntry } from '../lib/posts';
+import type { CategoryStat } from '../lib/taxonomy';
+import { taxonomyLineage } from '../lib/taxonomy';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Breadcrumbs from './Breadcrumbs.astro';
+import Pagination from './Pagination.astro';
+import PostCard from './PostCard.astro';
+
+interface Props {
+  category: CategoryStat;
+  posts: PostEntry[];
+  page: number;
+  totalPages: number;
+}
+
+const { category, posts, page, totalPages } = Astro.props;
+const basePath = `/category/${category.slug}`;
+const lineage = taxonomyLineage(category.id);
+const breadcrumbItems = [
+  { label: '갈래', href: '/category' },
+  ...lineage.slice(0, -1).map((node) => ({ label: node.label, href: `/category/${node.slug}` })),
+  { label: category.label },
+];
+const countCopy = category.directCount === category.totalCount
+  ? `${category.totalCount}편`
+  : `직접 ${category.directCount}편 · 하위 갈래 포함 ${category.totalCount}편`;
+---
+
+<BaseLayout
+  title={page === 1 ? category.label : `${category.label} ${page}쪽`}
+  description={`${category.label} 갈래의 글 ${category.totalCount}편`}
+  canonicalPath={page === 1 ? basePath : `${basePath}/page/${page}`}
+  activeCategoryId={category.id}
+>
+  <header class="page-header category-page-header">
+    <div class="shell">
+      <Breadcrumbs items={breadcrumbItems} />
+      <p class="eyebrow">Category · {countCopy}</p>
+      <h1>{category.label}</h1>
+      {page > 1 && <p>{page} / {totalPages}쪽</p>}
+    </div>
+  </header>
+  <section class="section">
+    <div class="shell posts-grid">
+      {posts.map((post) => <PostCard post={post} />)}
+    </div>
+    <div class="shell">
+      <Pagination basePath={basePath} page={page} totalPages={totalPages} label={category.label} />
+    </div>
+  </section>
+</BaseLayout>

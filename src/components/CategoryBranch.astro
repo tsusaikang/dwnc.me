@@ -1,0 +1,45 @@
+---
+import type { TaxonomyNode } from '../lib/taxonomy';
+import { taxonomyAncestors, taxonomyChildren } from '../lib/taxonomy';
+
+interface Props {
+  node: TaxonomyNode;
+  activeCategoryId?: string;
+  interactive?: boolean;
+}
+
+const { node, activeCategoryId, interactive = true } = Astro.props;
+const children = taxonomyChildren(node.id);
+const isCurrent = activeCategoryId === node.id;
+const isAncestor = Boolean(activeCategoryId && taxonomyAncestors(activeCategoryId).some((item) => item.id === node.id));
+const isExpanded = !interactive || isCurrent || isAncestor;
+const branchId = `category-branch-${node.id}`;
+---
+
+<li
+  class:list={['category-branch', { 'is-current': isCurrent, 'is-active-ancestor': isAncestor }]}
+  data-category-id={node.id}
+  data-active-ancestor={isAncestor ? 'true' : undefined}
+>
+  <div class="category-branch__row">
+    <a href={`/category/${node.slug}`} aria-current={isCurrent ? 'page' : undefined}>{node.label}</a>
+    {interactive && children.length > 0 && (
+      <button
+        type="button"
+        data-category-branch-toggle
+        aria-controls={branchId}
+        aria-expanded={isExpanded ? 'true' : 'false'}
+      >
+        <span aria-hidden="true">{isExpanded ? '−' : '+'}</span>
+        <span class="visually-hidden">{node.label} 하위 갈래 {isExpanded ? '접기' : '펼치기'}</span>
+      </button>
+    )}
+  </div>
+  {children.length > 0 && (
+    <ul id={branchId} hidden={!isExpanded}>
+      {children.map((child) => (
+        <Astro.self node={child} activeCategoryId={activeCategoryId} interactive={interactive} />
+      ))}
+    </ul>
+  )}
+</li>

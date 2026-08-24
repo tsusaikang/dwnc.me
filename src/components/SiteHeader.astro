@@ -1,0 +1,61 @@
+---
+import CategoryDrawer from './CategoryDrawer.astro';
+
+interface Props {
+  activeCategoryId?: string;
+}
+
+const { activeCategoryId } = Astro.props;
+const pathname = decodeURI(Astro.url.pathname).normalize('NFC').replace(/\/$/, '') || '/';
+const navItems = [
+  { href: '/', label: '최근 기록' },
+  { href: '/archive', label: '모든 글' },
+  { href: '/about', label: '소개' },
+];
+const isCurrent = (href: string) => {
+  const normalizedHref = href.normalize('NFC').replace(/\/$/, '') || '/';
+  return pathname === normalizedHref || (normalizedHref !== '/' && pathname.startsWith(`${normalizedHref}/`));
+};
+---
+
+<header class="site-header">
+  <div class="site-header__inner">
+    <a class="brand" href="/" aria-label="dwnc.me 홈">dwnc.me</a>
+
+    <nav class="site-nav" aria-label="주요 메뉴">
+      {navItems.slice(0, 2).map((item) => (
+        <a
+          href={item.href}
+          aria-current={isCurrent(item.href) ? 'page' : undefined}
+        >
+          {item.label}
+        </a>
+      ))}
+      <span class:list={['site-nav__category', { 'is-active': pathname === '/category' || pathname.startsWith('/category/') }] }>
+        <a href="/category" aria-current={pathname === '/category' ? 'page' : undefined}>갈래</a>
+        <button
+          type="button"
+          data-category-open
+          aria-controls="category-drawer"
+          aria-expanded="false"
+          aria-haspopup="dialog"
+          aria-label="전체 갈래 열기"
+        ><span aria-hidden="true">+</span></button>
+      </span>
+      {navItems.slice(2).map((item) => (
+        <a
+          href={item.href}
+          aria-current={isCurrent(item.href) ? 'page' : undefined}
+        >
+          {item.label}
+        </a>
+      ))}
+      <button class="search-trigger" type="button" data-search-open aria-label="글 검색 열기">
+        <span>찾기</span>
+      </button>
+    </nav>
+    <p class="site-header__note">개인 기록</p>
+  </div>
+</header>
+
+<CategoryDrawer activeCategoryId={activeCategoryId} />

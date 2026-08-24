@@ -1,0 +1,17 @@
+---
+import { taxonomyRoots } from '../lib/taxonomy';
+import CategoryBranch from './CategoryBranch.astro';
+
+interface Props {
+  activeCategoryId?: string;
+  interactive?: boolean;
+}
+
+const { activeCategoryId, interactive = true } = Astro.props;
+---
+
+<ul class="category-tree">
+  {taxonomyRoots().map((root) => (
+    <CategoryBranch node={root} activeCategoryId={activeCategoryId} interactive={interactive} />
+  ))}
+</ul>

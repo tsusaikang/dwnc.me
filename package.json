@@ -1,0 +1,37 @@
+{
+  "name": "dwnc-me",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "ASTRO_TELEMETRY_DISABLED=1 astro dev",
+    "build": "ASTRO_TELEMETRY_DISABLED=1 astro check && ASTRO_TELEMETRY_DISABLED=1 astro build",
+    "check": "ASTRO_TELEMETRY_DISABLED=1 astro check",
+    "preview": "ASTRO_TELEMETRY_DISABLED=1 astro preview",
+    "links:self-test": "node scripts/test-public-links.mjs",
+    "sequence": "node scripts/manage-global-sequence.mjs",
+    "sequence:self-test": "node scripts/test-global-sequence.mjs",
+    "sequence:cli-test": "node scripts/test-global-sequence-cli.mjs",
+    "sequence:validate": "node scripts/validate-global-sequence.mjs",
+    "build:validate:public": "node scripts/validate-public-only.mjs",
+    "edge-redirects:generate": "node scripts/generate-edge-redirect-manifest.mjs",
+    "import:tistory": "node scripts/import-tistory.mjs",
+    "import:naver": "node scripts/import-naver.mjs",
+    "inventory:validate": "node scripts/validate-inventory.mjs",
+    "build:validate": "node scripts/validate-build.mjs"
+  },
+  "dependencies": {
+    "@astrojs/markdown-satteri": "0.3.7",
+    "@astrojs/rss": "4.0.19",
+    "@astrojs/sitemap": "3.7.3",
+    "astro": "7.2.4",
+    "cheerio": "1.2.0",
+    "sanitize-html": "2.17.7",
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10",
+    "@types/sanitize-html": "2.16.1",
+    "typescript": "6.0.3"
+  }
+}
