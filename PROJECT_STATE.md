@@ -1,6 +1,6 @@
 # dwnc.me 프로젝트 공식 상태
 
-최종 갱신: 2026-08-25 KST — Stage 3 Builds guard·로컬 staging admission 계약 완료
+최종 갱신: 2026-08-25 KST — Stage 3 로컬 source commit·Builds exact readback 완료
 
 ## 현재 목표와 완료 조건
 
@@ -43,7 +43,7 @@
 - same-origin forward-deny Worker: **공개 static 1,410경로와 media 2,889개를 asset/cache보다 먼저 exact allowlist, `/media/*` GET·HEAD·ETag·304·If-Range·단일 Range·full-200 edge cache·404/405/416/502 mock fixture PASS, live network 0**
 - Cloudflare source-only build: **fresh Git-style checkout에서 private/raw/local media 0, local media read/download 0, `dist/media` 0, HTML 1,404·sitemap 1,054·canonical/alias 349/349와 기존 검증 PASS**
 - Cloudflare Stage 3 preflight·Builds guard: **account·Worker·repo 식별과 raw deploy 제거·exact version-only wrapper readback 완료 / R2·token·version·traffic·DNS 미변경**
-- Cloudflare Stage 3 로컬 admission 준비: **single-object create-only·실제 R2 client probe·staging-only artifact/smoke·strict authority/Range/output-path 보강 완료, 12 suites·463 assertions PASS / 미commit·원격 실행 0**
+- Cloudflare Stage 3 로컬 admission 준비: **single-object create-only·실제 R2 client probe·staging-only artifact/smoke·strict authority/Range/output-path 보강 완료, 12 suites·463 assertions PASS / source commit 완료·push와 원격 실행 0**
 - 네이버 세 편집기 세대 대표·비디오 대표 데스크톱·모바일 브라우저 QA: **모두 PASS**
 - 이전 기술 완료 조건: **달성**
 - 운영 방식·호스팅·도메인 전환: **private R2+same-origin Worker 로컬 구조 확정 / resource·credential·upload·receipt·배포·DNS 미실행**
@@ -145,13 +145,14 @@
 
 ### Cloudflare Stage 3 사전점검·Builds guard
 
-- 2026-08-25 로그인된 Chrome에서 Cloudflare account fingerprint `6ef9d1a2e2a398e755e1d4108acabacde0f5218f9f455abf79f1af56a154ea0f`, production Worker `dwnc-me`, 연결 repository `tsusaikang/dwnc.me`를 확인했다. raw account ID·계정 표시명·credential 값은 이 문서에 기록하지 않는다.
-- Builds 변경 전 readback은 `Build command = None`, `Deploy command = npx wrangler deploy`였다. 변경 후 `SKIP_DEPENDENCY_INSTALL=1`, Build `npm ci && npm run cloudflare:prepare:production`, Deploy `npm run cloudflare:upload:production-version`을 exact readback했고 raw `wrangler deploy` 설정은 0이다.
-- 이 guard 변경은 version-only upload까지만 허용하며 traffic promotion을 수행하지 않는다. 같은 작업에서 traffic·DNS·route·custom domain·binding·R2 bucket/object·token·Worker version·Git source/history 변경은 모두 0이었다.
+- 2026-08-25 로그인된 Chrome에서 production Worker `dwnc-me`와 연결 repository `tsusaikang/dwnc.me`를 다시 확인했다. 로그인 대상에서 domain-separated 방식으로 계산한 account fingerprint는 tracked policy의 `6ef9d1a2e2a398e755e1d4108acabacde0f5218f9f455abf79f1af56a154ea0f`와 exact 일치했고 raw account ID·계정 표시명·credential 값은 저장소와 이 문서에 기록하지 않았다.
+- Builds의 현재 서버 readback은 `SKIP_DEPENDENCY_INSTALL=1`, Build `npm ci && npm run cloudflare:prepare:production`, Deploy `npm run cloudflare:upload:production-version`, Version `npx wrangler versions upload`, root `/`, production branch `main`, included paths `*`다. 현재 raw live `wrangler deploy` 설정은 0이다.
+- 현재 설정이 이미 승인된 안전 상태와 exact 일치해 이번 Chrome 재확인에서는 retry 0·설정 mutation 0이었다. traffic·DNS·route·custom domain·binding·R2 bucket/object·token·Worker version·Git 원격 상태를 포함한 unrelated external change도 0이다.
+- 과거 실패 Build ID `7c26b9ab-0105-4c7a-9be1-9c825b8804c8`는 source commit `18b214d9dd1a894ebf33f5f5c82d40c370535fe3`에서 Build `None`, Deploy `npx wrangler deploy`, environment variable 0이던 이전 설정으로 실행됐다. dependency install 뒤 raw deploy가 시작되고 Astro 자동 구성을 거친 다음 `public/.assetsignore` 누락으로 실패했으며, npm build 완료나 Worker upload가 일어났다는 증거는 없었다.
+- 실패 Build의 retry는 0이고 같은 19h 구간에 새 version/deployment가 생겼다는 증거도 0이다. 현재 Dashboard의 active deployment는 prefix-only `f0a8bec2`(traffic 100%, UI 20h)이고, 별도로 보이는 다른 version은 prefix-only `1ad98585`(UI 20h)다. 둘 다 full deployment/version ID로 추정하거나 확장하지 않는다.
+- 최초 guard 변경 전 readback은 Build `None`, Deploy `npx wrangler deploy`였다. 이를 현재 safe Build와 version-only Deploy wrapper로 교체했으며, traffic promotion은 Git trigger에 포함하지 않는다.
 - R2는 Dashboard `/r2/plans`의 미활성 상태여서 staging private bucket과 최소 권한 token이 아직 없다. staging Worker `dwnc-me-staging`도 존재하지 않는다.
-- 현재 Git HEAD는 `18b214d9dd1a894ebf33f5f5c82d40c370535fe3`이며 Stage 2 변경이 남은 dirty worktree다. commit·push는 하지 않았다.
-- 이번 Stage 3 원격 계정 작업의 완료 범위는 Builds 안전화와 read-only 감사까지다. 아래 로컬 준비와 별개로 R2 provisioning/upload, Worker version upload/activation/smoke, production traffic·DNS는 수행하지 않았다.
-- 사용자는 2026-08-25 계약의 Builds 문구 정정, 전체 검증을 통과한 현재 로컬 변경의 commit, 로그인된 Chrome에서 Builds exact readback 재확인을 승인했다. push·production traffic/DNS·R2 provisioning/upload는 승인하지 않았다. 승인된 commit과 Chrome 재확인은 아직 수행 전이므로 새 commit SHA와 새 readback은 없다.
+- 이번 Stage 3 원격 계정 작업의 완료 범위는 Builds 안전화와 read-only 재감사까지다. 아래 로컬 source commit과 별개로 R2 subscription/provisioning/upload, Worker version upload/activation/smoke, production traffic·DNS는 수행하거나 승인받지 않았다.
 
 ### Cloudflare Stage 3 로컬 staging admission 준비
 
@@ -159,9 +160,11 @@
 - 새 package command는 `npm run media:r2:staging:admit-one`, `npm run cloudflare:prepare:staging`, `npm run cloudflare:staging:admission-smoke`다. single-object admission은 exact staging account/bucket/policy/manifest와 한 key를 결속하고 pre-HEAD→`If-None-Match:*` PUT→post-HEAD→full GET SHA/size/MIME/cache/custom SHA를 검증한다. 412는 post-HEAD exact일 때만 성공하며 mismatch는 overwrite하지 않는다. receipt는 repository 밖 mode 700 parent에 `wx`·mode 600으로 쓰고 realpath·device/inode를 write 전후 재검증한다.
 - staging probe는 실제 `R2S3Client.head()`를 사용하고 Worker full GET·206의 ETag, 첫 byte, exact `Content-Range`, `Content-Length: 1`을 결속한다. staging-only deterministic artifact는 clean Git·`WORKERS_CI_COMMIT_SHA` gate를 유지하되 production receipt/attestation을 요구하지 않으며, worker/static payload digest와 환경별 control-plane metadata를 분리한다. staging admission smoke는 staging version attestation/status/probe만 요구하면서 static·349 redirects·media GET/HEAD/304/206/416 계약을 재사용한다. 기존 production preparer·validator·promotion smoke는 약화하지 않았다.
 - staging artifact validator는 tracked current manifest와 policy, non-null staging media public-key fingerprint, signed `full-get-sha256` receipt, exact private staging bucket, `r2.dev=false`, custom domain 0, orphan 0을 다시 강제한다. legacy production artifact에서는 이 staging authority loader를 호출하지 않아 기존 production promotion 경로를 보존한다.
-- 독립 리뷰에서 P1 2건과 P2 1건을 발견해 모두 해소했고 재검토의 새 finding은 0이다. 변경 범위 syntax 13/13, targeted 151 assertions, 최종 `npm run cloudflare:test` 12 suites·463 assertions, `git diff --check` PASS, staged 0, live network 0, deployment attempt 0이다.
+- 독립 리뷰에서 P1 2건과 P2 1건을 발견해 모두 해소했고 재검토의 새 finding은 0이다. 변경 범위 syntax 13/13, targeted 151 assertions, 최종 `npm run cloudflare:test` 12 suites·463 assertions, `git diff --check` PASS, live network 0, deployment attempt 0이다.
 - local commit preflight 시작 직전 HEAD는 `18b214d9dd1a894ebf33f5f5c82d40c370535fe3`, candidate는 94경로, staged 0이었다. 실제 staging single-object receipt/upload, 2,889-object bulk upload/audit, Worker version upload와 version ID는 아직 0이다.
-- commit preflight에서 Git 비추적 generated `worker-configuration.d.ts`의 Wrangler canonical trailing whitespace와 기본 `git diff --check`가 충돌함을 발견했다. generated 파일 한 경로에만 `whitespace=-blank-at-eol`을 적용하고 pinned Wrangler로 canonical output을 재생성하며, `src/data/genesis-public-identities-v1.json`의 EOF extra blank line은 JSON 의미 불변으로 제거했다. 이 정정을 포함한 local commit candidate는 95경로이며 commit은 아직 실행하지 않았다.
+- commit preflight에서 Git 비추적 generated `worker-configuration.d.ts`의 Wrangler canonical trailing whitespace와 기본 `git diff --check`가 충돌함을 발견했다. generated 파일 한 경로에만 `whitespace=-blank-at-eol`을 적용하고 pinned Wrangler로 canonical output을 재생성하며, `src/data/genesis-public-identities-v1.json`의 EOF extra blank line은 JSON 의미 불변으로 제거했다.
+- 검증된 95경로 candidate는 `+54,315/-1,664`, content manifest SHA-256 `35bca34d5a0dc4a679584de5dc3325d144ad2ecc9f40ec26664f4383b604a799`였고 `feat: add guarded Cloudflare media release pipeline` source commit으로 기록했다. commit은 `a541803bcf35fe95f761f0964e21ceff405c048b`, parent는 `18b214d9dd1a894ebf33f5f5c82d40c370535fe3`, tree는 `2a874c3a9b450c531cff58f954ab3d3f15abdd2c`다.
+- source commit 직후 tracked·untracked·staged 변경 0의 clean snapshot을 확인했고 local `main`은 `origin/main`의 이전 ref `18b214d9dd1a894ebf33f5f5c82d40c370535fe3`보다 1 commit 앞선다. push는 0이다. 이 공식 상태 문서 갱신은 source commit 뒤의 별도 working-tree 변경이며 아직 checkpoint commit SHA가 없다.
 
 ### 공개 디자인·파생 표현 계층 보완
 
@@ -339,7 +342,7 @@
 - exact Wrangler `4.125.0` generated types drift 0, production binding probe PASS, workerd startup profile 11 nodes·network request 0 PASS. hardened dry-run은 upload 0, 두 번 생성한 stable `worker.js` 1,065,571바이트·SHA-256 `8758e5e366408b5056445a5f3b12659a98379983dd6c758e2c3e4f4f4afa7154`, static 1,412파일·SHA-256 `166ad07cbca4d939c35c27ff33919fb951887bbc6b467c867c92169fd52c9edd`와 public request surface 1,410경로·SHA-256 `720bf35c2716687d2776ed86f60f7e1a4ba1400191ebe3748d82a326cc2a8878`을 검증했다. release digest는 생성시각 README·source map·metafile 경로를 포함한 outdir aggregate가 아니라 실제 `worker.js` bytes와 static tree·전용 config의 개별 SHA로만 계산한다.
 - 원격 전수 auditor는 manifest 2,889개를 모두 GET해 body SHA-256·총 2,350,053,092바이트를 확인한 경우만 `full-get-sha256` receipt 후보를 만든다. mock fixture에서 object/byte count와 변조 거부를 통과했고 live R2 호출은 0이다.
 - production remote validation은 receipt·signature·read-only credential이 없을 때 `MEDIA_E_REMOTE_RECEIPT_REQUIRED`로 fail closed하며, sync도 complete account fingerprint·environment/bucket 결속·credential·expected digest·orphan approval이 없으면 첫 R2 요청 전에 거부한다.
-- 외부 R2·Cloudflare API call, resource 생성, upload, deploy, DNS 변경, Git commit/push는 0이다.
+- 로컬 검증 중 외부 R2·Cloudflare API call, resource 생성, upload, deploy, DNS 변경은 0이다. 검증된 로컬 source commit은 1개 생성했고 push는 0이다.
 
 ### 통합 inventory·check·build·build-validator
 
@@ -405,7 +408,7 @@
 
 - 네이버 432건의 raw 보존, 공개 185건 정규화·미디어·경로, 비공개 247건의 로컬 물리 분리, 통합 inventory·build, 실제 브라우저 QA까지 이전 기술 완료 조건을 달성했다.
 - 공개 미디어의 로컬 Stage 2 구현과 Stage 3 staging admission/version-only 준비·fixture를 완료했다. 실제 배포 후보가 되려면 별도 승인 아래 private R2 resource·least-privilege credential을 만들고 single-object admission, bulk upload/full verify, signed receipt와 exact Wrangler bundle 검증을 완료해야 한다.
-- 2026-08-25 Stage 3 원격 진행분은 Cloudflare Builds에서 raw deploy를 제거한 version-only guard와 read-only preflight까지만 완료했다. 로컬 Stage 3 변경은 아직 미commit이며 staging R2·Worker 생성, 객체·version upload, activation·smoke는 아래 승인 gate가 해소될 때까지 미완료다.
+- 2026-08-25 Stage 3 원격 진행분은 Cloudflare Builds에서 raw deploy를 제거한 version-only guard와 로그인된 Chrome의 exact server readback까지 완료했다. 로컬 Stage 3 변경은 source commit `a541803bcf35fe95f761f0964e21ceff405c048b`로 기록했지만 push하지 않았고, staging R2·Worker 생성, 객체·version upload, activation·smoke는 아래 별도 승인 gate가 해소될 때까지 미완료다.
 - `dist/`는 최종 통합 QA를 통과한 로컬 배포 후보이지만, 원격 배포·DNS·도메인 연결 승인을 의미하지 않는다.
 
 ## 미해결 문제
@@ -418,14 +421,14 @@
 - 외부 CDN 없이 시스템 한글 폰트 조합을 사용하므로 운영체제별 글꼴 모양이 완전히 같지는 않다. 로컬 폰트 도입 여부는 라이선스·파일 출처를 확정한 뒤 결정한다.
 - 티스토리 정규화 본문 1건의 종료된 영상 fallback HTML은 들여쓴 Markdown code block으로 렌더되어 태그 문자열이 화면에 보이는 기존 표시 문제가 있다. 이번 구조 분류는 실제 렌더 의미를 정확히 반영하지만, 원문·정규화 본문 불변 범위에서 이 표시 자체는 수정하지 않았으므로 별도 파생 표현 보완이 필요하다.
 - 네이버 비공개 raw·정규화 본문·미디어는 공개 트리와 물리적으로 분리됐지만 별도 암호화 백업과 복구 절차는 아직 확정하지 않았다.
-- 현재 Git HEAD는 아직 이전 commit `18b214d9dd1a894ebf33f5f5c82d40c370535fe3`이고 승인된 local commit candidate 95경로는 모두 staged이며 unstaged 0·untracked 0이다. local commit은 pending이라 Git history 변경·commit·push는 아직 0이다. staged manifest·diff-check와 secret/private/raw/media/dist 누출 검증을 완료했으며 commit 직전 같은 상태를 다시 확인한다.
+- 현재 Git HEAD는 source commit `a541803bcf35fe95f761f0964e21ceff405c048b`이고 local `main`은 아직 `18b214d9dd1a894ebf33f5f5c82d40c370535fe3`인 `origin/main`보다 1 commit 앞선다. source commit 직후 clean을 확인했으며 push는 0이다. 이 `PROJECT_STATE.md` 갱신만 HEAD 뒤 working-tree 변경으로 남고 별도 checkpoint commit SHA는 아직 없다.
 - 네이버 공개 목록과 직접 작성 글 목록의 차이 10개(공유·스크랩 추정)에 대한 링크형 기록·제외 결정이 남아 있다.
 - 지속적인 새 글 작성 방식을 저장소 기반 편집으로 둘지 로그인형 웹 편집기를 추가할지 최종 결정이 필요하다.
 - 티스토리·네이버 댓글을 이식할지, 과거 댓글을 읽기 전용 기록으로만 보존할지 결정이 필요하다.
 - 공개 미디어 2,889개·2,350,053,092바이트는 private R2+same-origin Worker 구조로 제공하기로 결정했고 로컬 구현도 완료했다. R2가 아직 Dashboard `/r2/plans`의 미활성 상태라 staging·production bucket·credential·upload·full remote hash·signed receipt·binding은 모두 없으며, 구독·과금 활성화부터 별도 승인이 필요하다.
-- Cloudflare Builds의 P0 raw-deploy blocker는 해소했다. 현재 exact readback은 `SKIP_DEPENDENCY_INSTALL=1`, Build `npm ci && npm run cloudflare:prepare:production`, Deploy `npm run cloudflare:upload:production-version`이고 raw `wrangler deploy`는 0이다. traffic promotion은 계속 Git trigger 밖에서 signed evidence와 exact version ID를 다시 승인한 job으로만 수행한다.
+- Cloudflare Builds의 P0 raw-deploy blocker는 해소했다. 현재 exact readback은 `SKIP_DEPENDENCY_INSTALL=1`, Build `npm ci && npm run cloudflare:prepare:production`, Deploy `npm run cloudflare:upload:production-version`, Version `npx wrangler versions upload`, root `/`, branch `main`, include `*`이고 raw live `wrangler deploy` 설정은 0이다. traffic promotion은 계속 Git trigger 밖에서 signed evidence와 exact version ID를 다시 승인한 job으로만 수행한다.
 - tracked release policy의 staging account fingerprint에는 domain-separated SHA-256 `6ef9d1a2e2a398e755e1d4108acabacde0f5218f9f455abf79f1af56a154ea0f`를 반영했다. staging `publicKeySpkiSha256`·`releasePublicKeySpkiSha256`·`smokeAccessPolicySha256`는 실제 provisioning 전까지 `null`이라 staging artifact/upload/smoke가 fail closed한다. production account/media/release fingerprint는 모두 `null`로 유지해 production gate도 fail closed한다.
-- single-object create-only, 실제 `head()` probe, staging-only artifact와 admission smoke의 production 의존 분리는 로컬 구현·negative fixture·전체 회귀까지 완료했다. 사용자는 계약 정정과 전체 재검증을 포함한 local commit을 승인했지만 아직 수행 전이며 push는 계속 금지다.
+- single-object create-only, 실제 `head()` probe, staging-only artifact와 admission smoke의 production 의존 분리는 로컬 구현·negative fixture·전체 회귀와 source commit까지 완료했다. push는 계속 승인되지 않았다.
 - 실제 `npm ci`부터 시작하는 isolated clean-install fixture는 npm registry만 허용한 임시 Git-style tree에서 PASS했다. private/raw/local media는 0이었고 source-only build·공개 validator·exact Wrangler lock까지 통과했으며 권위 작업공간은 변경하지 않았다.
 - `versions upload`은 대상 Worker가 존재하지 않으면 최초 version을 만들 수 없고, read-only 감사에서 staging Worker `dwnc-me-staging`이 없음을 확인했다. `workers_dev=false`, `preview=false`, route·custom domain·trigger·asset·binding 0인 deny-all staging service bootstrap도 별도 사용자 승인과 signed existence/authorization 아래 한 번만 수행해야 하며 일반 release가 자동 우회하지 않는다.
 - `preview_urls=false`이고 staging Worker·endpoint가 없으므로 activation 전에 Worker GET/HEAD/Range probe를 수행할 공개 표면이 없다. staging activation과 synthetic non-Access endpoint 생성은 각각 별도 승인이 필요하며, 이후 staging 고유 version의 동일 payload attestation·deployment status 100%·1-object S3/Worker admission과 GET·HEAD·304·206·416을 검증해야 한다.
@@ -434,10 +437,10 @@
 ## 다음 단계
 
 1. 사용자는 현재 `http://127.0.0.1:4321`에서 최신 로컬 완성본을 검수한다. 이후 작업에서 프로세스가 사라졌다면 exact PID·cwd·port를 다시 확인한 뒤 최신 `dist/` preview만 안전하게 재기동한다.
-2. 계약 정정과 Stage 3 로컬 20경로의 exact diff·검증 결과를 다시 확인한 뒤 승인된 local commit만 만들고 새 commit SHA를 보고한다. push는 계속 금지하며 commit SHA를 보고하기 전 원격 실행으로 넘어가지 않는다.
+2. source commit `a541803bcf35fe95f761f0964e21ceff405c048b`과 이 공식 상태 문서의 단일-file diff를 보고한다. 상태 문서 갱신을 별도 local checkpoint commit으로 남길 경우 그 새 SHA를 다시 확인하되 push는 계속 금지한다.
 3. 공유·스크랩 추정 10개를 링크형 기록으로 남길지 제외할지 결정한다.
 4. 새 글 편집 방식과 과거 댓글 보존 정책을 결정한다.
-5. local commit gate 뒤에도 R2 구독·과금 활성화, exact private staging bucket, 분리된 최소 권한 token, staging media/release public-key와 smoke fingerprint 반영을 각각 별도 승인받는다. 이어 외부 surface 0 deny-only staging Worker bootstrap, 한 객체 create-only PUT→HEAD→GET/SHA→Worker Range/ETag admission, 공개 미디어 2,889개 create-only upload·전수 GET/SHA 감사, exact staging version-only upload, staging-only activation·synthetic endpoint를 순서별 별도 승인 아래 수행한다. production traffic·DNS·production R2 upload는 계속 금지하며 결과와 exact Git SHA·version ID를 보고해 다시 승인받기 전에는 전환하지 않는다.
+5. R2 구독·과금 활성화, exact private staging bucket, 분리된 최소 권한 token, staging media/release public-key와 smoke fingerprint 반영은 계속 각각 별도 명시적 승인을 받는다. 이어 외부 surface 0 deny-only staging Worker bootstrap, 한 객체 create-only PUT→HEAD→GET/SHA→Worker Range/ETag admission, 공개 미디어 2,889개 create-only upload·전수 GET/SHA 감사, exact staging version-only upload, staging-only activation·synthetic endpoint도 순서별 별도 승인 아래 수행한다. production traffic·DNS·R2 provisioning/upload·Worker version upload/activation은 승인되지 않았으며, 결과와 exact Git SHA·version ID를 보고해 다시 승인받기 전에는 전환하지 않는다.
 6. 호스팅 승인 뒤 `docs/URL_CONTRACT.md`의 HTTP/HTTPS·www/apex·trailing slash edge redirect를 실제 응답으로 검증한다.
 7. DNS·도메인 연결은 배포와도 별도의 명시적 사용자 승인을 받은 뒤만 진행한다.
 
@@ -455,7 +458,7 @@
 - legacy `page.html`은 비정본 진단 파일이다. 본문 변환·원문 완전성 증거로 사용하지 않는다.
 - `src/data/posts/naver/`, `public/media/naver/`, `dist/`는 최종 통합 QA를 통과했지만 로컬 배포 후보일 뿐이다. 사용자 승인 전에는 원격으로 올리거나 서비스하지 않는다.
 - 원격 배포, DNS 전환, 도메인 연결은 사용자 승인 전 수행하지 않는다.
-- production traffic·DNS 변경·production R2 upload는 계속 금지하며, staging R2/Worker의 provisioning·upload·activation도 위의 분리된 승인 gate 없이는 수행하지 않는다.
+- production traffic·DNS 변경·R2 provisioning/upload·Worker version upload/activation은 계속 승인되지 않았다. staging R2 subscription/bucket/token, deny-only Worker bootstrap, upload, activation과 synthetic endpoint도 위의 분리된 명시적 승인 gate 없이는 수행하지 않는다.
 - `wrangler.jsonc`의 bucket 이름과 staging/production binding은 로컬 draft일 뿐이다. private R2 bucket·token·remote receipt·Cloudflare project/route를 실제로 만들거나 수정하지 않았으며 별도 승인 전 실행하지 않는다.
 - R2 key mismatch는 자동 overwrite하지 않고 orphan은 자동 삭제하지 않는다. public→private/tombstone은 cache 조회보다 먼저 작동하는 최신 allowlist deny release를 forward 적용한다. exact URL cache purge는 보장할 수 없으므로 보안 경계로 삼지 않고, privacy rollback에서도 최신 deny 상태를 유지한다.
 - 실제 배포 전 기존 `dwnc.me/{숫자}` 164개 전수 응답·리디렉션 회귀 검증이 필요하다.
