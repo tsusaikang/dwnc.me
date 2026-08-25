@@ -14,6 +14,9 @@ import {
 const fail = (code) => { throw new SequenceError(code); };
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const PUBLIC_ASSET_RECEIPTS_PATH = 'src/data/public-asset-receipts-v1.json';
+const PUBLIC_MEDIA_MANIFEST_PATH = 'src/data/public-media-r2-v1.json';
+const GENESIS_PUBLIC_IDENTITIES_PATH = 'src/data/genesis-public-identities-v1.json';
+const PUBLIC_MEDIA_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 export const GENESIS_PUBLIC_IDENTITY_SHA256 = '2190984504722fd7b8f4b5a0ac38ecf29948e4e18b9c890ad0a76f54f059ea69';
 const DEFAULT_GENESIS_IDENTITY_EVIDENCE = Object.freeze({
   tistory: 164,
@@ -157,22 +160,23 @@ async function loadOptionalJson(file) {
   catch { fail('SEQ_E_PUBLIC_ASSET_MANIFEST'); }
 }
 
-function addManifestAsset(index, asset) {
-  if (!asset || asset.status !== 'downloaded' || typeof asset.local_path !== 'string') return;
-  if (!/^\/media\//u.test(asset.local_path)
-    || !/^[a-f0-9]{64}$/u.test(asset.sha256 ?? '')
-    || !Number.isSafeInteger(asset.size)
-    || asset.size <= 0
-    || typeof asset.mime !== 'string'
-    || !/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/iu.test(asset.mime.trim())) {
+function addManifestAsset(index, publicPath, value) {
+  if (typeof publicPath !== 'string'
+    || !/^\/media\/[A-Za-z0-9._/-]+$/u.test(publicPath)
+    || publicPath.includes('//') || publicPath.includes('/./') || publicPath.includes('/../')
+    || publicPath.endsWith('/.') || publicPath.endsWith('/..') || publicPath.includes('\\')
+    || publicPath.includes('%') || publicPath.normalize('NFC') !== publicPath
+    || !/^[a-f0-9]{64}$/u.test(value?.sha256 ?? '')
+    || !Number.isSafeInteger(value?.size) || value.size <= 0
+    || typeof value?.mime !== 'string'
+    || !/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/u.test(value.mime)) {
     fail('SEQ_E_PUBLIC_ASSET_MANIFEST');
   }
-  const value = { sha256: asset.sha256, size: asset.size, mime: asset.mime.trim().toLowerCase() };
-  const existing = index.get(asset.local_path);
+  const existing = index.get(publicPath);
   if (existing && (existing.sha256 !== value.sha256
     || existing.size !== value.size
     || existing.mime !== value.mime)) fail('SEQ_E_PUBLIC_ASSET_MANIFEST');
-  index.set(asset.local_path, value);
+  index.set(publicPath, value);
 }
 
 function identitySetDigest(identities) {
@@ -192,48 +196,13 @@ export async function loadPublicAssetEvidence(root, {
     || !/^[a-f0-9]{64}$/u.test(genesisIdentityEvidence.sha256 ?? '')) {
     fail('SEQ_E_PUBLIC_ASSET_GENESIS');
   }
-  const index = new Map();
-  const genesisIdentities = new Set();
-  const genesisAssetPaths = new Map();
-  const tistory = await loadOptionalJson(path.join(root, 'migration/source-inventory/tistory-posts.json'));
-  const tistoryPosts = tistory?.posts ?? [];
-  for (const post of tistoryPosts) {
-    const sourceId = validateSourceIdentityInput({ source: 'tistory', sourceId: post?.source_id }).sourceId;
-    const key = `tistory:${sourceId}`;
-    if (genesisIdentities.has(key)) fail('SEQ_E_PUBLIC_ASSET_GENESIS');
-    const paths = [];
-    genesisIdentities.add(key);
-    for (const asset of post.media ?? []) {
-      addManifestAsset(index, asset);
-      if (asset?.status === 'downloaded') paths.push(asset.local_path);
-    }
-    genesisAssetPaths.set(key, paths.sort((left, right) => left.localeCompare(right, 'en')));
-  }
-  const naver = await loadOptionalJson(path.join(root, 'migration/source-inventory/naver-public-posts.json'));
-  const naverPosts = naver?.posts ?? [];
-  for (const post of naverPosts) {
-    const sourceId = validateSourceIdentityInput({ source: 'naver', sourceId: post?.source_id }).sourceId;
-    const key = `naver:${sourceId}`;
-    if (genesisIdentities.has(key)) fail('SEQ_E_PUBLIC_ASSET_GENESIS');
-    const paths = [];
-    genesisIdentities.add(key);
-    for (const asset of [...(post.images ?? []), ...(post.videos ?? []), ...(post.attachments ?? [])]) {
-      addManifestAsset(index, asset);
-      if (asset?.status === 'downloaded') paths.push(asset.local_path);
-    }
-    genesisAssetPaths.set(key, paths.sort((left, right) => left.localeCompare(right, 'en')));
-  }
-  if (tistoryPosts.length !== genesisIdentityEvidence.tistory
-    || naverPosts.length !== genesisIdentityEvidence.naver
-    || identitySetDigest(genesisIdentities) !== genesisIdentityEvidence.sha256) {
-    fail('SEQ_E_PUBLIC_ASSET_GENESIS');
-  }
   const receiptDocument = await loadOptionalJson(path.join(root, PUBLIC_ASSET_RECEIPTS_PATH))
     ?? { schemaVersion: 1, receipts: [] };
   if (receiptDocument.schemaVersion !== 1 || !Array.isArray(receiptDocument.receipts)) {
     fail('SEQ_E_PUBLIC_ASSET_RECEIPT');
   }
   const receiptIndex = new Map();
+  const receiptAssets = new Map();
   for (const receipt of receiptDocument.receipts) {
     const validated = validateSourceIdentityInput(receipt);
     const key = `${validated.source}:${validated.sourceId}`;
@@ -259,27 +228,158 @@ export async function loadPublicAssetEvidence(root, {
         size: asset.size,
         mime: asset.mime.trim().toLowerCase(),
       };
-      const existing = index.get(asset.path);
+      assets.set(asset.path, evidence);
+      const existing = receiptAssets.get(asset.path);
       if (existing && (existing.sha256 !== evidence.sha256
-        || existing.size !== evidence.size
-        || existing.mime !== evidence.mime)) {
+        || existing.size !== evidence.size || existing.mime !== evidence.mime)) {
         fail('SEQ_E_PUBLIC_ASSET_RECEIPT');
       }
-      assets.set(asset.path, evidence);
-      index.set(asset.path, evidence);
+      receiptAssets.set(asset.path, evidence);
     }
     receiptIndex.set(key, { ...receipt, assets });
   }
-  return { manifestIndex: index, genesisIdentities, genesisAssetPaths, receiptIndex };
+
+  // The tracked public media manifest is the build-safe evidence available in a
+  // fresh checkout. Imported inventories remain preservation evidence, but are
+  // intentionally not a build dependency because they are local and ignored.
+  const mediaDocument = await loadOptionalJson(path.join(root, PUBLIC_MEDIA_MANIFEST_PATH));
+  const manifestKeys = [
+    'schemaVersion', 'contract', 'keyRule', 'objectCount', 'totalBytes',
+    'manifestSha256', 'entries',
+  ];
+  if (!mediaDocument || typeof mediaDocument !== 'object' || Array.isArray(mediaDocument)
+    || Object.keys(mediaDocument).length !== manifestKeys.length
+    || Object.keys(mediaDocument).some((key) => !manifestKeys.includes(key))
+    || mediaDocument.schemaVersion !== 1
+    || mediaDocument.contract !== 'dwnc-public-media-r2-v1'
+    || mediaDocument.keyRule !== 'publicPath.slice(1)'
+    || !Array.isArray(mediaDocument.entries)
+    || !Number.isSafeInteger(mediaDocument.objectCount)
+    || !Number.isSafeInteger(mediaDocument.totalBytes)
+    || !/^[a-f0-9]{64}$/u.test(mediaDocument.manifestSha256 ?? '')) {
+    fail('SEQ_E_PUBLIC_ASSET_MANIFEST');
+  }
+  const index = new Map();
+  let totalBytes = 0;
+  let previousPath = null;
+  for (const entry of mediaDocument.entries) {
+    const entryKeys = ['publicPath', 'key', 'size', 'sha256', 'contentType', 'cacheControl'];
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)
+      || Object.keys(entry).length !== entryKeys.length
+      || Object.keys(entry).some((key) => !entryKeys.includes(key))
+      || entry.key !== String(entry.publicPath ?? '').slice(1)
+      || entry.cacheControl !== PUBLIC_MEDIA_CACHE_CONTROL
+      || typeof entry.contentType !== 'string'
+      || entry.contentType !== entry.contentType.toLowerCase()
+      || previousPath !== null
+        && Buffer.compare(Buffer.from(previousPath), Buffer.from(entry.publicPath ?? '')) >= 0) {
+      fail('SEQ_E_PUBLIC_ASSET_MANIFEST');
+    }
+    addManifestAsset(index, entry.publicPath, {
+      sha256: entry.sha256, size: entry.size, mime: entry.contentType,
+    });
+    totalBytes += entry.size;
+    if (!Number.isSafeInteger(totalBytes)) fail('SEQ_E_PUBLIC_ASSET_MANIFEST');
+    previousPath = entry.publicPath;
+  }
+  const manifestDigest = sha256(JSON.stringify({
+    schemaVersion: mediaDocument.schemaVersion,
+    contract: mediaDocument.contract,
+    keyRule: mediaDocument.keyRule,
+    entries: mediaDocument.entries,
+  }));
+  if (mediaDocument.objectCount !== mediaDocument.entries.length
+    || mediaDocument.totalBytes !== totalBytes
+    || mediaDocument.manifestSha256 !== manifestDigest) fail('SEQ_E_PUBLIC_ASSET_MANIFEST');
+  const trackedManifestIndex = new Map(index);
+  for (const [assetPath, evidence] of receiptAssets) {
+    const existing = index.get(assetPath);
+    if (existing && (existing.sha256 !== evidence.sha256
+      || existing.size !== evidence.size || existing.mime !== evidence.mime)) {
+      fail('SEQ_E_PUBLIC_ASSET_RECEIPT');
+    }
+    index.set(assetPath, evidence);
+  }
+
+  // Genesis membership is a tracked immutable public-only sidecar. It cannot be
+  // inferred from mutable content, projection, receipt, or local inventories.
+  const genesisDocument = await loadOptionalJson(path.join(root, GENESIS_PUBLIC_IDENTITIES_PATH));
+  if (!genesisDocument || typeof genesisDocument !== 'object' || Array.isArray(genesisDocument)
+    || Object.keys(genesisDocument).length !== 5
+    || Object.keys(genesisDocument).some((field) => ![
+      'schemaVersion', 'contract', 'count', 'sha256', 'identities',
+    ].includes(field))
+    || genesisDocument.schemaVersion !== 1
+    || genesisDocument.contract !== 'dwnc-genesis-public-identities-v1'
+    || !Number.isSafeInteger(genesisDocument.count)
+    || !Array.isArray(genesisDocument.identities)
+    || genesisDocument.count !== genesisDocument.identities.length
+    || !/^[a-f0-9]{64}$/u.test(genesisDocument.sha256 ?? '')) {
+    fail('SEQ_E_PUBLIC_ASSET_GENESIS');
+  }
+  const genesisIdentities = new Set();
+  const genesisCounts = { tistory: 0, naver: 0 };
+  let previousIdentity = null;
+  for (const identity of genesisDocument.identities) {
+    if (typeof identity !== 'string' || identity.normalize('NFC') !== identity) {
+      fail('SEQ_E_PUBLIC_ASSET_GENESIS');
+    }
+    const separator = identity.indexOf(':');
+    if (separator <= 0 || separator !== identity.lastIndexOf(':')) fail('SEQ_E_PUBLIC_ASSET_GENESIS');
+    let validated;
+    try {
+      validated = validateSourceIdentityInput({
+        source: identity.slice(0, separator), sourceId: identity.slice(separator + 1),
+      });
+    } catch { fail('SEQ_E_PUBLIC_ASSET_GENESIS'); }
+    const key = `${validated.source}:${validated.sourceId}`;
+    if (!['tistory', 'naver'].includes(validated.source)
+      || key !== identity
+      || genesisIdentities.has(key)
+      || previousIdentity !== null
+        && Buffer.compare(Buffer.from(previousIdentity), Buffer.from(key)) >= 0) {
+      fail('SEQ_E_PUBLIC_ASSET_GENESIS');
+    }
+    genesisIdentities.add(key);
+    genesisCounts[validated.source] += 1;
+    previousIdentity = key;
+  }
+  if (genesisDocument.sha256 !== identitySetDigest(genesisIdentities)
+    || genesisDocument.sha256 !== genesisIdentityEvidence.sha256
+    || genesisCounts.tistory !== genesisIdentityEvidence.tistory
+    || genesisCounts.naver !== genesisIdentityEvidence.naver
+    || genesisDocument.count !== genesisCounts.tistory + genesisCounts.naver) {
+    fail('SEQ_E_PUBLIC_ASSET_GENESIS');
+  }
+  if ([...receiptIndex.keys()].some((identity) => genesisIdentities.has(identity))) {
+    fail('SEQ_E_PUBLIC_ASSET_RECEIPT_ORPHAN');
+  }
+  const genesisAssetPaths = new Map([...genesisIdentities].map((identity) => {
+    const separator = identity.indexOf(':');
+    const prefix = `/media/${identity.slice(0, separator)}/${identity.slice(separator + 1)}/`;
+    return [identity, [...trackedManifestIndex.keys()]
+      .filter((assetPath) => assetPath.startsWith(prefix))
+      .sort((left, right) => left.localeCompare(right, 'en'))];
+  }));
+  return {
+    manifestIndex: index,
+    trackedManifestIndex,
+    genesisIdentities,
+    genesisAssetPaths,
+    receiptIndex,
+  };
 }
 
 export async function loadPublicAssetManifestIndex(root) {
   return (await loadPublicAssetEvidence(root)).manifestIndex;
 }
 
-async function validateAssetReferences(root, data, body, manifestIndex) {
+async function validateAssetReferences(root, data, body, manifestIndex, {
+  assetMode = 'local', allowMissingManifest = false,
+} = {}) {
+  if (!['local', 'manifest'].includes(assetMode)) fail('SEQ_E_PUBLIC_ASSET_MODE');
   const publicRoot = path.join(root, 'public');
-  await assertRealDirectory(publicRoot);
+  if (assetMode === 'local') await assertRealDirectory(publicRoot);
   const references = collectRenderableLocalAssetReferences(data, body);
   for (const reference of references) {
     let decoded;
@@ -291,6 +391,12 @@ async function validateAssetReferences(root, data, body, manifestIndex) {
       || !decoded.startsWith('/media/')) fail('SEQ_E_PUBLIC_ASSET_PATH');
     const file = path.resolve(publicRoot, decoded.slice(1));
     if (!inside(publicRoot, file)) fail('SEQ_E_PUBLIC_ASSET_PATH');
+    const manifest = manifestIndex.get(decoded);
+    if (!manifest) {
+      if (allowMissingManifest) continue;
+      fail('SEQ_E_PUBLIC_ASSET_RECEIPT_REQUIRED');
+    }
+    if (assetMode === 'manifest') continue;
     let bytes;
     try { bytes = await readSecureBytes(file); }
     catch (error) {
@@ -300,28 +406,32 @@ async function validateAssetReferences(root, data, body, manifestIndex) {
       throw error;
     }
     if (!bytes || bytes.length <= 0) fail('SEQ_E_PUBLIC_ASSET_MISSING');
-    const manifest = manifestIndex.get(decoded);
-    if (manifest && (bytes.length !== manifest.size || sha256(bytes) !== manifest.sha256)) fail('SEQ_E_PUBLIC_ASSET_HASH');
+    if (bytes.length !== manifest.size || sha256(bytes) !== manifest.sha256) fail('SEQ_E_PUBLIC_ASSET_HASH');
   }
   return references;
 }
 
 export async function indexPreparedPublicContent(root, {
   assetManifestIndex = undefined,
+  trackedAssetManifestIndex = undefined,
   genesisIdentities = undefined,
   genesisAssetPaths = undefined,
   assetReceiptIndex = undefined,
   genesisIdentityEvidence = undefined,
+  assetMode = 'local',
 } = {}) {
+  if (!['local', 'manifest'].includes(assetMode)) fail('SEQ_E_PUBLIC_ASSET_MODE');
   const contentRoot = path.join(root, 'src/data/posts');
   await assertRealDirectory(contentRoot);
   const evidence = assetManifestIndex === undefined
+    || trackedAssetManifestIndex === undefined
     || genesisIdentities === undefined
     || genesisAssetPaths === undefined
     || assetReceiptIndex === undefined
     ? await loadPublicAssetEvidence(root, { genesisIdentityEvidence })
     : null;
   const manifestIndex = assetManifestIndex ?? evidence.manifestIndex;
+  const trackedManifestIndex = trackedAssetManifestIndex ?? evidence.trackedManifestIndex;
   const genesisIdentitySet = genesisIdentities ?? evidence.genesisIdentities;
   const genesisAssetPathIndex = genesisAssetPaths ?? evidence.genesisAssetPaths;
   const receiptIndex = assetReceiptIndex ?? evidence.receiptIndex;
@@ -346,17 +456,16 @@ export async function indexPreparedPublicContent(root, {
       }
       const key = `${validated.source}:${validated.sourceId}`;
       const values = index.get(key) ?? [];
-      const assetPaths = await validateAssetReferences(root, data, body, manifestIndex);
+      const receipt = receiptIndex.get(key);
+      const genesisIdentity = genesisIdentitySet.has(key);
+      const assetPaths = await validateAssetReferences(root, data, body, manifestIndex, {
+        assetMode, allowMissingManifest: genesisIdentity,
+      });
       const identityAssetPrefix = `/media/${validated.source}/${validated.sourceId}/`;
       if (assetPaths.some((assetPath) => !assetPath.startsWith(identityAssetPrefix))) {
         fail('SEQ_E_PUBLIC_ASSET_PATH');
       }
-      const receipt = receiptIndex.get(key);
-      if (!genesisIdentitySet.has(key) && !receipt) fail('SEQ_E_PUBLIC_ASSET_RECEIPT_REQUIRED');
-      if (genesisIdentitySet.has(key)
-        && JSON.stringify(genesisAssetPathIndex.get(key) ?? []) !== JSON.stringify(assetPaths)) {
-        fail('SEQ_E_PUBLIC_ASSET_MANIFEST');
-      }
+      if (!genesisIdentity && !receipt) fail('SEQ_E_PUBLIC_ASSET_RECEIPT_REQUIRED');
       if (receipt) {
         const expectedPaths = [...receipt.assets.keys()].sort((left, right) => left.localeCompare(right, 'en'));
         if (receipt.contentSha256 !== sha256(raw)
@@ -373,7 +482,8 @@ export async function indexPreparedPublicContent(root, {
           manifestIndex.set(assetPath, receiptAsset);
         }
       }
-      if (assetPaths.some((assetPath) => !manifestIndex.has(assetPath))) fail('SEQ_E_PUBLIC_ASSET_RECEIPT_REQUIRED');
+      const assetEvidenceComplete = assetPaths.every((assetPath) => trackedManifestIndex.has(assetPath))
+        && (!genesisIdentity || JSON.stringify(genesisAssetPathIndex.get(key) ?? []) === JSON.stringify(assetPaths));
       values.push({
         source: validated.source,
         sourceId: validated.sourceId,
@@ -383,6 +493,7 @@ export async function indexPreparedPublicContent(root, {
         body,
         assetReferences: assetPaths.length,
         assetPaths,
+        assetEvidenceComplete,
         assetEvidence: assetPaths.map((assetPath) => ({
           path: assetPath,
           ...manifestIndex.get(assetPath),
@@ -418,6 +529,11 @@ export function selectProjectionBackedContent(contentRows, projection, { develop
 export async function loadProjectionBackedPublicContent(root, projection, options = {}) {
   const index = await indexPreparedPublicContent(root, options);
   const selected = selectProjectionBackedContent([...index.values()].flat(), projection, { development: false });
+  if (selected.some((row) => !row.assetEvidenceComplete
+    || row.assetEvidence.length !== row.assetPaths.length
+    || row.assetEvidence.some((evidence) => !evidence.sha256))) {
+    fail('SEQ_E_PUBLIC_ASSET_MANIFEST');
+  }
   const byIdentity = new Map(projection.map((entry) => [`${entry.source}:${entry.sourceId}`, entry]));
   return selected.map((row) => {
     const address = byIdentity.get(`${row.source}:${row.sourceId}`);
@@ -482,6 +598,8 @@ export function validateProjectedPublicSurface(contentRows, surface) {
 export function assertPreparedPublicIdentity(index, input) {
   const { source, sourceId } = validateSourceIdentityInput(input);
   const matches = index.get(`${source}:${sourceId}`) ?? [];
-  if (matches.length !== 1 || matches[0].draft) fail('SEQ_E_PROMOTION_CONTENT_NOT_READY');
+  if (matches.length !== 1 || matches[0].draft || !matches[0].assetEvidenceComplete) {
+    fail('SEQ_E_PROMOTION_CONTENT_NOT_READY');
+  }
   return matches[0];
 }

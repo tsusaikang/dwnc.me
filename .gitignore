@@ -21,8 +21,7 @@ migration/tmp/
 coverage/
 
 # Large generated media is validated by the inventory but stored outside Git.
-public/media/tistory/
-public/media/naver/
+public/media/
 
 # Contains titles and metadata for private Naver posts.
 migration/source-inventory/naver-posts.json

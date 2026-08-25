@@ -47,25 +47,17 @@ const canonicalRoute = (value) => {
   catch { return String(value).normalize('NFC').replace(/\/$/, '') || '/'; }
 };
 const publicProjection = JSON.parse(await readFile(path.join(ROOT, 'src/data/public-sequence-v1.json'), 'utf8'));
-const tistoryBaselineInventory = JSON.parse(await readFile(
-  path.join(ROOT, 'migration/source-inventory/tistory-posts.json'),
-  'utf8',
-));
-const naverBaselineInventory = JSON.parse(await readFile(
-  path.join(ROOT, 'migration/source-inventory/naver-public-posts.json'),
-  'utf8',
-));
-const legacySemanticOrder = {
-  tistory: new Map((tistoryBaselineInventory.posts ?? []).map((post, index) => [String(post.source_id), index])),
-  naver: new Map((naverBaselineInventory.posts ?? []).map((post, index) => [String(post.source_id), index])),
-};
+const mediaMode = process.env.DWNC_MEDIA_MODE ?? 'local';
+if (!['local', 'remote'].includes(mediaMode)) throw new Error('MEDIA_E_MODE');
 const projectionByIdentity = new Map(publicProjection.map((entry) => [`${entry.source}:${entry.sourceId}`, entry]));
 const baselineProjection = publicProjection.length === IMPORTED_PUBLIC_BASELINE.total
   && publicProjectionDigest(publicProjection) === BOOTSTRAP_PUBLIC_PROJECTION_SHA256;
 
 let posts = [];
 try {
-  posts = (await loadProjectionBackedPublicContent(ROOT, publicProjection)).map((post) => ({
+  posts = (await loadProjectionBackedPublicContent(ROOT, publicProjection, {
+    assetMode: mediaMode === 'remote' ? 'manifest' : 'local',
+  })).map((post) => ({
     ...post,
     canonicalPath: canonicalRoute(post.canonicalPath),
     provenanceCanonicalPath: canonicalRoute(post.provenanceCanonicalPath),
@@ -76,6 +68,29 @@ try {
 }
 const importedPosts = posts.filter((post) => post.imported);
 const nativePosts = posts.filter((post) => !post.imported);
+// Preserve the original semantic-report ordering without depending on ignored
+// migration inventories. Tistory inventory order is published-at descending;
+// Naver inventory order is the monotonic log number descending. The immutable
+// baseline hashes below still prove this derivation matches the preservation
+// audit, while future projected posts remain deterministic.
+const compareIdentityBytes = (left, right) => Buffer.compare(
+  Buffer.from(`${left.source}:${left.sourceId}`), Buffer.from(`${right.source}:${right.sourceId}`),
+);
+const semanticOrderRows = {
+  tistory: importedPosts.filter((post) => post.source === 'tistory')
+    .sort((left, right) => Date.parse(right.data.publishedAt) - Date.parse(left.data.publishedAt)
+      || compareIdentityBytes(left, right)),
+  naver: importedPosts.filter((post) => post.source === 'naver')
+    .sort((left, right) => {
+      const leftId = BigInt(left.sourceId);
+      const rightId = BigInt(right.sourceId);
+      return leftId === rightId ? compareIdentityBytes(left, right) : leftId > rightId ? -1 : 1;
+    }),
+};
+const legacySemanticOrder = {
+  tistory: new Map(semanticOrderRows.tistory.map((post, index) => [post.sourceId, index])),
+  naver: new Map(semanticOrderRows.naver.map((post, index) => [post.sourceId, index])),
+};
 const importedCounts = {
   tistory: importedPosts.filter((post) => post.source === 'tistory').length,
   naver: importedPosts.filter((post) => post.source === 'naver').length,

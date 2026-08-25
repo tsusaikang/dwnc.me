@@ -61,6 +61,7 @@ import {
   validateProjectedPublicSurface,
 } from './lib/public-content-preflight.mjs';
 import { validateProjectedDistAssets } from './lib/public-dist-assets.mjs';
+import { createPublicMediaManifest } from './lib/public-media-manifest.mjs';
 
 let fixtures = 0;
 const pass = () => { fixtures += 1; };
@@ -166,7 +167,9 @@ assert.deepEqual(
 pass();
 
 const preparedIndex = new Map([
-  ['naver:102', [{ source: 'naver', sourceId: '102', draft: false, assetReferences: 2 }]],
+  ['naver:102', [{
+    source: 'naver', sourceId: '102', draft: false, assetReferences: 2, assetEvidenceComplete: true,
+  }]],
 ]);
 assert.equal(assertPreparedPublicIdentity(preparedIndex, { source: 'naver', sourceId: '102' }).assetReferences, 2);
 pass();
@@ -362,6 +365,23 @@ async function writeSyntheticPublicProject(root) {
       assets,
     }],
   }), { mode: 0o600 });
+  const mediaManifest = createPublicMediaManifest(assets);
+  await writeFile(
+    path.join(root, 'src/data/public-media-r2-v1.json'),
+    `${JSON.stringify(mediaManifest, null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  await writeFile(
+    path.join(root, 'src/data/genesis-public-identities-v1.json'),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      contract: 'dwnc-genesis-public-identities-v1',
+      count: 1,
+      sha256: sha256('naver:101'),
+      identities: ['naver:101'],
+    }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
   return {
     postRoot,
     naverRoot,
@@ -468,6 +488,15 @@ try {
   const removed = tombstoneSequence(promoted.ledger, {
     source: 'naver', sourceId: '102',
   }, { requireBootstrapDigests: false });
+  await writeFile(
+    path.join(publicLifecycleFixture, 'src/data/public-media-r2-v1.json'),
+    `${JSON.stringify(createPublicMediaManifest([]), null, 2)}\n`,
+    { mode: 0o600 },
+  );
+  await assert.rejects(
+    joinFixture(buildPublicProjection(promoted.ledger)),
+    (error) => error instanceof SequenceError && error.code === 'SEQ_E_PUBLIC_ASSET_MANIFEST',
+  );
   const removedJoined = await joinFixture(buildPublicProjection(removed.ledger));
   const removedSurface = projectedPublicSurface(removedJoined);
   assert.equal(removed.ledger.entries[1].globalSequence, 2);
@@ -481,6 +510,10 @@ try {
   assert.deepEqual(validateProjectedPublicSurface(removedJoined, removedSurface), {
     canonical: 1, aliases: 1, search: 1, rss: 1, sitemap: 1,
   });
+  const genesisRemoved = tombstoneSequence(removed.ledger, {
+    source: 'naver', sourceId: '101',
+  }, { requireBootstrapDigests: false });
+  assert.deepEqual(await joinFixture(buildPublicProjection(genesisRemoved.ledger)), []);
   assert.equal(sha256(await readFile(archiveSentinel)), archiveBeforeDigest);
   pass();
 
@@ -545,7 +578,9 @@ try {
     source_id: '102', images: [], videos: [], attachments: [],
   });
   await writeFile(genesisInventoryFile, JSON.stringify(injectedGenesisInventory), { mode: 0o600 });
-  await expectCode(indexFixture, 'SEQ_E_PUBLIC_ASSET_GENESIS');
+  await writeFile(fixture.receiptFile, JSON.stringify({ schemaVersion: 1, receipts: [] }), { mode: 0o600 });
+  await expectCode(indexFixture, 'SEQ_E_PUBLIC_ASSET_RECEIPT_REQUIRED');
+  await writeFile(fixture.receiptFile, originalReceipt, { mode: 0o600 });
   await writeFile(genesisInventoryFile, originalGenesisInventory, { mode: 0o600 });
 
   const orphanReceiptDocument = JSON.parse(originalReceipt);

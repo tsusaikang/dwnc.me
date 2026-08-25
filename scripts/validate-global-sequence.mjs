@@ -33,6 +33,8 @@ import {
 import { indexPreparedPublicContent, selectProjectionBackedContent } from './lib/public-content-preflight.mjs';
 
 const ROOT = process.cwd();
+const mediaMode = process.env.DWNC_MEDIA_MODE ?? 'local';
+if (!['local', 'remote'].includes(mediaMode)) throw new Error('SEQ_E_PUBLIC_ASSET_MODE');
 const privateRootOverride = process.env.DWNC_SEQUENCE_PRIVATE_ROOT;
 if (privateRootOverride && !path.isAbsolute(privateRootOverride)) throw new Error('SEQ_E_PRIVATE_ROOT_OVERRIDE');
 const PRIVATE_ROOT = privateRootOverride
@@ -147,7 +149,9 @@ if (authoritative) {
 }
 
 try {
-  const index = await indexPreparedPublicContent(ROOT);
+  const index = await indexPreparedPublicContent(ROOT, {
+    assetMode: mediaMode === 'remote' ? 'manifest' : 'local',
+  });
   const rows = [...index.values()].flat();
   selectProjectionBackedContent(rows, projection, { development: false });
 } catch {

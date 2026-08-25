@@ -2,6 +2,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { formatCompactDate, getPublicPosts } from '../lib/posts';
 import { publicPostPath } from '../lib/public-address';
+import { SITE_COPYRIGHT_YEAR } from '../lib/site-meta';
 import { categoryStats, resolvePostCategory } from '../lib/taxonomy';
 
 const posts = await getPublicPosts();
@@ -38,7 +39,7 @@ const firstYear = posts.length
       <aside class="home-index" aria-label="최근 글">
         <div class="home-index__heading">
           <div>
-            <p>{firstYear}—{new Date().getFullYear()}</p>
+            <p>{firstYear}—{SITE_COPYRIGHT_YEAR}</p>
             <h2>최근 글</h2>
           </div>
           <button type="button" data-search-open>찾기</button>

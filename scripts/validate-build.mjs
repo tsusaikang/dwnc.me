@@ -12,6 +12,9 @@ import { validateProjectedDistAssets } from './lib/public-dist-assets.mjs';
 
 const ROOT = process.cwd();
 const DIST = path.join(ROOT, 'dist');
+const MEDIA_VALIDATION_MODE = process.env.DWNC_MEDIA_MODE ?? 'local';
+if (!['local', 'remote'].includes(MEDIA_VALIDATION_MODE)) throw new Error('MEDIA_E_VALIDATION_MODE');
+const REMOTE_MEDIA_MODE = MEDIA_VALIDATION_MODE === 'remote';
 const PRIVATE_STATE_ROOT = process.env.DWNC_SEQUENCE_PRIVATE_ROOT
   ? path.resolve(process.env.DWNC_SEQUENCE_PRIVATE_ROOT)
   : path.join(ROOT, 'migration/private');
@@ -68,6 +71,13 @@ async function walk(directory, { optional = false } = {}) {
 
 async function loadPrivateAllowedRecords() {
   const ledgerFile = path.join(PRIVATE_STATE_ROOT, 'sequence/global-sequence-v1.json');
+  try {
+    await lstat(PRIVATE_STATE_ROOT);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return { authoritative: false, records: [] };
+    issue('privacy.private-metadata', 'The private sequence root could not be inspected safely.');
+    return { authoritative: true, records: [] };
+  }
   try {
     const ledger = await readPrivateLedger(ledgerFile);
     return {
@@ -142,6 +152,7 @@ async function verifyBuiltMedia(item, expectedPrefix, label, referenced, kind = 
     return;
   }
   referenced.add(path.resolve(builtPath));
+  if (REMOTE_MEDIA_MODE) return;
   try {
     const fileStat = await lstat(builtPath);
     if (!fileStat.isFile() || fileStat.isSymbolicLink()) {
@@ -379,7 +390,9 @@ const tistoryById = new Map(tistoryPosts.map((post) => [String(post.source_id), 
 const naverById = new Map(naverPublicPosts.map((post) => [String(post.source_id), post]));
 let projectedContent = [];
 try {
-  projectedContent = await loadProjectionBackedPublicContent(ROOT, projectionEntries);
+  projectedContent = await loadProjectionBackedPublicContent(ROOT, projectionEntries, {
+    assetMode: REMOTE_MEDIA_MODE ? 'manifest' : 'local',
+  });
 } catch {
   issue('build.public-projection', 'Public projection and prepared public content could not be joined safely.');
 }
@@ -1004,7 +1017,22 @@ let projectedDistAssets = {
   paths: [],
 };
 try {
-  projectedDistAssets = await validateProjectedDistAssets(DIST, projectedContent);
+  if (REMOTE_MEDIA_MODE) {
+    const unique = new Map();
+    for (const post of projectedContent) {
+      for (const asset of post.assetEvidence) unique.set(asset.path, { source: post.source });
+    }
+    projectedDistAssets = {
+      total: unique.size,
+      bySource: [...unique.values()].reduce((counts, value) => {
+        counts[value.source] += 1;
+        return counts;
+      }, { tistory: 0, naver: 0, native: 0 }),
+      paths: [...unique.keys()],
+    };
+  } else {
+    projectedDistAssets = await validateProjectedDistAssets(DIST, projectedContent);
+  }
 } catch {
   issue('build.projected-media', 'A current projection asset is missing, corrupt, unsafe, or differs from its manifest/receipt evidence.');
 }
@@ -1039,7 +1067,11 @@ if (baselineProjection) {
     [path.join(DIST, 'media/tistory'), referencedTistoryMedia, 'build.media.tistory-unreferenced'],
     [path.join(DIST, 'media/naver'), referencedNaverMedia, 'build.media.naver-unreferenced'],
   ]) {
-    for (const file of await walk(mediaRoot, { optional: true })) {
+    const builtFiles = await walk(mediaRoot, { optional: true });
+    if (REMOTE_MEDIA_MODE && builtFiles.length > 0) {
+      issue('build.media.remote-bundle', 'A source-only Cloudflare build copied local media into dist.');
+    }
+    for (const file of builtFiles) {
       if (!referenced.has(path.resolve(file))) issue(code, `${relative(file)} is not referenced by a public media manifest.`);
     }
   }

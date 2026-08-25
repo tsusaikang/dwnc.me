@@ -1,0 +1,127 @@
+import { execFile } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { promisify } from 'node:util';
+import { createStagingPreuploadArtifact } from './lib/cloudflare-artifact.mjs';
+import { directoryArtifactSha256 } from './lib/cloudflare-release.mjs';
+import {
+  assertPinnedWranglerInstalled,
+  installStructuredErrorHandler,
+  runChecked,
+  sanitizedEnvironment,
+} from './lib/cloudflare-process.mjs';
+import {
+  loadTrackedPublicMediaManifest,
+  loadTrackedPublicMediaReleasePolicy,
+  validateRemoteReceipt,
+  validateStagingReleaseTarget,
+  verifyRemoteReceiptSignature,
+} from './lib/public-media-manifest.mjs';
+import { loadRemoteReceiptFiles } from './lib/public-media-remote.mjs';
+
+const ROOT = process.cwd();
+installStructuredErrorHandler('cloudflare-prepare-staging');
+const execFileAsync = promisify(execFile);
+const requireAbsolute = (value) => {
+  if (typeof value !== 'string' || !path.isAbsolute(value)) {
+    throw new Error('CLOUDFLARE_E_STAGING_PREPARE_PATH');
+  }
+  return value;
+};
+
+const sourceGitSha = (await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: ROOT })).stdout.trim();
+const gitStatus = (await execFileAsync('git', ['status', '--porcelain=v1'], { cwd: ROOT })).stdout.trim();
+const ciSourceGitSha = process.env.WORKERS_CI_COMMIT_SHA;
+if (gitStatus || sourceGitSha !== ciSourceGitSha) {
+  throw new Error('CLOUDFLARE_E_STAGING_PREPARE_SOURCE');
+}
+await assertPinnedWranglerInstalled(ROOT);
+
+const mediaReceiptFiles = {
+  receiptPath: requireAbsolute(process.env.PUBLIC_MEDIA_STAGING_REMOTE_RECEIPT_PATH),
+  signaturePath: requireAbsolute(process.env.PUBLIC_MEDIA_STAGING_REMOTE_SIGNATURE_PATH),
+  publicKeyPath: requireAbsolute(process.env.PUBLIC_MEDIA_STAGING_REMOTE_PUBLIC_KEY_PATH),
+};
+const [manifest, policy, remoteFiles, wranglerConfig] = await Promise.all([
+  loadTrackedPublicMediaManifest(ROOT),
+  loadTrackedPublicMediaReleasePolicy(ROOT),
+  loadRemoteReceiptFiles(mediaReceiptFiles),
+  readFile(path.join(ROOT, 'wrangler.jsonc'), 'utf8').then(JSON.parse),
+]);
+validateRemoteReceipt(remoteFiles.receipt, manifest);
+validateStagingReleaseTarget({
+  policy,
+  receipt: remoteFiles.receipt,
+  accountId: process.env.R2_ACCOUNT_ID,
+  bucket: process.env.R2_BUCKET_NAME,
+  publicKeyPem: remoteFiles.publicKeyPem,
+  wranglerConfig,
+});
+verifyRemoteReceiptSignature(remoteFiles.receipt, remoteFiles.signature, remoteFiles.publicKeyPem);
+
+const publicEnvironment = sanitizedEnvironment(process.env, { DWNC_MEDIA_MODE: 'remote' });
+await runChecked(process.execPath, ['scripts/build-cloudflare-source.mjs'], {
+  cwd: ROOT, env: publicEnvironment,
+});
+const firstStaticBuild = await directoryArtifactSha256(path.join(ROOT, 'dist'));
+await runChecked(process.execPath, ['scripts/build-cloudflare-source.mjs'], {
+  cwd: ROOT, env: publicEnvironment,
+});
+const secondStaticBuild = await directoryArtifactSha256(path.join(ROOT, 'dist'));
+if (firstStaticBuild.sha256 !== secondStaticBuild.sha256
+  || firstStaticBuild.files !== secondStaticBuild.files) {
+  throw new Error('CLOUDFLARE_E_STATIC_NONDETERMINISTIC');
+}
+
+const temporary = await mkdtemp(path.join(os.tmpdir(), 'dwnc-staging-preupload-bundle-'));
+const bundleDirectories = [path.join(temporary, 'bundle-a'), path.join(temporary, 'bundle-b')];
+const emptyEnvironmentPath = path.join(temporary, 'wrangler-empty.env');
+try {
+  await writeFile(emptyEnvironmentPath, '', { flag: 'wx', mode: 0o600 });
+  for (const [index, bundleDirectory] of bundleDirectories.entries()) {
+    await runChecked(path.join(ROOT, 'node_modules/.bin/wrangler'), [
+      'deploy', '--dry-run', '--env', 'staging', '--config', 'wrangler.jsonc',
+      '--env-file', emptyEnvironmentPath,
+      '--outdir', bundleDirectory, '--no-autoconfig',
+    ], {
+      cwd: ROOT,
+      env: sanitizedEnvironment(process.env, {
+        CI: '1', WRANGLER_WRITE_LOGS: '0', WRANGLER_SEND_METRICS: 'false',
+        WRANGLER_NO_SKILLS_UPDATE_PROMPTS: 'true',
+        XDG_CONFIG_HOME: path.join(temporary, `xdg-${index}`),
+      }),
+    });
+  }
+  const [firstWorker, secondWorker] = await Promise.all(bundleDirectories.map(
+    (directory) => readFile(path.join(directory, 'worker.js'))));
+  if (!firstWorker.equals(secondWorker)) throw new Error('CLOUDFLARE_E_WORKER_NONDETERMINISTIC');
+  const result = await createStagingPreuploadArtifact({
+    sourceRoot: ROOT,
+    artifactRoot: requireAbsolute(process.env.CLOUDFLARE_STAGING_PREUPLOAD_ARTIFACT_ROOT),
+    bundleDirectory: bundleDirectories[0],
+    sourceGitSha,
+    ciSourceGitSha,
+    stagingAccountIdSha256: policy.staging.accountIdSha256,
+    stagingBucket: policy.staging.bucket,
+    mediaManifest: manifest,
+    mediaRemoteReceipt: remoteFiles.receipt,
+    mediaReceiptFiles,
+  });
+  console.log(JSON.stringify({
+    contract: result.receipt.contract,
+    environment: 'staging',
+    artifactSha256: result.artifactSha256,
+    artifactDirectory: result.directory,
+    sourceGitSha,
+    workerScriptSha256: result.receipt.workerScriptSha256,
+    staticTreeSha256: result.receipt.staticTreeSha256,
+    payloadSha256: result.receipt.payloadSha256,
+    workerVersionId: null,
+    uploadAttempted: false,
+    deploymentAttempted: false,
+    liveNetworkCalls: 0,
+  }, null, 2));
+} finally {
+  await rm(temporary, { recursive: true, force: true });
+}

@@ -16,6 +16,7 @@ import {
   LOCK_TRANSFER_FILENAME,
   readLockTransfer,
 } from './lib/global-sequence.mjs';
+import { createPublicMediaManifest } from './lib/public-media-manifest.mjs';
 
 const PROJECT_ROOT = process.cwd();
 const MANAGER = path.join(PROJECT_ROOT, 'scripts/manage-global-sequence.mjs');
@@ -104,6 +105,16 @@ async function prepareFixture(root) {
   await writeExact(
     path.join(root, 'src/data/public-asset-receipts-v1.json'),
     `${JSON.stringify({ schemaVersion: 1, receipts: [] }, null, 2)}\n`,
+    0o644,
+  );
+  await writeExact(
+    path.join(root, 'src/data/public-media-r2-v1.json'),
+    `${JSON.stringify(createPublicMediaManifest([]), null, 2)}\n`,
+    0o644,
+  );
+  await writeExact(
+    path.join(root, 'src/data/genesis-public-identities-v1.json'),
+    await readFile(path.join(PROJECT_ROOT, 'src/data/genesis-public-identities-v1.json')),
     0o644,
   );
 

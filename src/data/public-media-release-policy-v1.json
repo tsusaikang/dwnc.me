@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "contract": "dwnc-public-media-release-policy-v1",
+  "staging": {
+    "environment": "staging",
+    "wranglerEnvironment": "staging",
+    "binding": "MEDIA_BUCKET",
+    "bucket": "dwnc-me-public-media-staging",
+    "accountIdSha256": "6ef9d1a2e2a398e755e1d4108acabacde0f5218f9f455abf79f1af56a154ea0f",
+    "publicKeySpkiSha256": null,
+    "releasePublicKeySpkiSha256": null,
+    "smokeOrigin": "https://smoke-staging.dwnc.me",
+    "smokeAccessPolicySha256": null,
+    "requiredVerificationLevel": "full-get-sha256",
+    "requiredBucketExposure": "cloudflare-control-plane-private",
+    "maxBucketExposureAgeSeconds": 900,
+    "maxBucketExposureFutureSkewSeconds": 120,
+    "approvedOrphanCount": 0
+  },
+  "production": {
+    "environment": "production",
+    "wranglerEnvironment": "production",
+    "binding": "MEDIA_BUCKET",
+    "bucket": "dwnc-me-public-media-production",
+    "accountIdSha256": null,
+    "publicKeySpkiSha256": null,
+    "releasePublicKeySpkiSha256": null,
+    "smokeOrigin": null,
+    "smokeAccessPolicySha256": null,
+    "requiredVerificationLevel": "full-get-sha256",
+    "requiredBucketExposure": "cloudflare-control-plane-private",
+    "maxBucketExposureAgeSeconds": 900,
+    "maxBucketExposureFutureSkewSeconds": 120,
+    "approvedOrphanCount": 0
+  }
+}
