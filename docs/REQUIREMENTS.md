@@ -12,19 +12,19 @@
 
 ### 현재 목표
 
-최종 공개 미디어 2,758개의 로컬 검증은 완료됐다. 이 변경을 로컬 Git에 커밋한 뒤, private staging R2에 객체 하나를 먼저 올려 확인하고 이상이 없으면 전체 업로드·전수 GET/SHA-256 대조·staging Worker 버전 검증을 순서대로 진행한다. 실제 `dwnc.me` 도메인과 DNS는 Cloudflare에 연결되지 않았으므로, `production`이라는 이름의 Worker·R2·버전 작업도 현재 방문자에게 영향을 주지 않는다. 앞 단계가 통과하면 불필요한 추가 승인 요청으로 멈추지 않고 계속한다.
+최종 공개 미디어 2,758개와 Stage 3 release-source 준비를 commit `1f726f63381a903afdd04ec80c90407c742c82cd`·tree `46ec12f98c74a4fdbbc92e3749574bf085ad21ee`로 로컬 Git에 기록했고 push는 0이다. staging media·release Ed25519 key도 실제 생성해 private key는 macOS Keychain에만 보관하고 public fingerprint를 정책에 고정했다. 현재 key 안전장치·정책·문서 변경은 다음 로컬 commit 전이며, 이후 private staging R2 자격증명 재생성→단일 객체→전체 업로드·전수 대조→staging Worker 검증을 순서대로 진행한다. 실제 `dwnc.me` 도메인과 DNS는 Cloudflare에 연결되지 않았다.
 
 ### 전체 상태
 
 | 영역 | 상태 | 현재 증거 |
 |---|---|---|
 | 콘텐츠 보존·새 사이트 | 완료 | 티스토리 공개 164개, 네이버 공개 185개, 비공개 로컬 247개와 canonical/alias 349개가 로컬 전수 검증을 통과했다. |
-| Stage 3 로컬 안전장치 | 검증 완료·커밋 전 | Cloudflare 관련 18개 test suite·833개 assertion, 정적 페이지 1,404개, 308 redirect 349개, 사진형 148·장문형 201 분류가 통과했다. 현재 HEAD는 `697629007bcc3e30c30083fb402b28db20d5505f`이고 이번 변경은 아직 커밋하지 않았다. |
+| Stage 3 로컬 안전장치 | release-source commit 완료·key 정책 후속 변경 커밋 전 | Cloudflare 관련 18개 test suite·833개 assertion, 정적 페이지 1,404개, 308 redirect 349개, 사진형 148·장문형 201 분류가 통과했다. 현재 HEAD는 `1f726f63381a903afdd04ec80c90407c742c82cd`, tree는 `46ec12f98c74a4fdbbc92e3749574bf085ad21ee`이고 push는 0이다. |
 | Cloudflare Builds | 설정 재확인 완료 | account fingerprint가 정책과 일치했고 `SKIP_DEPENDENCY_INSTALL=1`, Build `npm ci && npm run cloudflare:prepare:production`, Deploy `npm run cloudflare:upload:production-version`, Version `npx wrangler versions upload`를 확인했다. 보호 절차 없이 직접 실행하는 `wrangler deploy`는 없었다. |
 | staging R2 저장소 | 준비됨·사용 불가 | private bucket `dwnc-me-public-media-staging`은 객체 0, `r2.dev` 꺼짐, custom domain 0이다. 예전에 만든 bucket 한정 token 두 개는 Cloudflare에서 활성 상태지만 로컬에 비밀값이 남아 있지 않아 사용할 수 없다. 새 자격증명은 아직 만들지 않았다. |
 | 최종 공개 미디어 | 완료 | 2,758개·2,346,220,246바이트, manifest SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`를 로컬·source-only 전수 검증했다. |
 | 공개 요청 경로 | 완료 | 1,410경로, SHA-256 `1666d8dd85ac05c2274513cfbe438f24ead06a190f873af3b67f7e3aa373307c`로 확정했다. |
-| staging Worker | 로컬 정책 완료·외부 미실행 | origin은 `https://dwnc-me-staging.dwnc.workers.dev`, smoke 접근 정책 digest는 `d6c554c1d80c68c08605636f12f26a411f7826bc40eddaee9233a30b6551781a`다. Worker·서명 key·token·version·activation은 아직 없다. |
+| staging Worker | signing key 완료·Worker 미실행 | media public fingerprint는 `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`, release public fingerprint는 `2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2`다. private key는 macOS Keychain에만 보관했고 export하지 않았다. Worker·smoke token·version·activation은 아직 없다. |
 | 실제 도메인 | 미연결 | `dwnc.me` DNS·route·custom domain을 Cloudflare Worker에 연결하지 않았다. Cloudflare 안의 production 이름 자원을 변경해도 현재 사이트 방문자에게 영향이 없다. |
 
 ### 미디어 정리 결과
@@ -43,16 +43,16 @@
 ### 아직 결정할 일과 진행을 막는 조건
 
 1. 예전 R2 token은 활성 상태지만 비밀값을 복구할 수 없어 새 uploader·read-only validator 자격증명을 다시 만들어야 한다. 이것은 사용자의 추가 의사결정이 아니라 외부 작업의 기술적 선행 조건이다.
-2. staging Ed25519 signing key와 smoke token은 아직 생성하지 않았다. smoke token 규칙은 암호학적 난수 32바이트를 padding 없는 base64url 43문자로 표현하는 것으로 확정했다.
-3. staging Worker `dwnc-me-staging`은 아직 없으며 R2 객체·receipt·Worker version·activation도 0이다. 로컬 커밋과 자격증명·서명 key 준비 뒤에 시작한다.
+2. staging media·release Ed25519 key는 생성·정책 고정을 마쳤지만 smoke token은 아직 생성하지 않았다. smoke token 규칙은 암호학적 난수 32바이트를 padding 없는 base64url 43문자로 표현하는 것으로 확정했다.
+3. staging Worker `dwnc-me-staging`은 아직 없으며 R2 객체·receipt·Worker version·activation도 0이다. 현재 signing-key 안전장치·정책 변경의 로컬 commit과 R2 자격증명 준비 뒤에 시작한다.
 4. 공유·스크랩 추정 10개, 새 글 편집 방식, 과거 댓글, 비공개 자료의 암호화 백업 정책은 Stage 3와 무관한 사용자 결정으로 남아 있다.
 
 ### 바로 다음 단계
 
-1. 검증을 통과한 현재 로컬 변경을 커밋하고 exact full SHA를 기록한다. push는 하지 않는다.
+1. 현재 signing-key 안전장치·정책·문서 변경을 검증한 뒤 로컬 Git에 commit하고 exact full SHA를 기록한다. push는 하지 않는다.
 2. 올바른 Cloudflare account에서 staging bucket에만 제한된 uploader·read-only validator 자격증명을 새로 만들고, 대표 객체 1개로 create-only PUT→HEAD→GET/SHA-256 시험을 수행한다.
 3. 단일 객체가 정확히 일치하면 최종 2,758개를 create-only로 올리고 모든 객체를 GET해 SHA-256·총 바이트를 대조한다.
-4. 보호된 서명 key와 smoke token을 만들고, Worker 부재 상태를 다시 확인한 뒤 deny-only staging Worker를 최초 생성한다.
+4. 생성한 staging signing key를 사용해 보호된 smoke token과 서명 증거를 준비하고, Worker 부재 상태를 다시 확인한 뒤 deny-only staging Worker를 최초 생성한다.
 5. 확정된 Git SHA와 R2 감사 증거에 묶인 staging Worker version만 올리고 100%로 적용한 뒤 정적 페이지·349 redirect·media GET/HEAD/304/206/416을 `workers.dev`에서 검증한다.
 6. production 이름의 Cloudflare 자원·버전 작업이 필요하면 같은 안전 절차로 계속한다. 실제 `dwnc.me` 도메인·DNS는 연결하지 않는다.
 
@@ -65,7 +65,8 @@
 - B 선택에 따라 placeholder 27개를 제외하면서 53개 재생 불가 안내·재생시간과 23개 캡션을 유지했고 13개 파생 cover를 `null`로 정리했다.
 - 최종 2,758개·2,346,220,246바이트 manifest와 로컬·source-only·build·Worker 회귀를 검증했다.
 - Cloudflare Builds의 raw deploy를 제거하고 version-only wrapper 설정을 인증된 Chrome에서 재확인했다.
-- Stage 3 local release guard를 두 개의 local commit으로 기록했으며 push하지 않았다.
+- Stage 3 release-source 준비를 commit `1f726f63381a903afdd04ec80c90407c742c82cd`·tree `46ec12f98c74a4fdbbc92e3749574bf085ad21ee`로 기록했으며 push하지 않았다.
+- staging media·release Ed25519 private key를 macOS Keychain에 보관하고 private export 없이 두 public fingerprint를 release policy에 고정했다.
 
 ### 이번 작업에서 하지 않는 것
 
@@ -76,19 +77,6 @@
 - 자격증명·token·private key 값, raw Cloudflare account ID, private 콘텐츠 또는 개인식별정보의 문서·로그 기록
 
 ## 요구사항 원장
-
-### `DWNC-S3-006` — 미디어 집합 변경의 로컬 검증과 커밋
-- **Status:** `in-progress`
-- **Updated-at:** `2026-08-27`
-- **Acceptance:**
-  - 미디어 파생 표현, 최종 manifest, 단일 객체 CLI, staging-only artifact·smoke·fingerprint 관련 변경만 포함한다.
-  - source/full-local/build/Worker·Cloudflare 회귀와 `npm run requirements:validate`, `npm run requirements:test`, `git diff --check`를 통과한다.
-  - 검증된 전체 diff와 manifest digest를 확인한 뒤 version upload보다 먼저 local commit한다.
-  - Git push는 하지 않는다.
-- **Evidence:**
-  - 최종 manifest 2,758개·2,346,220,246바이트·SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`가 로컬·source-only 검증을 통과했다.
-  - Cloudflare 관련 18개 suite·833 assertions, 정적 페이지 1,404개, redirect 349개, request surface 1,410경로·SHA-256 `1666d8dd85ac05c2274513cfbe438f24ead06a190f873af3b67f7e3aa373307c`가 통과했다.
-  - 현재 checkpoint commit은 `697629007bcc3e30c30083fb402b28db20d5505f`이고 이번 변경은 아직 커밋·push하지 않았다.
 
 ### `DWNC-S3-007` — staging R2 단일 객체 시험
 - **Status:** `blocked`
@@ -123,7 +111,8 @@
   - 실제 `dwnc.me` route·custom domain·DNS와 public bucket access는 생성하지 않는다.
 - **Evidence:**
   - smoke origin은 `https://dwnc-me-staging.dwnc.workers.dev`이고 Bearer token 정책 digest는 `d6c554c1d80c68c08605636f12f26a411f7826bc40eddaee9233a30b6551781a`다. token은 32 random bytes를 padding 없는 base64url 43문자로 만들어야 한다.
-  - staging media/release public-key fingerprint는 아직 `null`이고 실제 key·token·Worker는 생성하지 않았다.
+  - staging media public fingerprint는 `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`, release public fingerprint는 `2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2`로 release policy에 고정했다. private key는 macOS Keychain에만 보관했고 export하지 않았다.
+  - 실제 smoke token·Worker는 아직 생성하지 않아 Worker bootstrap 완료 조건은 남아 있다. production account/media/release fingerprint는 `null`을 유지한다.
 
 ### `DWNC-S3-010` — staging version-only upload·activation·synthetic smoke
 - **Status:** `blocked`
@@ -251,3 +240,16 @@
   - 최종 manifest는 2,758개·2,346,220,246바이트·SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`이고, 2026-08-27 로컬·source-only 전수 검증을 통과했다.
   - 지도 99개는 영향 글 5개의 장소 카드 16개로 대체했고, 15개는 원 장소 네이버지도 링크, 1개는 네이버지도 검색 링크다.
   - SBS GIF `/media/naver/221172590451/001-e467d08a3a01.gif`의 1,299,862바이트·SHA-256 `e467d08a3a01bf5bcc53c79f2a40e89d0181a8c920e08b62a1a513c3d93656d9`는 본문·cover에서 그대로 유지했다.
+
+### `DWNC-S3-006` — 미디어 집합 변경의 로컬 검증과 커밋
+- **Status:** `done`
+- **Updated-at:** `2026-08-27`
+- **Acceptance:**
+  - 미디어 파생 표현, 최종 manifest, 단일 객체 CLI, staging-only artifact·smoke·fingerprint 관련 변경만 포함한다.
+  - source/full-local/build/Worker·Cloudflare 회귀와 `npm run requirements:validate`, `npm run requirements:test`, `git diff --check`를 통과한다.
+  - 검증된 전체 diff와 manifest digest를 확인한 뒤 version upload보다 먼저 local commit한다.
+  - Git push는 하지 않는다.
+- **Evidence:**
+  - 최종 manifest 2,758개·2,346,220,246바이트·SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`가 로컬·source-only 검증을 통과했다.
+  - Cloudflare 관련 18개 suite·833 assertions, 정적 페이지 1,404개, redirect 349개, request surface 1,410경로·SHA-256 `1666d8dd85ac05c2274513cfbe438f24ead06a190f873af3b67f7e3aa373307c`가 통과했다.
+  - release-source 준비를 commit `1f726f63381a903afdd04ec80c90407c742c82cd`·tree `46ec12f98c74a4fdbbc92e3749574bf085ad21ee`로 version upload보다 먼저 기록했고 push는 0이다.

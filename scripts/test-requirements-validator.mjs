@@ -97,12 +97,25 @@ withFixture(
   (result) => assertRejected(result, /must have exactly one Evidence section/),
 );
 
-const overflowDone = Array.from({ length: 7 }, (_, index) => {
+const recentCompletedSource = sourceCurrent.slice(
+  sourceCurrent.indexOf('## 최근 완료된 요구사항'),
+);
+const recentDoneMatches = [
+  ...recentCompletedSource.matchAll(
+    /^### `([A-Z0-9-]+)` — [^\n]+\n- \*\*Status:\*\* `done`\n- \*\*Updated-at:\*\* `(\d{4}-\d{2}-\d{2})`/gm,
+  ),
+];
+assert.ok(recentDoneMatches.length > 0, 'test fixture could not find recent done requirements');
+assert.ok(recentDoneMatches.length <= 12, 'source already exceeds recent done limit');
+const overflowUpdatedAt = new Date(`${recentDoneMatches.at(-1)[2]}T00:00:00Z`);
+overflowUpdatedAt.setUTCDate(overflowUpdatedAt.getUTCDate() + 1);
+const overflowDate = overflowUpdatedAt.toISOString().slice(0, 10);
+const overflowDone = Array.from({ length: 13 - recentDoneMatches.length }, (_, index) => {
   const id = String(900 + index);
   return [
     `### \`DWNC-P2-${id}\` — retention fixture ${id}`,
     '- **Status:** `done`',
-    '- **Updated-at:** `2026-08-26`',
+    `- **Updated-at:** \`${overflowDate}\``,
     '- **Acceptance:**',
     '  - fixture acceptance',
     '- **Evidence:**',

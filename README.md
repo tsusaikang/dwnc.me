@@ -12,11 +12,12 @@
 - 최종 공개 미디어 2,758개·2,346,220,246바이트·manifest SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532` 전수 검증 완료
 - 공개 요청 1,410경로·SHA-256 `1666d8dd85ac05c2274513cfbe438f24ead06a190f873af3b67f7e3aa373307c`, 정적 페이지 1,404개, 308 redirect 349개 검증 완료
 - Cloudflare 관련 18개 test suite·833개 assertion과 사진형 148·장문형 201 분류 통과
+- Stage 3 release-source 준비 commit `1f726f63381a903afdd04ec80c90407c742c82cd`·tree `46ec12f98c74a4fdbbc92e3749574bf085ad21ee` 완료, push 0
 - staging R2 private bucket은 객체 0, `r2.dev` 꺼짐, custom domain 0이다. 예전 token은 Cloudflare에서 활성 상태지만 로컬 비밀값을 잃어 사용할 수 없고 새 자격증명은 아직 만들지 않았다.
 
 B 선택에 따라 지도 99개, LINE 스티커 5개, 1×1 placeholder 27개를 최종 R2 집합에서 제외했다. 지도는 영향 글 5개의 장소 카드 16개로 바꿔 15개 원 장소 네이버지도 링크와 1개 검색 링크를 제공한다. placeholder video poster를 빼도 재생 불가 안내·재생시간 53개와 작성자 캡션 23개는 남고, placeholder cover 13개의 파생 cover는 `null`이다. 사용자가 직접 제작한 SBS GIF 1개는 본문·cover에서 정확히 유지한다.
 
-Cloudflare staging smoke는 `https://dwnc-me-staging.dwnc.workers.dev`와 Bearer token을 쓴다. token은 암호학적 난수 32바이트를 padding 없는 base64url 43문자로 표현하며, 접근 정책 digest는 `d6c554c1d80c68c08605636f12f26a411f7826bc40eddaee9233a30b6551781a`다. 실제 signing key·smoke token·R2 새 자격증명·객체 업로드·Worker 생성·version upload·activation은 아직 수행하지 않았다.
+Cloudflare staging smoke는 `https://dwnc-me-staging.dwnc.workers.dev`와 Bearer token을 쓴다. token은 암호학적 난수 32바이트를 padding 없는 base64url 43문자로 표현하며, 접근 정책 digest는 `d6c554c1d80c68c08605636f12f26a411f7826bc40eddaee9233a30b6551781a`다. staging media·release Ed25519 private key는 macOS Keychain에만 보관하고 export하지 않았다. public fingerprint는 각각 `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`·`2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2`로 policy에 고정했다. smoke token·R2 새 자격증명·객체 업로드·Worker 생성·version upload·activation은 아직 수행하지 않았다.
 
 실제 `dwnc.me` 도메인과 DNS는 Cloudflare Worker에 연결되지 않았다. 따라서 Cloudflare에서 production이라는 이름의 Worker·R2·version 작업을 진행해도 현재 방문자에게 영향이 없다. 단, 실제 도메인·DNS 연결, Git push, 보호 절차 없이 직접 실행하는 `wrangler deploy`, 객체 덮어쓰기·삭제는 하지 않는다.
 
@@ -52,4 +53,4 @@ npm run cloudflare:wrangler:bundle:check
 
 `migration/raw/`, 전체 `public/media/`, 네이버 비공개 메타데이터는 Git에 포함되지 않는다. 새 컴퓨터로 옮기기 전에는 이 로컬 자산을 별도로 백업해야 한다.
 
-공개 미디어와 글·alias·집계 경로의 forward-deny Worker, create-only R2 sync, two-phase release, 원격 receipt, 철회·rollback 및 안전 절차는 `docs/MEDIA_SERVING_CONTRACT.md`를 기준으로 한다. core artifact에는 version ID가 없고, signed upload authorization 뒤 version-only upload와 별도 attestation을 거쳐야 한다. version 적용은 Git trigger 밖에서 해당 version만 권위 store의 fresh status CAS·1회 실행·사후 100% 확인을 거쳐 반영하며, 불명확한 결과는 자동 재시도하지 않는다. 현재 private staging R2 bucket은 비어 있고 staging Worker는 없으며, 실제 signing key·새 R2 자격증명·smoke token·upload·receipt·Worker version·activation은 모두 0이다. 이 working-tree 변경은 아직 commit하지 않았고 이 변경의 commit·push는 0이다. 다만 local `main`은 이번 commit 전부터 이전 Stage 3 source·checkpoint commit 2개 때문에 `origin/main`보다 2 commits 앞서 있었다.
+공개 미디어와 글·alias·집계 경로의 forward-deny Worker, create-only R2 sync, two-phase release, 원격 receipt, 철회·rollback 및 안전 절차는 `docs/MEDIA_SERVING_CONTRACT.md`를 기준으로 한다. core artifact에는 version ID가 없고, signed upload authorization 뒤 version-only upload와 별도 attestation을 거쳐야 한다. version 적용은 Git trigger 밖에서 해당 version만 권위 store의 fresh status CAS·1회 실행·사후 100% 확인을 거쳐 반영하며, 불명확한 결과는 자동 재시도하지 않는다. release-source 준비 commit은 `1f726f63381a903afdd04ec80c90407c742c82cd`·tree `46ec12f98c74a4fdbbc92e3749574bf085ad21ee`이고 push는 0이다. private staging R2 bucket은 비어 있고 staging Worker는 없다. staging signing key는 Keychain에 존재하지만 현재 key 안전장치·policy·문서 working-tree 변경은 아직 commit하지 않았고 그 변경의 commit·push는 0이다. local `main`은 `origin/main`보다 3 commits 앞서 있다.

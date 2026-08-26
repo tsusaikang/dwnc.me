@@ -85,8 +85,10 @@ assert.equal(releasePolicy.production.bucket, 'dwnc-me-public-media-production')
 assert.equal(releasePolicy.staging.bucket, 'dwnc-me-public-media-staging');
 assert.equal(releasePolicy.staging.accountIdSha256,
   '6ef9d1a2e2a398e755e1d4108acabacde0f5218f9f455abf79f1af56a154ea0f');
-assert.equal(releasePolicy.staging.publicKeySpkiSha256, null);
-assert.equal(releasePolicy.staging.releasePublicKeySpkiSha256, null);
+assert.equal(releasePolicy.staging.publicKeySpkiSha256,
+  '69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182');
+assert.equal(releasePolicy.staging.releasePublicKeySpkiSha256,
+  '2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2');
 assert.equal(releasePolicy.staging.smokeAccessPolicySha256,
   'd6c554c1d80c68c08605636f12f26a411f7826bc40eddaee9233a30b6551781a');
 assert.equal(releasePolicy.production.accountIdSha256, null);

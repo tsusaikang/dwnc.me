@@ -1,6 +1,6 @@
 # dwnc.me 공개 미디어 전달 계약 v1
 
-상태: **최종 로컬 manifest 2,758개 전수 검증 완료 / private staging R2는 비어 있음 / 사용 가능한 자격증명·서명 key·smoke token·Worker·version·activation 없음 / 실제 도메인·DNS 미연결 / commit·push 안 함**
+상태: **release-source commit `1f726f63381a903afdd04ec80c90407c742c82cd`·tree `46ec12f98c74a4fdbbc92e3749574bf085ad21ee` 완료·push 0 / staging media·release signing key는 Keychain에 생성·public fingerprint policy 고정 / private staging R2는 비어 있음 / 사용 가능한 R2 자격증명·smoke token·Worker·version·activation 없음 / 실제 도메인·DNS 미연결**
 
 이 문서는 공개 글이 참조하는 대용량 미디어를 동일 출처 `https://dwnc.me/media/*`로 제공하기 위한 계약이다. 기존 URL, 로컬 원본, SHA-256 증거를 바꾸지 않고 private R2 bucket을 전달용 복제본으로 사용한다.
 
@@ -109,7 +109,7 @@ R2_CREDENTIAL_METADATA_PATH=/approved/local/path/staging-uploader-metadata.json 
 
 production receipt는 manifest digest, 객체 수·총 bytes, 검증시각과 key별 size·SHA-256·MIME·ETag뿐 아니라 target environment·bucket·Cloudflare account fingerprint와 검증 수준을 canonical ordering으로 담는다. 집합 단위 manifest 결속은 이 receipt에서 수행하고, detached Ed25519 signature와 public key trust anchor를 함께 검증한다.
 
-tracked `src/data/public-media-release-policy-v1.json`은 production Worker binding·bucket·요구 검증 수준과 `r2.dev 비활성·custom domain 0`인 private exposure 정책을 고정한다. production receipt에는 Cloudflare control-plane 감사시각과 증거 SHA-256을 함께 서명하고, 이 증거는 gate 시점 기준 최대 900초·미래 편차 120초만 허용한다. account fingerprint와 Ed25519 public-key SPKI fingerprint는 아직 `null`이며 승인된 resource와 trust anchor가 확정되기 전에는 production gate가 fail closed한다. 임의 env public key나 staging receipt로 production 검증을 통과할 수 없다.
+tracked `src/data/public-media-release-policy-v1.json`은 Worker binding·bucket·요구 검증 수준과 `r2.dev 비활성·custom domain 0`인 private exposure 정책을 고정한다. staging media Ed25519 public-key SPKI fingerprint는 `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`, release fingerprint는 `2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2`로 고정했다. private key는 macOS Keychain에만 보관하고 export하지 않는다. production account·media·release fingerprint는 모두 `null`을 유지하므로 staging key나 receipt로 production gate를 통과할 수 없다.
 
 필수 환경변수 이름:
 
@@ -195,7 +195,9 @@ Cloudflare Cache API는 저장 시 쓴 내부 cache key를 사용하므로 공�
 
 ## 8. 현재 Cloudflare 상태와 남은 작업
 
-최신 사전점검에서 올바른 Cloudflare account fingerprint가 정책과 exact 일치했다. private staging bucket `dwnc-me-public-media-staging`은 객체 0, `r2.dev` 꺼짐, custom domain 0이다. 예전에 만든 bucket 한정 token 두 개는 활성 상태지만 비밀값을 잃어 사용할 수 없다. 새 uploader·read-only validator 자격증명은 아직 만들지 않았다. staging Worker, R2 객체, receipt, signing key, smoke token, version, activation도 없다. 자격증명·token·private key 값은 이 저장소나 로그에 기록하지 않는다.
+최신 사전점검에서 올바른 Cloudflare account fingerprint가 정책과 exact 일치했다. private staging bucket `dwnc-me-public-media-staging`은 객체 0, `r2.dev` 꺼짐, custom domain 0이다. 예전에 만든 bucket 한정 token 두 개는 활성 상태지만 비밀값을 잃어 사용할 수 없고, 새 uploader·read-only validator 자격증명은 아직 만들지 않았다. staging media·release Ed25519 key는 실제 생성해 private key를 macOS Keychain에만 보관했고, public fingerprint를 release policy에 고정했다. private key export·저장소·로그 기록은 0이다. staging Worker, R2 객체, receipt, smoke token, version, activation도 없다.
+
+release-source 준비는 commit `1f726f63381a903afdd04ec80c90407c742c82cd`·tree `46ec12f98c74a4fdbbc92e3749574bf085ad21ee`로 로컬 Git에 기록했고 push는 0이다. 현재 signing-key 안전장치·policy·문서 변경은 다음 로컬 commit 전이다.
 
 현재 최종 manifest는 2,758개·2,346,220,246바이트·SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`이고 로컬·source-only·build·Worker 회귀를 통과했다. Cloudflare 관련 18개 test suite·833개 assertion, 정적 페이지 1,404개, 308 redirect 349개, 사진형 148·장문형 201를 확인했다. 정리 전 2,889개는 역사 기준선일 뿐 현재 원격 작업 기준이 아니다.
 
@@ -205,7 +207,7 @@ Cloudflare Cache API는 저장 시 쓴 내부 cache key를 사용하므로 공�
 - staging 단일 객체 admission, final manifest 객체 create-only upload·원격 full verification
 - production receipt의 보호 환경 full-GET/SHA 감사·서명과 account/public-key fingerprint 확정
 - staging·production bucket의 `r2.dev` 비활성·custom domain 0 control-plane 감사 증거 확정
-- 실제 account·bucket·trust fingerprint로 release policy 완성
+- production account·bucket·media/release trust fingerprint로 production release policy 완성. staging public fingerprint는 이미 고정됨
 - Bearer token으로 보호한 `https://dwnc-me-staging.dwnc.workers.dev`에서 staging 고유 version의 동일 payload, 349 redirects, static, media·cache smoke 수행
 - production 또는 staging Worker가 아직 없을 경우 별도 deny-all/bootstrap 승인, raw service-existence capture, signed evidence와 실행 직전 fresh-absence capture
 - staging smoke token의 보호된 생성·signed one-value authorization과 외부 0700/0600 입력 경로. token은 암호학적 난수 32바이트→padding 없는 base64url 43문자로 고정하고 정책 digest `d6c554c1d80c68c08605636f12f26a411f7826bc40eddaee9233a30b6551781a`를 대조함

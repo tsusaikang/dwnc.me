@@ -419,7 +419,11 @@ async function runSecurityInteractive(command) {
     child.once('error', reject);
     child.once('close', resolve);
   }).catch(() => fail('CLOUDFLARE_E_KEYCHAIN'));
-  if (code !== 0 || outputBytes > 64 * 1024) fail('CLOUDFLARE_E_KEYCHAIN');
+  // macOS `security -i` returns 1 for an otherwise successful session ended by
+  // `quit` on the supported host. The caller still verifies the exact
+  // create-only postcondition with a separate Keychain read, so accepting that
+  // observed exit code does not turn a failed add into success.
+  if (![0, 1].includes(code) || outputBytes > 64 * 1024) fail('CLOUDFLARE_E_KEYCHAIN');
 }
 
 export class MacOSKeychainStore {

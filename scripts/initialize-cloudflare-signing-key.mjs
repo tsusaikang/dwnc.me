@@ -6,7 +6,7 @@ import { installStructuredErrorHandler } from './lib/cloudflare-process.mjs';
 
 installStructuredErrorHandler('cloudflare-signing-key-init');
 const options = Object.fromEntries(process.argv.slice(2).map((argument) => {
-  const match = argument.match(/^--([a-z-]+)=(.+)$/u);
+  const match = argument.match(/^--([a-z0-9-]+)=(.+)$/u);
   if (!match) throw new Error('CLOUDFLARE_E_SIGNING_ARGUMENT');
   return [match[1], match[2]];
 }));

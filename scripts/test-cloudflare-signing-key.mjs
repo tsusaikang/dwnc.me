@@ -391,6 +391,15 @@ try {
     hooks: { afterLeafOpened: () => link(hardlinkRace, hardlinkRaceAlias) },
   }), 'CLOUDFLARE_E_SIGNING_FILE_RACE');
 
+  const [initializerSource, signerSource, keychainSource] = await Promise.all([
+    readFile('scripts/initialize-cloudflare-signing-key.mjs', 'utf8'),
+    readFile('scripts/sign-cloudflare-evidence.mjs', 'utf8'),
+    readFile('scripts/lib/cloudflare-signing-key.mjs', 'utf8'),
+  ]);
+  equal(initializerSource.includes('/^--([a-z0-9-]+)=(.+)$/u'), true);
+  equal(signerSource.includes('/^--([a-z0-9-]+)=(.+)$/u'), true);
+  equal(keychainSource.includes('![0, 1].includes(code)'), true);
+
   equal(store.calls.some((call) => call.operation === 'putCreateOnly'), true);
   equal(store.calls.every((call) => !('value' in call)), true);
 } finally {
