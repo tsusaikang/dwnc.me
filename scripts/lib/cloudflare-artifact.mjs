@@ -83,8 +83,8 @@ export function stagingUploadConfig(bucket) {
         version_metadata: { binding: 'CF_VERSION_METADATA' },
         vars: {
           DWNC_DEPLOYMENT_ENVIRONMENT: 'staging',
-          DWNC_STAGING_SMOKE_POLICY: 'signed-header-non-access-origin',
-          DWNC_STAGING_SMOKE_ORIGIN: 'https://smoke-staging.dwnc.me',
+      DWNC_STAGING_SMOKE_POLICY: 'bearer-token-non-access-origin',
+      DWNC_STAGING_SMOKE_ORIGIN: 'https://dwnc-me-staging.dwnc.workers.dev',
         },
         r2_buckets: [{ binding: 'MEDIA_BUCKET', bucket_name: bucket }],
       },
@@ -130,8 +130,8 @@ export function expectedStagingVersionBindings(bucket) {
     { name: 'ASSETS', type: 'assets' },
     { name: 'CF_VERSION_METADATA', type: 'version_metadata' },
     { name: 'DWNC_DEPLOYMENT_ENVIRONMENT', text: 'staging', type: 'plain_text' },
-    { name: 'DWNC_STAGING_SMOKE_ORIGIN', text: 'https://smoke-staging.dwnc.me', type: 'plain_text' },
-    { name: 'DWNC_STAGING_SMOKE_POLICY', text: 'signed-header-non-access-origin', type: 'plain_text' },
+    { name: 'DWNC_STAGING_SMOKE_ORIGIN', text: 'https://dwnc-me-staging.dwnc.workers.dev', type: 'plain_text' },
+    { name: 'DWNC_STAGING_SMOKE_POLICY', text: 'bearer-token-non-access-origin', type: 'plain_text' },
     { name: 'DWNC_STAGING_SMOKE_TOKEN', type: 'secret_text' },
     { name: 'MEDIA_BUCKET', bucket_name: bucket, type: 'r2_bucket' },
   ];

@@ -15,18 +15,28 @@ import {
 import { runPublicLinkSelfTest } from './test-public-links.mjs';
 import { BOOTSTRAP_PUBLIC_PROJECTION_SHA256, publicProjectionDigest } from './lib/global-sequence.mjs';
 import { loadProjectionBackedPublicContent } from './lib/public-content-preflight.mjs';
+import {
+  loadTrackedPublicMapLinkPolicy,
+  replacePolicyMapBlocks,
+} from './lib/public-map-link-policy.mjs';
+import {
+  applyPublicMediaCuration,
+  loadTrackedPublicMediaCurationPolicy,
+} from './lib/public-media-curation.mjs';
 
 const ROOT = process.cwd();
 const DIST = path.join(ROOT, 'dist');
+const publicMapLinkPolicy = await loadTrackedPublicMapLinkPolicy(ROOT);
+const publicMediaCurationPolicy = await loadTrackedPublicMediaCurationPolicy(ROOT);
 const EXPECTED_IMPORTED_INTERNAL = Object.freeze({ tistory: 39, naver: 36, total: 75 });
-const EXPECTED_IMPORTED_EXTERNAL = Object.freeze({ tistory: 266, naver: 86, total: 352 });
-const EXPECTED_NAVER_PLATFORM_SELF = 1_396;
+const EXPECTED_IMPORTED_EXTERNAL = Object.freeze({ tistory: 268, naver: 67, total: 335 });
+const EXPECTED_NAVER_PLATFORM_SELF = 1_326;
 const EXPECTED_SENSITIVE_NEUTRAL = Object.freeze({ occurrences: 3, posts: 2 });
 const EXPECTED_IMPORTED_LEGACY_DISPLAY_TEXT = 21;
 const EXPECTED_IMPORTED_LEGACY_DATA_ATTRIBUTES = 57;
-const EXPECTED_TISTORY_SEMANTICS = Object.freeze({ images: 814, videos: 0, iframes: 11, pre: 11, code: 14 });
-const EXPECTED_TISTORY_SEMANTIC_SHA256 = '207b841429e39d271eee81231866f2f8aa398561f5c6e15abf6fcbef4ff42376';
-const EXPECTED_NAVER_SEMANTIC_SHA256 = '094f2f73a78304a0480bc429dc0ecbd6504508841493dcfafe6c083eaf342fe1';
+const EXPECTED_TISTORY_SEMANTICS = Object.freeze({ images: 812, videos: 0, iframes: 11, pre: 11, code: 14 });
+const EXPECTED_TISTORY_SEMANTIC_SHA256 = '597335df18808226f13efa4298435908cbec8d24ddcce7a1be2821c562e817a0';
+const EXPECTED_NAVER_SEMANTIC_SHA256 = '31c69f60e6ae68ec88967c623f7a95fefbcc5cf17800ed8f2e0a069fde2645f2';
 const issues = new Map();
 const markdownProcessor = await createSatteriMarkdownProcessor({
   syntaxHighlight: { type: 'shiki', excludeLangs: ['math'] },
@@ -184,9 +194,11 @@ function codeTokens($, root) {
 }
 
 async function sourceRoot(post) {
-  const html = post.source === 'naver'
+  const normalizedHtml = post.source === 'naver'
     ? post.body
     : (await markdownProcessor.render(post.body, { frontmatter: post.data })).code;
+  const mapPrepared = replacePolicyMapBlocks(normalizedHtml, post.data, publicMapLinkPolicy).html;
+  const html = applyPublicMediaCuration(mapPrepared, post.data, publicMediaCurationPolicy).html;
   const $ = cheerio.load(html, null, false);
   const root = post.source === 'naver'
     ? $('.naver-content').first()
@@ -484,15 +496,19 @@ naverSourceSemantic.sort(orderedLegacyIdentity('naver'));
 naverBuiltSemantic.sort(orderedLegacyIdentity('naver'));
 const sourceSemanticSha = sha256(sourceSemantic.join('\n'));
 const builtSemanticSha = sha256(builtSemantic.join('\n'));
-if (sourceSemanticSha !== builtSemanticSha) issue('links.tistory-semantic-sha', 'Tistory media/pre/code semantic SHA changed in the build.');
+if (sourceSemanticSha !== builtSemanticSha) {
+  issue('links.tistory-semantic-sha', `Tistory media/pre/code semantic SHA changed in the build (${sourceSemanticSha}/${builtSemanticSha}).`);
+}
 const naverSourceSemanticSha = sha256(naverSourceSemantic.join('\n'));
 const naverBuiltSemanticSha = sha256(naverBuiltSemantic.join('\n'));
-if (naverSourceSemanticSha !== naverBuiltSemanticSha) issue('links.naver-semantic-sha', 'Naver media semantic SHA changed in the build.');
+if (naverSourceSemanticSha !== naverBuiltSemanticSha) {
+  issue('links.naver-semantic-sha', `Naver media semantic SHA changed in the build (${naverSourceSemanticSha}/${naverBuiltSemanticSha}).`);
+}
 if (baselineProjection && builtSemanticSha !== EXPECTED_TISTORY_SEMANTIC_SHA256) {
-  issue('links.tistory-semantic-baseline', 'Tistory legacy-identity semantic SHA differs from the preserved baseline.');
+  issue('links.tistory-semantic-baseline', `Tistory legacy-identity semantic SHA is ${builtSemanticSha}; expected ${EXPECTED_TISTORY_SEMANTIC_SHA256}.`);
 }
 if (baselineProjection && naverBuiltSemanticSha !== EXPECTED_NAVER_SEMANTIC_SHA256) {
-  issue('links.naver-semantic-baseline', 'Naver legacy-identity semantic SHA differs from the preserved baseline.');
+  issue('links.naver-semantic-baseline', `Naver legacy-identity semantic SHA is ${naverBuiltSemanticSha}; expected ${EXPECTED_NAVER_SEMANTIC_SHA256}.`);
 }
 if (counters.internalTargets) issue('links.internal-target', `${counters.internalTargets} internal post anchors still open a target context.`);
 if (counters.brokenLocal) issue('links.local-broken', `${counters.brokenLocal} local authored links are broken.`);

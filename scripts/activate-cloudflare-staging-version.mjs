@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { lstat, open, readFile, writeFile } from 'node:fs/promises';
+import { lstat, open, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { validateStagingUploadArtifactDirectory } from './lib/cloudflare-artifact.mjs';
@@ -23,9 +23,10 @@ import {
   assertOneTimeAuthorizationClaim,
   assertPinnedWranglerInstalled,
   claimOneTimeAuthorization,
-  cloudflareUploadEnvironment,
+  cloudflareWranglerEnvironment,
   installStructuredErrorHandler,
 } from './lib/cloudflare-process.mjs';
+import { writeCanonicalEvidenceCreateOnly } from './lib/cloudflare-signing-key.mjs';
 import {
   acquireStagingActivationLock,
   beginStagingActivation,
@@ -112,7 +113,13 @@ verifySignedPayload({
   signature: beforeFiles.signature,
   publicKeyPem: beforeFiles.publicKeyPem,
   expectedPublicKeySpkiSha256: target.releasePublicKeySpkiSha256,
-  validation: { environment: 'staging', workerName: 'dwnc-me-staging' },
+  validation: {
+    expected: {
+      environment: 'staging',
+      workerName: 'dwnc-me-staging',
+      targetVersionId: beforeFiles.receipt.targetVersionId,
+    },
+  },
 });
 const beforeAge = Date.now() - Date.parse(beforeFiles.receipt.observedAt);
 if (!recoveryMode && (beforeAge < -120000 || beforeAge > 5 * 60 * 1000)) {
@@ -149,7 +156,7 @@ const fetchRawStatus = async () => {
   try {
     const { stdout } = await promisify(execFile)(path.join(ROOT, 'node_modules/.bin/wrangler'), statusArguments, {
       cwd: ROOT, encoding: 'utf8', maxBuffer: 2 * 1024 * 1024, timeout: 60000,
-      env: cloudflareUploadEnvironment(process.env, {
+      env: cloudflareWranglerEnvironment(process.env, {
         CI: '1', WRANGLER_WRITE_LOGS: '0', WRANGLER_SEND_METRICS: 'false',
         WRANGLER_NO_SKILLS_UPDATE_PROMPTS: 'true',
       }),
@@ -248,7 +255,7 @@ if (recoveryMode) {
   try {
     await promisify(execFile)(path.join(ROOT, 'node_modules/.bin/wrangler'), deploymentArguments, {
       cwd: ROOT, encoding: 'utf8', maxBuffer: 2 * 1024 * 1024, timeout: 60000,
-      env: cloudflareUploadEnvironment(process.env, {
+      env: cloudflareWranglerEnvironment(process.env, {
         CI: '1', WRANGLER_OUTPUT_FILE_PATH: deploymentOutputPath,
         WRANGLER_WRITE_LOGS: '0', WRANGLER_SEND_METRICS: 'false',
         WRANGLER_NO_SKILLS_UPDATE_PROMPTS: 'true',
@@ -284,8 +291,9 @@ const evidence = createDeploymentStatusEvidence({
   rawStatus, targetVersionId: context.targetVersionId, observedAt,
   environment: 'staging', workerName: 'dwnc-me-staging',
 });
-await writeFile(candidatePath, `${canonicalDeploymentStatusEvidencePayload(evidence)}\n`,
-  { flag: 'wx', mode: 0o600 });
+await writeCanonicalEvidenceCreateOnly(
+  candidatePath, evidence, canonicalDeploymentStatusEvidencePayload,
+);
 if (process.env.DWNC_CLOUDFLARE_TEST_MODE === '1'
   && process.env.DWNC_CLOUDFLARE_TEST_FAULT === 'staging-candidate-written') {
   process.kill(process.pid, 'SIGKILL');

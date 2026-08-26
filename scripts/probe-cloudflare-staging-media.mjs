@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { validateStagingUploadArtifactDirectory } from './lib/cloudflare-artifact.mjs';
 import {
@@ -13,14 +13,22 @@ import {
   probeStagingMediaObject,
   validateStagingMediaProbeReceipt,
 } from './lib/cloudflare-staging.mjs';
-import { installStructuredErrorHandler } from './lib/cloudflare-process.mjs';
+import {
+  installStructuredErrorHandler,
+  stagingSmokeTokenFromEnvironment,
+} from './lib/cloudflare-process.mjs';
+import { writeCanonicalEvidenceCreateOnly } from './lib/cloudflare-signing-key.mjs';
 import {
   cloudflareAccountIdSha256,
   loadTrackedPublicMediaManifest,
   loadTrackedPublicMediaReleasePolicy,
   validateConfiguredReleaseTarget,
 } from './lib/public-media-manifest.mjs';
-import { r2ClientFromEnvironment } from './lib/r2-s3-client.mjs';
+import { stagingSmokeAuthorizationHeader } from '../src/lib/staging-smoke-token.js';
+import {
+  r2ClientFromEnvironment,
+  r2CredentialsFromEnvironment,
+} from './lib/r2-s3-client.mjs';
 
 const ROOT = process.cwd();
 installStructuredErrorHandler('cloudflare-staging-media-probe');
@@ -31,21 +39,21 @@ const absolute = (value) => {
 const outputPath = absolute(process.env.CLOUDFLARE_STAGING_MEDIA_PROBE_PATH);
 const artifactDirectory = absolute(process.env.CLOUDFLARE_PREUPLOAD_ARTIFACT_DIR);
 const origin = process.env.CLOUDFLARE_STAGING_SYNTHETIC_ORIGIN;
-const token = process.env.CLOUDFLARE_STAGING_SMOKE_TOKEN;
-if (typeof token !== 'string' || token.length < 32) throw new Error('CLOUDFLARE_E_STAGING_PROBE_INPUT');
+const token = stagingSmokeTokenFromEnvironment(process.env, { descriptor: 4 });
 const [manifest, policy, wranglerConfig] = await Promise.all([
   loadTrackedPublicMediaManifest(ROOT),
   loadTrackedPublicMediaReleasePolicy(ROOT),
   readFile(path.join(ROOT, 'wrangler.jsonc'), 'utf8').then(JSON.parse),
 ]);
+const r2Credentials = r2CredentialsFromEnvironment(process.env);
 const { receipt: artifact, artifactSha256 } = await validateStagingUploadArtifactDirectory(
   artifactDirectory, { policy, manifest },
 );
 const target = validateConfiguredReleaseTarget({
   policy,
   environment: 'staging',
-  accountId: process.env.R2_ACCOUNT_ID,
-  bucket: process.env.R2_BUCKET_NAME,
+  accountId: r2Credentials.accountId,
+  bucket: r2Credentials.bucket,
   wranglerConfig,
 });
 if (origin !== target.smokeOrigin || artifact.stagingAccountIdSha256 !== target.accountIdSha256
@@ -76,7 +84,7 @@ verifySignedPayload({
 const client = r2ClientFromEnvironment(process.env);
 const fetcher = (input, init = {}) => {
   const headers = new Headers(init.headers);
-  headers.set('authorization', `Bearer ${token}`);
+  headers.set('authorization', stagingSmokeAuthorizationHeader(token));
   return fetch(input, { ...init, headers });
 };
 const evidence = await probeStagingMediaObject({
@@ -92,7 +100,7 @@ const receipt = {
   payloadSha256: artifact.payloadSha256,
   stagingVersionId: versionFiles.receipt.versionId,
   originSha256: sha256Hex(origin),
-  accountIdSha256: cloudflareAccountIdSha256(process.env.R2_ACCOUNT_ID),
+  accountIdSha256: cloudflareAccountIdSha256(r2Credentials.accountId),
   bucket: target.bucket,
   manifestSha256: manifest.manifestSha256,
   keySha256: evidence.keySha256,
@@ -106,7 +114,7 @@ const receipt = {
   expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
 };
 validateStagingMediaProbeReceipt(receipt);
-await writeFile(outputPath, `${canonicalStagingMediaProbePayload(receipt)}\n`, { flag: 'wx', mode: 0o600 });
+await writeCanonicalEvidenceCreateOnly(outputPath, receipt, canonicalStagingMediaProbePayload);
 console.log(JSON.stringify({
   contract: receipt.contract, artifactSha256, stagingVersionId: receipt.stagingVersionId,
   candidateUnsigned: true, signingRequired: true, secretPrinted: false,

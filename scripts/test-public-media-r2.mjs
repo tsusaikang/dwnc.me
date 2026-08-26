@@ -36,8 +36,8 @@ const rejectsCode = async (action, code) => {
 const credentials = {
   accountId: 'a'.repeat(32),
   bucket: 'dwnc-media-test',
-  accessKeyId: 'ACCESSKEYTEST',
-  secretAccessKey: 'secret-access-key-for-synthetic-fixture',
+  accessKeyId: 'b'.repeat(32),
+  secretAccessKey: 'c'.repeat(64),
 };
 const now = new Date('2026-08-25T01:02:03.000Z');
 
@@ -51,8 +51,8 @@ const now = new Date('2026-08-25T01:02:03.000Z');
     now,
   });
   equal(new URL(signed.url).pathname.endsWith('/media/native/sample/a%20b.jpg'), true);
-  equal(signed.headers.get('authorization')?.startsWith('AWS4-HMAC-SHA256 Credential=ACCESSKEYTEST/20260825/auto/s3/aws4_request'), true);
-  equal(signed.headers.get('authorization'), 'AWS4-HMAC-SHA256 Credential=ACCESSKEYTEST/20260825/auto/s3/aws4_request, SignedHeaders=content-type;host;if-none-match;x-amz-content-sha256;x-amz-date, Signature=79fb57b148f3bc011cc91296d4c60a010f5c6418832cce6da00cf8e1dab2506e');
+  equal(signed.headers.get('authorization')?.startsWith(`AWS4-HMAC-SHA256 Credential=${'b'.repeat(32)}/20260825/auto/s3/aws4_request`), true);
+  equal(signed.headers.get('authorization'), `AWS4-HMAC-SHA256 Credential=${'b'.repeat(32)}/20260825/auto/s3/aws4_request, SignedHeaders=content-type;host;if-none-match;x-amz-content-sha256;x-amz-date, Signature=1e4151229bff0d6677aa13873fcefcc21e627ede57862defa63362b007ee6657`);
   equal(signed.canonicalRequest, [
     'PUT',
     '/dwnc-media-test/media/native/sample/a%20b.jpg',
@@ -246,6 +246,10 @@ function headFor(entry, overrides = {}) {
     verificationLevel: 'full-get-sha256',
     bucketExposure: {
       verification: 'cloudflare-control-plane',
+      jurisdiction: 'default',
+      location: 'ENAM',
+      storageClass: 'Standard',
+      bucketPropertiesSha256: 'd'.repeat(64),
       r2DevEnabled: false,
       customDomainCount: 0,
       verifiedAt: '2026-08-25T00:00:00.000Z',
@@ -263,7 +267,7 @@ function headFor(entry, overrides = {}) {
       accountIdSha256: syntheticTarget.accountIdSha256,
       publicKeySpkiSha256: publicKeySpkiSha256(publicKeyPem),
       releasePublicKeySpkiSha256: null,
-      smokeOrigin: 'https://smoke-staging.dwnc.me',
+      smokeOrigin: 'https://dwnc-me-staging.dwnc.workers.dev',
       smokeAccessPolicySha256: null,
       requiredVerificationLevel: 'full-get-sha256',
       requiredBucketExposure: 'cloudflare-control-plane-private',
@@ -466,7 +470,7 @@ function headFor(entry, overrides = {}) {
 
 await rejectsCode(
   () => Promise.resolve(r2ClientFromEnvironment({})),
-  'MEDIA_E_R2_CREDENTIALS_REQUIRED',
+  'MEDIA_E_R2_CREDENTIALS_FD_REQUIRED',
 );
 
 console.log(JSON.stringify({ suite: 'public-media-r2', assertions, liveNetworkCalls: 0, status: 'PASS' }, null, 2));

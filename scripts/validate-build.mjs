@@ -9,6 +9,14 @@ import {
   validateProjectedPublicSurface,
 } from './lib/public-content-preflight.mjs';
 import { validateProjectedDistAssets } from './lib/public-dist-assets.mjs';
+import {
+  loadTrackedPublicMapLinkPolicy,
+  replacePolicyMapBlocks,
+} from './lib/public-map-link-policy.mjs';
+import {
+  applyPublicMediaCuration,
+  loadTrackedPublicMediaCurationPolicy,
+} from './lib/public-media-curation.mjs';
 
 const ROOT = process.cwd();
 const DIST = path.join(ROOT, 'dist');
@@ -26,12 +34,14 @@ const EXPECTED_NAVER_VIDEOS = 81;
 const EXPECTED_NAVER_LOCAL_VIDEOS = 28;
 const EXPECTED_NAVER_VIDEO_FALLBACKS = 53;
 const EXPECTED_NAVER_VIDEO_CAPTIONS = 23;
-const EXPECTED_STRUCTURAL_PHOTO_POSTS = 149;
-const EXPECTED_STRUCTURAL_LONGFORM_POSTS = 200;
+const EXPECTED_STRUCTURAL_PHOTO_POSTS = 148;
+const EXPECTED_STRUCTURAL_LONGFORM_POSTS = 201;
 const EXPECTED_SHORT_VISUAL_POSTS = 12;
-const EXPECTED_RAW_STRUCTURAL_DIFFERENCES = 19;
+const EXPECTED_RAW_STRUCTURAL_DIFFERENCES = 20;
 const EXPECTED_DERIVED_VERSION = 2;
 const EXPECTED_NORMALIZATION_VERSION = 3;
+const publicMapLinkPolicy = await loadTrackedPublicMapLinkPolicy(ROOT);
+const publicMediaCurationPolicy = await loadTrackedPublicMediaCurationPolicy(ROOT);
 const issueBuckets = new Map();
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const relative = (filePath) => path.relative(ROOT, filePath) || '.';
@@ -263,9 +273,19 @@ function zeroWidthCount(value) {
   return String(value ?? '').match(/[\u200B-\u200D\uFEFF]/g)?.length ?? 0;
 }
 
-function expectedNaverPresentationText(normalizedBody, post, registry) {
+function expectedNaverPresentationBody(normalizedBody, post) {
+  const data = post.projection_content?.data ?? {
+    source: 'naver',
+    sourceId: String(post.source_id),
+    cover: post.cover,
+  };
+  const mapped = replacePolicyMapBlocks(normalizedBody, data, publicMapLinkPolicy).html;
+  return applyPublicMediaCuration(mapped, data, publicMediaCurationPolicy).html;
+}
+
+function expectedNaverPresentationText(presentationBody, post, registry) {
   const canonicalPath = projectionByIdentity.get(`naver:${post.source_id}`)?.canonicalPath ?? '/missing-sequence/naver';
-  const transformed = transformPublicPostLinks(normalizedBody, {
+  const transformed = transformPublicPostLinks(presentationBody, {
     post: {
       source: 'naver',
       sourceId: String(post.source_id),
@@ -514,9 +534,10 @@ for (const post of activeNaverPublicPosts) {
       readFile(path.join(ROOT, post.normalized_path), 'utf8'),
     ]);
     const normalizedBody = normalizedMarkdown.replace(/^---\n[\s\S]*?\n---\n/, '').trim();
-    const expectedMetadata = expectedNaverPresentationText(normalizedBody, post, publicLinkRegistry);
+    const expectedPresentationBody = expectedNaverPresentationBody(normalizedBody, post);
+    const expectedMetadata = expectedNaverPresentationText(expectedPresentationBody, post, publicLinkRegistry);
     expectedNaverMetadata.set(canonicalPath, expectedMetadata);
-    const $expected = cheerio.load(normalizedBody, null, false);
+    const $expected = cheerio.load(expectedPresentationBody, null, false);
     const $built = cheerio.load(builtHtml);
     const expectedBodies = $expected('.naver-content');
     const builtBodies = $built('.prose > .naver-content');
@@ -715,6 +736,97 @@ for (const post of activeTistoryPosts) {
     issue('build.tistory.render-read', `A public Tistory route could not be inspected (${post.source_id}).`);
   }
 }
+
+const stickerWhitespacePresentationCases = [
+  {
+    route: '/posts/37',
+    pairs: [
+      [/새로 바꾸고 있는 타이밍대로/u, /^에헤\?+/u],
+      [/^으하하/u, /^선생님들이 손발 콤비/u],
+      [/새 타이밍을 몸이 무의식적으로/u, /^아마,/u],
+    ],
+  },
+  {
+    route: '/posts/63',
+    pairs: [
+      [/나중에 안 사실인데/u, /^음\.\.\. 홈페이지 안내대로/u],
+      [/^여기는 9시에 문을 닫기/u, /^무슨 소리인지/u],
+    ],
+    noLeadingBreak: /^음\.\.\. 홈페이지 안내대로/u,
+  },
+];
+for (const presentationCase of stickerWhitespacePresentationCases) {
+  const routeFile = path.join(DIST, presentationCase.route.replace(/^\/+/, ''), 'index.html');
+  try {
+    const $built = cheerio.load(await readFile(routeFile, 'utf8'));
+    const paragraphs = $built('.article-page .prose .post-view > p').toArray();
+    const paragraphText = (element) => ($built(element).text() ?? '').replace(/\s+/gu, ' ').normalize('NFC').trim();
+    for (const [leftPattern, rightPattern] of presentationCase.pairs) {
+      const left = paragraphs.findIndex((element) => leftPattern.test(paragraphText(element)));
+      const right = paragraphs.findIndex((element) => rightPattern.test(paragraphText(element)));
+      if (left < 0 || right <= left) {
+        issue('build.media-curation-whitespace', `${presentationCase.route} lacks a sticker-removal presentation landmark.`);
+        continue;
+      }
+      const emptyBetween = paragraphs.slice(left + 1, right).filter((element) => {
+        const paragraph = $built(element).clone();
+        paragraph.find('br').remove();
+        return !paragraphText(paragraph.get(0))
+          && !paragraph.find('img, video, iframe, svg, object, embed, table, ul, ol').length;
+      });
+      if (emptyBetween.length) {
+        issue('build.media-curation-whitespace', `${presentationCase.route} retains ${emptyBetween.length} empty sticker-adjacent paragraph(s).`);
+      }
+    }
+    if (presentationCase.noLeadingBreak) {
+      const paragraph = paragraphs.find((element) => presentationCase.noLeadingBreak.test(paragraphText(element)));
+      if (!paragraph || $built(paragraph).find('br').length) {
+        issue('build.media-curation-whitespace', `${presentationCase.route} retains inline sticker spacing before preserved text.`);
+      }
+    }
+  } catch {
+    issue('build.media-curation-whitespace', `${presentationCase.route} could not be checked for sticker-removal spacing.`);
+  }
+}
+
+let placeholderCoverReplacements = 0;
+for (const replacement of publicMediaCurationPolicy.placeholderExclusion.coverReplacements) {
+  const canonicalPath = projectedPath(replacement.source, replacement.sourceId);
+  const routeFile = path.join(DIST, canonicalPath.replace(/^\/+/, ''), 'index.html');
+  try {
+    const builtHtml = await readFile(routeFile, 'utf8');
+    const $built = cheerio.load(builtHtml);
+    const socialImage = $built('meta[property="og:image"]').attr('content') ?? '';
+    if (builtHtml.includes(replacement.excludedCover)
+      || $built('img.post-cover').length
+      || socialImage.includes(replacement.excludedCover)) {
+      issue('build.media-curation-placeholder-cover', `${relative(routeFile)} retains an excluded placeholder cover.`);
+    } else {
+      placeholderCoverReplacements += 1;
+    }
+  } catch {
+    issue('build.media-curation-placeholder-cover', `${canonicalPath} could not be checked for its derived placeholder cover.`);
+  }
+}
+
+let authoredPlatformAssetsVerified = 0;
+for (const authored of publicMediaCurationPolicy.authoredPlatformAssets) {
+  const canonicalPath = projectedPath(authored.source, authored.sourceId);
+  const routeFile = path.join(DIST, canonicalPath.replace(/^\/+/, ''), 'index.html');
+  try {
+    const $built = cheerio.load(await readFile(routeFile, 'utf8'));
+    const bodyOccurrences = $built(`.article-page .prose img[src="${authored.publicPath}"]`).length;
+    const socialImage = $built('meta[property="og:image"]').attr('content') ?? '';
+    if (bodyOccurrences !== 1 || socialImage !== `https://dwnc.me${authored.publicPath}`) {
+      issue('build.media-curation-authored-asset', `${relative(routeFile)} does not preserve its authored platform asset in body and cover metadata.`);
+    } else {
+      authoredPlatformAssetsVerified += 1;
+    }
+  } catch {
+    issue('build.media-curation-authored-asset', `${canonicalPath} could not be checked for its authored platform asset.`);
+  }
+}
+
 for (const post of activeNativePosts) {
   const routeFile = path.join(DIST, post.canonicalPath.replace(/^\/+/, ''), 'index.html');
   try {
@@ -1089,6 +1201,15 @@ for (const file of await walk(DIST, { optional: true })) {
   }
 }
 
+for (const document of distDocuments) {
+  if (!['.html', '.json', '.xml'].includes(path.extname(document.file).toLowerCase())) continue;
+  for (const sticker of publicMediaCurationPolicy.stickerExclusions) {
+    if (document.raw.includes(sticker.publicPath) || document.raw.includes(sticker.href)) {
+      issue('build.media-curation-sticker', `${relative(document.file)} exposes an excluded sticker path or link.`);
+    }
+  }
+}
+
 const idLeakFiles = new Set();
 const routeLeakFiles = new Set();
 const originLeakFiles = new Set();
@@ -1165,6 +1286,12 @@ console.log(JSON.stringify({
       searchText: searchTextZeroWidthCharacters,
       rssDescription: rssDescriptionZeroWidthCharacters,
     },
+  },
+  publicMediaCuration: {
+    placeholderObjectsExcluded: publicMediaCurationPolicy.placeholderExclusion.objectCount,
+    placeholderPostersRemoved: publicMediaCurationPolicy.placeholderExclusion.videoPosterOccurrenceCount,
+    placeholderCoversReplaced: placeholderCoverReplacements,
+    authoredPlatformAssetsVerified,
   },
   articleClassification: {
     photo: structuralPhotoPosts,

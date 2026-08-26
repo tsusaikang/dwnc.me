@@ -16,7 +16,7 @@ import {
 import {
   assertCloudflareAccountTarget,
   assertPinnedWranglerInstalled,
-  cloudflareUploadEnvironment,
+  cloudflareWranglerEnvironment,
   claimOneTimeAuthorization,
   installStructuredErrorHandler,
   runChecked,
@@ -93,7 +93,7 @@ await outputHandle.close();
 const args = productionVersionUploadArguments({ artifactDirectory, artifact: receipt });
 await runChecked(path.join(ROOT, 'node_modules/.bin/wrangler'), args, {
   cwd: ROOT,
-  env: cloudflareUploadEnvironment(process.env, {
+  env: cloudflareWranglerEnvironment(process.env, {
     CI: '1', WRANGLER_OUTPUT_FILE_PATH: outputPath, WRANGLER_WRITE_LOGS: '0',
     WRANGLER_SEND_METRICS: 'false', WRANGLER_NO_SKILLS_UPDATE_PROMPTS: 'true',
   }),

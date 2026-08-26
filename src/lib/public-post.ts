@@ -2,6 +2,8 @@ import { createSatteriMarkdownProcessor } from '@astrojs/markdown-satteri';
 import * as cheerio from 'cheerio';
 import type { PostEntry } from './posts';
 import { publicAddressForPost } from './public-address';
+import { preparePublicMapLinks } from './public-map-links';
+import { preparePublicMediaCuration } from './public-media-curation';
 import {
   transformPublicPostLinks,
   type PublicLinkRegistry,
@@ -44,7 +46,9 @@ async function visibleBody(post: PostEntry, registry: PublicLinkRegistry) {
   const renderedBody = post.data.source === 'naver'
     ? body
     : (await (await markdownProcessor).render(body)).code;
-  const { html: presentationBody, report } = transformPublicPostLinks(renderedBody, {
+  const mapPreparedBody = preparePublicMapLinks(post, renderedBody);
+  const curatedBody = preparePublicMediaCuration(post, mapPreparedBody);
+  const { html: presentationBody, report } = transformPublicPostLinks(curatedBody, {
     post: {
       source: post.data.source,
       sourceId: post.data.sourceId,
@@ -145,7 +149,9 @@ export async function preparePublicPostHtml(post: PostEntry, registry: PublicLin
     ? body
     : (await (await markdownProcessor).render(body, { frontmatter: post.data })).code;
   const videoPreparedBody = prepareNaverVideoHtml(post, renderedBody);
-  return transformPublicPostLinks(videoPreparedBody, {
+  const mapPreparedBody = preparePublicMapLinks(post, videoPreparedBody);
+  const curatedBody = preparePublicMediaCuration(post, mapPreparedBody);
+  return transformPublicPostLinks(curatedBody, {
     post: {
       source: post.data.source,
       sourceId: post.data.sourceId,

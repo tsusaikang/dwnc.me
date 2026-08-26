@@ -35,7 +35,7 @@ import {
   assertCloudflareAccountTarget,
   assertPinnedWranglerInstalled,
   claimOneTimeAuthorization,
-  cloudflareUploadEnvironment,
+  cloudflareWranglerEnvironment,
   installStructuredErrorHandler,
 } from './lib/cloudflare-process.mjs';
 import { loadTrackedPublicMediaReleasePolicy } from './lib/public-media-manifest.mjs';
@@ -146,7 +146,7 @@ const fetchRawStatus = async () => {
   try {
     const { stdout } = await promisify(execFile)(path.join(ROOT, 'node_modules/.bin/wrangler'), statusArguments, {
       cwd: ROOT, encoding: 'utf8', maxBuffer: 2 * 1024 * 1024, timeout: 60000,
-      env: cloudflareUploadEnvironment(process.env, {
+      env: cloudflareWranglerEnvironment(process.env, {
         CI: '1', WRANGLER_WRITE_LOGS: '0', WRANGLER_SEND_METRICS: 'false',
         WRANGLER_NO_SKILLS_UPDATE_PROMPTS: 'true',
       }),
@@ -265,7 +265,7 @@ if (!recoveryToken) {
   try {
     await promisify(execFile)(path.join(ROOT, 'node_modules/.bin/wrangler'), deploymentArguments, {
       cwd: ROOT, encoding: 'utf8', maxBuffer: 2 * 1024 * 1024, timeout: 60000,
-      env: cloudflareUploadEnvironment(process.env, {
+      env: cloudflareWranglerEnvironment(process.env, {
         CI: '1', WRANGLER_OUTPUT_FILE_PATH: deploymentOutputPath,
         WRANGLER_WRITE_LOGS: '0', WRANGLER_SEND_METRICS: 'false',
         WRANGLER_NO_SKILLS_UPDATE_PROMPTS: 'true',

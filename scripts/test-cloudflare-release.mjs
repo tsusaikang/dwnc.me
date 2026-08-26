@@ -34,6 +34,7 @@ import {
   validateStagingActivationAuthorization,
   validateStagingSecretAuthorization,
   validateUploadAuthorization,
+  validateDeploymentStatusEvidence,
   validateVersionAttestation,
   verifySignedPayload,
   versionUploadMessage,
@@ -104,8 +105,8 @@ const stagingBindings = [
   { name: 'ASSETS', type: 'assets' },
   { name: 'CF_VERSION_METADATA', type: 'version_metadata' },
   { name: 'DWNC_DEPLOYMENT_ENVIRONMENT', text: 'staging', type: 'plain_text' },
-  { name: 'DWNC_STAGING_SMOKE_ORIGIN', text: 'https://smoke-staging.dwnc.me', type: 'plain_text' },
-  { name: 'DWNC_STAGING_SMOKE_POLICY', text: 'signed-header-non-access-origin', type: 'plain_text' },
+  { name: 'DWNC_STAGING_SMOKE_ORIGIN', text: 'https://dwnc-me-staging.dwnc.workers.dev', type: 'plain_text' },
+  { name: 'DWNC_STAGING_SMOKE_POLICY', text: 'bearer-token-non-access-origin', type: 'plain_text' },
   { name: 'DWNC_STAGING_SMOKE_TOKEN', type: 'secret_text' },
   { name: 'MEDIA_BUCKET', bucket_name: 'dwnc-me-public-media-staging', type: 'r2_bucket' },
 ];
@@ -333,6 +334,22 @@ const stagingStatusBefore = createDeploymentStatusEvidence({
   environment: 'staging',
   workerName: 'dwnc-me-staging',
 });
+validateDeploymentStatusEvidence(stagingStatusBefore, {
+  expected: {
+    environment: 'staging',
+    workerName: 'dwnc-me-staging',
+    targetVersionId: '83345678-1234-4123-8123-123456789abc',
+  },
+});
+assertions += 1;
+for (const expected of [
+  { environment: 'production' },
+  { workerName: 'dwnc-me' },
+  { targetVersionId: '93345678-1234-4123-8123-123456789abc' },
+]) {
+  rejects(() => validateDeploymentStatusEvidence(stagingStatusBefore, { expected }),
+    'CLOUDFLARE_E_DEPLOYMENT_STATUS_EXPECTED');
+}
 const stagingActivationArgs = stagingActivationArguments({
   versionId: stagingAttestation.versionId,
   artifactDirectory: '/tmp/artifact',
@@ -347,7 +364,7 @@ const stagingActivationAuthorization = {
   payloadSha256: artifact.payloadSha256,
   versionId: stagingAttestation.versionId,
   accountIdSha256: artifact.stagingAccountIdSha256,
-  originSha256: hash('https://smoke-staging.dwnc.me'),
+  originSha256: hash('https://dwnc-me-staging.dwnc.workers.dev'),
   accessPolicySha256: hash('staging-access-policy'),
   deploymentStatusBeforeSha256: hash(
     canonicalDeploymentStatusEvidencePayload(stagingStatusBefore)),

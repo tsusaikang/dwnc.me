@@ -7,7 +7,7 @@ import { canonicalJson, sha256Hex, validateVersionUploadResult } from './lib/clo
 import {
   assertCloudflareAccountTarget,
   assertPinnedWranglerInstalled,
-  cloudflareUploadEnvironment,
+  cloudflareWranglerEnvironment,
   installStructuredErrorHandler,
 } from './lib/cloudflare-process.mjs';
 import { loadTrackedPublicMediaReleasePolicy } from './lib/public-media-manifest.mjs';
@@ -45,7 +45,7 @@ try {
     encoding: 'utf8',
     maxBuffer: 4 * 1024 * 1024,
     timeout: 60000,
-    env: cloudflareUploadEnvironment(process.env, {
+    env: cloudflareWranglerEnvironment(process.env, {
       CI: '1', WRANGLER_WRITE_LOGS: '0', WRANGLER_SEND_METRICS: 'false',
       WRANGLER_NO_SKILLS_UPDATE_PROMPTS: 'true',
     }),

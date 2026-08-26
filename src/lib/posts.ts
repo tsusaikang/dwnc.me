@@ -1,5 +1,6 @@
 import { getCollection, type CollectionEntry } from 'astro:content';
 import { isProjectedPublicIdentity, publicAddressEntries, publicPostSequence } from './public-address';
+import { preparePublicMediaPost } from './public-media-curation';
 
 export type PostEntry = CollectionEntry<'posts'>;
 
@@ -21,7 +22,7 @@ export async function getPublicPosts(): Promise<PostEntry[]> {
   return posts.sort(
     (a, b) => b.data.publishedAt.getTime() - a.data.publishedAt.getTime()
       || publicPostSequence(b) - publicPostSequence(a),
-  );
+  ).map(preparePublicMediaPost);
 }
 
 export function formatDate(date: Date, options: Intl.DateTimeFormatOptions = {}) {

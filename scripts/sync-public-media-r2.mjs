@@ -11,7 +11,10 @@ import {
   loadLocalMediaBytes,
   mapWithConcurrency,
 } from './lib/public-media-remote.mjs';
-import { r2ClientFromEnvironment } from './lib/r2-s3-client.mjs';
+import {
+  r2ClientFromEnvironment,
+  r2CredentialsFromEnvironment,
+} from './lib/r2-s3-client.mjs';
 import { installStructuredErrorHandler } from './lib/cloudflare-process.mjs';
 
 const ROOT = process.cwd();
@@ -47,6 +50,7 @@ function parseArguments(argv) {
 }
 
 const options = parseArguments(process.argv.slice(2));
+const r2Credentials = r2CredentialsFromEnvironment(process.env);
 const manifest = await loadTrackedPublicMediaManifest(ROOT);
 if (options.apply && options.expectedManifestSha256 !== manifest.manifestSha256) {
   throw new Error('MEDIA_E_EXPECTED_MANIFEST');
@@ -56,14 +60,14 @@ const releasePolicy = await loadTrackedPublicMediaReleasePolicy(ROOT);
 const policyTarget = validateConfiguredReleaseTarget({
   policy: releasePolicy,
   environment: options.environment,
-  accountId: process.env.R2_ACCOUNT_ID,
-  bucket: process.env.R2_BUCKET_NAME,
+  accountId: r2Credentials.accountId,
+  bucket: r2Credentials.bucket,
   wranglerConfig,
 });
 const client = r2ClientFromEnvironment(process.env);
 const target = {
   environment: options.environment,
-  bucket: process.env.R2_BUCKET_NAME,
+  bucket: r2Credentials.bucket,
   accountIdSha256: policyTarget.accountIdSha256,
 };
 let inspection = await inspectRemotePublicMedia(client, manifest, { concurrency: options.concurrency });

@@ -1,0 +1,261 @@
+{
+  "schemaVersion": 1,
+  "contract": "dwnc-public-media-curation-v1",
+  "stickerExclusionCount": 5,
+  "authoredPlatformAssetCount": 1,
+  "policySha256": "07cf01a73b7f1d34f286264aa659505fd3a8a0813d81aaed8ac4be22c19f7f48",
+  "stickerExclusions": [
+    {
+      "source": "naver",
+      "sourceId": "220522768720",
+      "publicPath": "/media/naver/220522768720/003-507546e2d704.png",
+      "href": "http://m.gfmarket.naver.com/sticker/detail/code/line_characters_in_love",
+      "alt": "line_characters_in_love-5",
+      "size": 7556,
+      "sha256": "507546e2d70499446bbef86586441ca83a21344e3fee13f2ce744f3e9f378b07",
+      "contentType": "image/png"
+    },
+    {
+      "source": "naver",
+      "sourceId": "220522768720",
+      "publicPath": "/media/naver/220522768720/004-7268af2e360f.png",
+      "href": "http://m.gfmarket.naver.com/sticker/detail/code/moon_and_james",
+      "alt": "moon_and_james-20",
+      "size": 6171,
+      "sha256": "7268af2e360f2c9cbb29fa8790ae2b196a7eaae3fef44f91635f43262c31a649",
+      "contentType": "image/png"
+    },
+    {
+      "source": "naver",
+      "sourceId": "220522768720",
+      "publicPath": "/media/naver/220522768720/005-c098d249d2c2.png",
+      "href": "http://m.gfmarket.naver.com/sticker/detail/code/moon_and_james",
+      "alt": "moon_and_james-3",
+      "size": 4187,
+      "sha256": "c098d249d2c226f5fe5266f25def97bb02c72d36cf9fc1470415d2ac4cfac9b0",
+      "contentType": "image/png"
+    },
+    {
+      "source": "naver",
+      "sourceId": "220535695526",
+      "publicPath": "/media/naver/220535695526/009-432c56cfbed8.png",
+      "href": "http://m.gfmarket.naver.com/sticker/detail/code/brown_and_cony",
+      "alt": "brown_and_cony-17",
+      "size": 4480,
+      "sha256": "432c56cfbed828b53d7c43f81dddb9e3780aacc163d89cf7409c7c7824c4e83c",
+      "contentType": "image/png"
+    },
+    {
+      "source": "naver",
+      "sourceId": "220535695526",
+      "publicPath": "/media/naver/220535695526/010-c1c17b98960e.png",
+      "href": "http://m.gfmarket.naver.com/sticker/detail/code/edward_special",
+      "alt": "edward_special-2",
+      "size": 5413,
+      "sha256": "c1c17b98960e08b62dac44e6f7b87cbbfc033559a38d46a0f8108f60659409e8",
+      "contentType": "image/png"
+    }
+  ],
+  "authoredPlatformAssets": [
+    {
+      "id": "authored-sbs-gif",
+      "source": "naver",
+      "sourceId": "221172590451",
+      "publicPath": "/media/naver/221172590451/001-e467d08a3a01.gif",
+      "size": 1299862,
+      "sha256": "e467d08a3a01bf5bcc53c79f2a40e89d0181a8c920e08b62a1a513c3d93656d9",
+      "contentType": "image/gif"
+    }
+  ],
+  "placeholderExclusion": {
+    "objectCount": 27,
+    "videoPosterOccurrenceCount": 53,
+    "videoPosterSize": 62,
+    "videoPosterSha256": "ffc9f5e4fdeea83920c171e2bd17577127c5d1a2c3c76f07440e10d387132280",
+    "videoPosterContentType": "image/svg+xml",
+    "videoPosters": [
+      {
+        "source": "naver",
+        "sourceId": "220430227110",
+        "publicPath": "/media/naver/220430227110/003-ffc9f5e4fdee.svg",
+        "occurrences": 2
+      },
+      {
+        "source": "naver",
+        "sourceId": "220447763700",
+        "publicPath": "/media/naver/220447763700/001-ffc9f5e4fdee.svg",
+        "occurrences": 2
+      },
+      {
+        "source": "naver",
+        "sourceId": "220449081286",
+        "publicPath": "/media/naver/220449081286/005-ffc9f5e4fdee.svg",
+        "occurrences": 2
+      },
+      {
+        "source": "naver",
+        "sourceId": "220496605582",
+        "publicPath": "/media/naver/220496605582/006-ffc9f5e4fdee.svg",
+        "occurrences": 2
+      },
+      {
+        "source": "naver",
+        "sourceId": "220561980988",
+        "publicPath": "/media/naver/220561980988/002-ffc9f5e4fdee.svg",
+        "occurrences": 1
+      },
+      {
+        "source": "naver",
+        "sourceId": "220584001923",
+        "publicPath": "/media/naver/220584001923/003-ffc9f5e4fdee.svg",
+        "occurrences": 5
+      },
+      {
+        "source": "naver",
+        "sourceId": "220590068116",
+        "publicPath": "/media/naver/220590068116/002-ffc9f5e4fdee.svg",
+        "occurrences": 1
+      },
+      {
+        "source": "naver",
+        "sourceId": "220608436245",
+        "publicPath": "/media/naver/220608436245/007-ffc9f5e4fdee.svg",
+        "occurrences": 4
+      },
+      {
+        "source": "naver",
+        "sourceId": "220735965693",
+        "publicPath": "/media/naver/220735965693/002-ffc9f5e4fdee.svg",
+        "occurrences": 2
+      },
+      {
+        "source": "naver",
+        "sourceId": "220756146248",
+        "publicPath": "/media/naver/220756146248/002-ffc9f5e4fdee.svg",
+        "occurrences": 1
+      },
+      {
+        "source": "naver",
+        "sourceId": "220760460503",
+        "publicPath": "/media/naver/220760460503/002-ffc9f5e4fdee.svg",
+        "occurrences": 2
+      },
+      {
+        "source": "naver",
+        "sourceId": "220763806592",
+        "publicPath": "/media/naver/220763806592/006-ffc9f5e4fdee.svg",
+        "occurrences": 2
+      },
+      {
+        "source": "naver",
+        "sourceId": "220779988248",
+        "publicPath": "/media/naver/220779988248/009-ffc9f5e4fdee.svg",
+        "occurrences": 2
+      },
+      {
+        "source": "naver",
+        "sourceId": "220793649017",
+        "publicPath": "/media/naver/220793649017/015-ffc9f5e4fdee.svg",
+        "occurrences": 2
+      },
+      {
+        "source": "naver",
+        "sourceId": "220847405238",
+        "publicPath": "/media/naver/220847405238/005-ffc9f5e4fdee.svg",
+        "occurrences": 1
+      },
+      {
+        "source": "naver",
+        "sourceId": "220867617951",
+        "publicPath": "/media/naver/220867617951/004-ffc9f5e4fdee.svg",
+        "occurrences": 1
+      },
+      {
+        "source": "naver",
+        "sourceId": "220869200415",
+        "publicPath": "/media/naver/220869200415/002-ffc9f5e4fdee.svg",
+        "occurrences": 1
+      },
+      {
+        "source": "naver",
+        "sourceId": "220874173220",
+        "publicPath": "/media/naver/220874173220/006-ffc9f5e4fdee.svg",
+        "occurrences": 1
+      },
+      {
+        "source": "naver",
+        "sourceId": "220877121511",
+        "publicPath": "/media/naver/220877121511/002-ffc9f5e4fdee.svg",
+        "occurrences": 1
+      },
+      {
+        "source": "naver",
+        "sourceId": "220879686001",
+        "publicPath": "/media/naver/220879686001/003-ffc9f5e4fdee.svg",
+        "occurrences": 1
+      },
+      {
+        "source": "naver",
+        "sourceId": "220886084463",
+        "publicPath": "/media/naver/220886084463/005-ffc9f5e4fdee.svg",
+        "occurrences": 1
+      },
+      {
+        "source": "naver",
+        "sourceId": "220906978751",
+        "publicPath": "/media/naver/220906978751/002-ffc9f5e4fdee.svg",
+        "occurrences": 1
+      },
+      {
+        "source": "naver",
+        "sourceId": "221094309386",
+        "publicPath": "/media/naver/221094309386/064-ffc9f5e4fdee.svg",
+        "occurrences": 2
+      },
+      {
+        "source": "naver",
+        "sourceId": "221112410332",
+        "publicPath": "/media/naver/221112410332/088-ffc9f5e4fdee.svg",
+        "occurrences": 5
+      },
+      {
+        "source": "naver",
+        "sourceId": "221126696806",
+        "publicPath": "/media/naver/221126696806/002-ffc9f5e4fdee.svg",
+        "occurrences": 1
+      },
+      {
+        "source": "naver",
+        "sourceId": "221173990421",
+        "publicPath": "/media/naver/221173990421/056-ffc9f5e4fdee.svg",
+        "occurrences": 7
+      }
+    ],
+    "spacingGif": {
+      "source": "naver",
+      "sourceId": "220543741334",
+      "publicPath": "/media/naver/220543741334/002-5ac70de1d3f9.gif",
+      "size": 85,
+      "sha256": "5ac70de1d3f9da395373417a30ae3667e5e2067600c861ccf2a255e1694874d8",
+      "contentType": "image/gif",
+      "occurrences": 1,
+      "alt": "",
+      "requiredClass": "_attach_space"
+    },
+    "coverReplacements": [
+      { "source": "naver", "sourceId": "220430227110", "excludedCover": "/media/naver/220430227110/003-ffc9f5e4fdee.svg", "sourceCoverAlt": "", "replacementCover": null, "replacementCoverAlt": "", "selectionRule": "first-body-owned-nonexcluded-image", "eligibleCandidateCount": 0 },
+      { "source": "naver", "sourceId": "220447763700", "excludedCover": "/media/naver/220447763700/001-ffc9f5e4fdee.svg", "sourceCoverAlt": "", "replacementCover": null, "replacementCoverAlt": "", "selectionRule": "first-body-owned-nonexcluded-image", "eligibleCandidateCount": 0 },
+      { "source": "naver", "sourceId": "220561980988", "excludedCover": "/media/naver/220561980988/002-ffc9f5e4fdee.svg", "sourceCoverAlt": "", "replacementCover": null, "replacementCoverAlt": "", "selectionRule": "first-body-owned-nonexcluded-image", "eligibleCandidateCount": 0 },
+      { "source": "naver", "sourceId": "220584001923", "excludedCover": "/media/naver/220584001923/003-ffc9f5e4fdee.svg", "sourceCoverAlt": "", "replacementCover": null, "replacementCoverAlt": "", "selectionRule": "first-body-owned-nonexcluded-image", "eligibleCandidateCount": 0 },
+      { "source": "naver", "sourceId": "220590068116", "excludedCover": "/media/naver/220590068116/002-ffc9f5e4fdee.svg", "sourceCoverAlt": "", "replacementCover": null, "replacementCoverAlt": "", "selectionRule": "first-body-owned-nonexcluded-image", "eligibleCandidateCount": 0 },
+      { "source": "naver", "sourceId": "220735965693", "excludedCover": "/media/naver/220735965693/002-ffc9f5e4fdee.svg", "sourceCoverAlt": "", "replacementCover": null, "replacementCoverAlt": "", "selectionRule": "first-body-owned-nonexcluded-image", "eligibleCandidateCount": 0 },
+      { "source": "naver", "sourceId": "220756146248", "excludedCover": "/media/naver/220756146248/002-ffc9f5e4fdee.svg", "sourceCoverAlt": "", "replacementCover": null, "replacementCoverAlt": "", "selectionRule": "first-body-owned-nonexcluded-image", "eligibleCandidateCount": 0 },
+      { "source": "naver", "sourceId": "220760460503", "excludedCover": "/media/naver/220760460503/002-ffc9f5e4fdee.svg", "sourceCoverAlt": "", "replacementCover": null, "replacementCoverAlt": "", "selectionRule": "first-body-owned-nonexcluded-image", "eligibleCandidateCount": 0 },
+      { "source": "naver", "sourceId": "220869200415", "excludedCover": "/media/naver/220869200415/002-ffc9f5e4fdee.svg", "sourceCoverAlt": "", "replacementCover": null, "replacementCoverAlt": "", "selectionRule": "first-body-owned-nonexcluded-image", "eligibleCandidateCount": 0 },
+      { "source": "naver", "sourceId": "220877121511", "excludedCover": "/media/naver/220877121511/002-ffc9f5e4fdee.svg", "sourceCoverAlt": "", "replacementCover": null, "replacementCoverAlt": "", "selectionRule": "first-body-owned-nonexcluded-image", "eligibleCandidateCount": 0 },
+      { "source": "naver", "sourceId": "220886084463", "excludedCover": "/media/naver/220886084463/005-ffc9f5e4fdee.svg", "sourceCoverAlt": "", "replacementCover": null, "replacementCoverAlt": "", "selectionRule": "first-body-owned-nonexcluded-image", "eligibleCandidateCount": 0 },
+      { "source": "naver", "sourceId": "220906978751", "excludedCover": "/media/naver/220906978751/002-ffc9f5e4fdee.svg", "sourceCoverAlt": "", "replacementCover": null, "replacementCoverAlt": "", "selectionRule": "first-body-owned-nonexcluded-image", "eligibleCandidateCount": 0 },
+      { "source": "naver", "sourceId": "221126696806", "excludedCover": "/media/naver/221126696806/002-ffc9f5e4fdee.svg", "sourceCoverAlt": "", "replacementCover": null, "replacementCoverAlt": "", "selectionRule": "first-body-owned-nonexcluded-image", "eligibleCandidateCount": 0 }
+    ]
+  }
+}

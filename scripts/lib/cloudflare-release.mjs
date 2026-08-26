@@ -366,7 +366,7 @@ export function validateStagingSecretAuthorization(receipt, {
       receipt.nonceSha256].every((value) => SHA256.test(value ?? ''))
     || !GIT_SHA1.test(receipt.sourceGitSha ?? '') || !UUID.test(receipt.buildUuid ?? '')
     || receipt.secretName !== 'DWNC_STAGING_SMOKE_TOKEN'
-    || !Number.isInteger(receipt.secretBytes) || receipt.secretBytes < 32 || receipt.secretBytes > 128
+    || receipt.secretBytes !== 43
     || Number.isNaN(Date.parse(receipt.createdAt ?? ''))
     || Number.isNaN(Date.parse(receipt.expiresAt ?? ''))) {
     fail('CLOUDFLARE_E_STAGING_SECRET_AUTHORIZATION');
@@ -663,19 +663,77 @@ export function createDeploymentStatusEvidence({
     workerName,
     targetVersionId,
     deploymentId: rawStatus.id,
+    activeVersionCount: 1,
+    targetPercentage: 100,
     rawStatusSha256: sha256Hex(canonicalJson(rawStatus)),
     observedAt,
   };
 }
 
-export function validateDeploymentStatusEvidence(evidence, expected = {}) {
+const DEPLOYMENT_STATUS_CAPTURE_KEYS = Object.freeze([
+  'schemaVersion', 'contract', 'commandSha256', 'rawStdoutSha256', 'rawStdout',
+  'startedAt', 'completedAt', 'evidence', 'rawStatus',
+]);
+
+export function createDeploymentStatusCapture({
+  args, stdout, startedAt, completedAt, evidence, rawStatus,
+}) {
+  const capture = {
+    schemaVersion: 1,
+    contract: 'dwnc-cloudflare-deployment-status-capture-v1',
+    commandSha256: sha256Hex(canonicalJson(args)),
+    rawStdoutSha256: sha256Hex(stdout),
+    rawStdout: stdout,
+    startedAt,
+    completedAt,
+    evidence,
+    rawStatus,
+  };
+  return validateDeploymentStatusCapture(capture);
+}
+
+export function validateDeploymentStatusCapture(capture) {
+  if (!exactKeys(capture, DEPLOYMENT_STATUS_CAPTURE_KEYS)
+    || capture.schemaVersion !== 1
+    || capture.contract !== 'dwnc-cloudflare-deployment-status-capture-v1'
+    || !SHA256.test(capture.commandSha256 ?? '')
+    || !SHA256.test(capture.rawStdoutSha256 ?? '')
+    || typeof capture.rawStdout !== 'string' || capture.rawStdout.length === 0
+    || Number.isNaN(Date.parse(capture.startedAt ?? ''))
+    || Number.isNaN(Date.parse(capture.completedAt ?? ''))
+    || Date.parse(capture.completedAt) < Date.parse(capture.startedAt)
+    || Date.parse(capture.completedAt) - Date.parse(capture.startedAt) > 60000
+    || !capture.rawStatus || typeof capture.rawStatus !== 'object'
+    || Array.isArray(capture.rawStatus)) fail('CLOUDFLARE_E_DEPLOYMENT_STATUS_CAPTURE');
+  validateDeploymentStatusEvidence(capture.evidence);
+  let parsed;
+  try { parsed = JSON.parse(capture.rawStdout); }
+  catch { fail('CLOUDFLARE_E_DEPLOYMENT_STATUS_CAPTURE'); }
+  if (capture.rawStdoutSha256 !== sha256Hex(capture.rawStdout)
+    || canonicalJson(parsed) !== canonicalJson(capture.rawStatus)
+    || capture.evidence.rawStatusSha256 !== sha256Hex(canonicalJson(capture.rawStatus))
+    || capture.evidence.observedAt !== capture.completedAt) {
+    fail('CLOUDFLARE_E_DEPLOYMENT_STATUS_CAPTURE');
+  }
+  return capture;
+}
+
+export const canonicalDeploymentStatusCapturePayload = canonicalJson;
+
+export function validateDeploymentStatusEvidence(evidence, validation = {}) {
+  const expected = validation?.expected ?? validation;
+  if (!validation || typeof validation !== 'object' || Array.isArray(validation)
+    || 'expected' in validation && (Object.keys(validation).length !== 1
+      || !validation.expected || typeof validation.expected !== 'object'
+      || Array.isArray(validation.expected))) fail('CLOUDFLARE_E_DEPLOYMENT_STATUS_EXPECTED');
   const keys = ['schemaVersion', 'contract', 'environment', 'workerName', 'targetVersionId',
-    'deploymentId', 'rawStatusSha256', 'observedAt'];
+    'deploymentId', 'activeVersionCount', 'targetPercentage', 'rawStatusSha256', 'observedAt'];
   if (!exactKeys(evidence, keys) || evidence.schemaVersion !== 1
     || evidence.contract !== 'dwnc-cloudflare-deployment-status-evidence-v1'
     || !['production', 'staging'].includes(evidence.environment)
     || evidence.workerName !== (evidence.environment === 'production' ? WORKER_NAME : 'dwnc-me-staging')
     || !UUID.test(evidence.targetVersionId ?? '') || !UUID.test(evidence.deploymentId ?? '')
+    || evidence.activeVersionCount !== 1 || evidence.targetPercentage !== 100
     || !SHA256.test(evidence.rawStatusSha256 ?? '')
     || Number.isNaN(Date.parse(evidence.observedAt ?? ''))) fail('CLOUDFLARE_E_DEPLOYMENT_STATUS');
   for (const [key, value] of Object.entries(expected)) {
@@ -920,8 +978,9 @@ export async function loadSignedJsonFiles({ receiptPath, signaturePath, publicKe
   let receipt;
   try { receipt = JSON.parse(receiptRaw); }
   catch { fail('CLOUDFLARE_E_RELEASE_RECEIPT'); }
-  if (!/^[A-Za-z0-9+/]{86}==$/u.test(signatureRaw.trim())) fail('CLOUDFLARE_E_RELEASE_SIGNATURE');
-  return { receipt, signature: Buffer.from(signatureRaw.trim(), 'base64'), publicKeyPem };
+  if (receiptRaw !== `${canonicalJson(receipt)}\n`) fail('CLOUDFLARE_E_RELEASE_RECEIPT');
+  if (!/^[A-Za-z0-9+/]{86}==\n$/u.test(signatureRaw)) fail('CLOUDFLARE_E_RELEASE_SIGNATURE');
+  return { receipt, signature: Buffer.from(signatureRaw.slice(0, -1), 'base64'), publicKeyPem };
 }
 
 async function walkFiles(root, directory = root) {

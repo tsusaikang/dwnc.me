@@ -64,7 +64,7 @@ const [policy, manifest, versionFiles, smokeFiles, promotionAuthorizationFiles,
 const releaseFingerprint = policy.production.releasePublicKeySpkiSha256;
 if (!/^[a-f0-9]{64}$/u.test(policy.staging.releasePublicKeySpkiSha256 ?? '')
   || !/^[a-f0-9]{64}$/u.test(policy.staging.smokeAccessPolicySha256 ?? '')
-  || policy.staging.smokeOrigin !== 'https://smoke-staging.dwnc.me') {
+  || policy.staging.smokeOrigin !== 'https://dwnc-me-staging.dwnc.workers.dev') {
   throw new Error('CLOUDFLARE_E_PROMOTION_STAGING_POLICY');
 }
 verifySignedPayload({

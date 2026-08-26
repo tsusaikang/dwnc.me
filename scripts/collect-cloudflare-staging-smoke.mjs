@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { validateArtifactDirectory } from './lib/cloudflare-artifact.mjs';
 import {
@@ -12,12 +12,17 @@ import {
   validateVersionAttestation,
   verifySignedPayload,
 } from './lib/cloudflare-release.mjs';
+import { stagingSmokeAuthorizationHeader } from '../src/lib/staging-smoke-token.js';
 import { collectStagingSmokeEvidence } from './lib/cloudflare-staging.mjs';
 import {
   canonicalStagingMediaProbePayload,
   validateStagingMediaProbeReceipt,
 } from './lib/cloudflare-staging.mjs';
-import { installStructuredErrorHandler } from './lib/cloudflare-process.mjs';
+import {
+  installStructuredErrorHandler,
+  stagingSmokeTokenFromEnvironment,
+} from './lib/cloudflare-process.mjs';
+import { writeCanonicalEvidenceCreateOnly } from './lib/cloudflare-signing-key.mjs';
 import { loadTrackedPublicMediaManifest } from './lib/public-media-manifest.mjs';
 import { loadTrackedPublicMediaReleasePolicy } from './lib/public-media-manifest.mjs';
 
@@ -30,8 +35,8 @@ const absolute = (value) => {
 const artifactDirectory = absolute(process.env.CLOUDFLARE_PREUPLOAD_ARTIFACT_DIR);
 const outputPath = absolute(process.env.CLOUDFLARE_STAGING_SMOKE_CANDIDATE_PATH);
 const origin = process.env.CLOUDFLARE_STAGING_SYNTHETIC_ORIGIN;
-const token = process.env.CLOUDFLARE_STAGING_SMOKE_TOKEN;
-if (typeof token !== 'string' || token.length < 32 || !/^https:\/\//u.test(origin ?? '')) {
+const token = stagingSmokeTokenFromEnvironment(process.env, { descriptor: 3 });
+if (!/^https:\/\//u.test(origin ?? '')) {
   throw new Error('CLOUDFLARE_E_SMOKE_CREDENTIALS');
 }
 const [{ artifactSha256 }, manifest, redirectsRaw] = await Promise.all([
@@ -116,8 +121,10 @@ verifySignedPayload({
   publicKeyPem: stagingStatusFiles.publicKeyPem,
   expectedPublicKeySpkiSha256: policy.staging.releasePublicKeySpkiSha256,
   validation: {
-    environment: 'staging', workerName: 'dwnc-me-staging',
-    targetVersionId: stagingVersionFiles.receipt.versionId,
+    expected: {
+      environment: 'staging', workerName: 'dwnc-me-staging',
+      targetVersionId: stagingVersionFiles.receipt.versionId,
+    },
   },
 });
 if (Date.now() - Date.parse(stagingStatusFiles.receipt.observedAt) > 15 * 60 * 1000
@@ -131,7 +138,7 @@ const redirects = redirectsRaw.trim().split('\n').map((line) => {
 });
 const fetcher = (input, init = {}) => {
   const headers = new Headers(init.headers);
-  headers.set('authorization', `Bearer ${token}`);
+  headers.set('authorization', stagingSmokeAuthorizationHeader(token));
   return fetch(input, { ...init, headers });
 };
 const unauthenticatedFetcher = (input, init = {}) => fetch(input, init);
@@ -158,7 +165,7 @@ const receipt = await collectStagingSmokeEvidence({
   expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
 });
 validateStagingSmokeReceipt(receipt);
-await writeFile(outputPath, `${canonicalStagingSmokePayload(receipt)}\n`, { flag: 'wx', mode: 0o600 });
+await writeCanonicalEvidenceCreateOnly(outputPath, receipt, canonicalStagingSmokePayload);
 console.log(JSON.stringify({
   contract: receipt.contract, artifactSha256, redirectCount: receipt.redirectCount,
   candidateUnsigned: true, signingRequired: true, secretPrinted: false,

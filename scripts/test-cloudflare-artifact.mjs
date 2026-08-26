@@ -47,8 +47,11 @@ try {
     objectCount: 0, totalBytes: 0,
     target: { environment: 'production', bucket: 'dwnc-me-public-media-production', accountIdSha256: 'b'.repeat(64) },
     verificationLevel: 'full-get-sha256',
-    bucketExposure: { verification: 'cloudflare-control-plane', r2DevEnabled: false,
-      customDomainCount: 0, verifiedAt: '2026-08-25T00:00:00.000Z', evidenceSha256: 'c'.repeat(64) },
+    bucketExposure: {
+      verification: 'cloudflare-control-plane', jurisdiction: 'default', location: 'ENAM',
+      storageClass: 'Standard', bucketPropertiesSha256: 'd'.repeat(64), r2DevEnabled: false,
+      customDomainCount: 0, verifiedAt: '2026-08-25T00:00:00.000Z', evidenceSha256: 'c'.repeat(64),
+    },
     verifiedAt: '2026-08-25T00:00:00.000Z',
     audit: { headObjects: 0, fullGetObjects: 0, fullGetBytes: 0, orphanCount: 0 }, objects: [],
   };

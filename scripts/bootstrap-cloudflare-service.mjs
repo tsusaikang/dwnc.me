@@ -27,9 +27,11 @@ import {
   assertCloudflareAccountTarget,
   assertPinnedWranglerInstalled,
   claimOneTimeAuthorization,
-  cloudflareUploadEnvironment,
+  cloudflareControlPlaneCredentials,
+  cloudflareWranglerEnvironment,
   installStructuredErrorHandler,
 } from './lib/cloudflare-process.mjs';
+import { writeCanonicalEvidenceCreateOnly } from './lib/cloudflare-signing-key.mjs';
 import { loadTrackedPublicMediaReleasePolicy } from './lib/public-media-manifest.mjs';
 
 const ROOT = process.cwd();
@@ -54,7 +56,8 @@ const [policy, evidenceFiles, authorizationFiles] = await Promise.all([
   loadSignedJsonFiles(signedPaths('CLOUDFLARE_BOOTSTRAP_AUTHORIZATION')),
 ]);
 const target = policy[environment];
-assertCloudflareAccountTarget(process.env.CLOUDFLARE_ACCOUNT_ID, target.accountIdSha256);
+const controlPlane = cloudflareControlPlaneCredentials(process.env);
+assertCloudflareAccountTarget(controlPlane.accountId, target.accountIdSha256);
 await assertPinnedWranglerInstalled(ROOT);
 const outputPath = absolute(process.env.CLOUDFLARE_BOOTSTRAP_NDJSON_PATH);
 const candidatePath = absolute(process.env.CLOUDFLARE_BOOTSTRAP_ATTESTATION_CANDIDATE_PATH);
@@ -103,11 +106,10 @@ try {
   await writeFile(path.join(temporary, 'wrangler-bootstrap.jsonc'),
     `${canonicalJson(bootstrapConfig(environment))}\n`, { mode: 0o600 });
   await writeFile(path.join(temporary, 'wrangler-empty.env'), '', { mode: 0o600 });
-  const uploadEnvironment = cloudflareUploadEnvironment(process.env);
   const freshCapture = await fetchServiceExistenceCapture({
     environment,
-    accountId: process.env.CLOUDFLARE_ACCOUNT_ID,
-    apiToken: uploadEnvironment.CLOUDFLARE_API_TOKEN,
+    accountId: controlPlane.accountId,
+    apiToken: controlPlane.apiToken,
     ttlSeconds: 15,
   });
   validateServiceExistenceCapture(freshCapture, {
@@ -118,7 +120,9 @@ try {
     now: new Date(), maxAgeSeconds: authorizationFiles.receipt.maxFreshAbsenceAgeSeconds,
   });
   const freshCapturePayload = canonicalServiceExistenceCapturePayload(freshCapture);
-  await writeFile(freshCapturePath, `${freshCapturePayload}\n`, { flag: 'wx', mode: 0o600 });
+  await writeCanonicalEvidenceCreateOnly(
+    freshCapturePath, freshCapture, canonicalServiceExistenceCapturePayload,
+  );
   await claimOneTimeAuthorization({
     directory: absolute(process.env.CLOUDFLARE_BOOTSTRAP_ATTEMPT_DIR), authorizationSha256,
     scope: `${environment}-bootstrap`, target: bootstrapWorkerName(environment),
@@ -127,7 +131,7 @@ try {
   const args = bootstrapArguments({ environment, directory: temporary, authorizationSha256 });
   await promisify(execFile)(path.join(ROOT, 'node_modules/.bin/wrangler'), args, {
     cwd: ROOT, encoding: 'utf8', timeout: 60000, maxBuffer: 2 * 1024 * 1024,
-    env: cloudflareUploadEnvironment(process.env, {
+    env: cloudflareWranglerEnvironment(process.env, {
       CI: '1', WRANGLER_OUTPUT_FILE_PATH: outputPath, WRANGLER_WRITE_LOGS: '0',
       WRANGLER_SEND_METRICS: 'false', WRANGLER_NO_SKILLS_UPDATE_PROMPTS: 'true',
     }),
@@ -145,13 +149,13 @@ try {
         'versions', 'view', event.version_id, '--json', ...commonReadArguments,
       ], {
         cwd: ROOT, encoding: 'utf8', timeout: 60000, maxBuffer: 2 * 1024 * 1024,
-        env: cloudflareUploadEnvironment(process.env, { CI: '1', WRANGLER_WRITE_LOGS: '0' }),
+        env: cloudflareWranglerEnvironment(process.env, { CI: '1', WRANGLER_WRITE_LOGS: '0' }),
       }),
       promisify(execFile)(path.join(ROOT, 'node_modules/.bin/wrangler'), [
         'deployments', 'status', '--json', ...commonReadArguments,
       ], {
         cwd: ROOT, encoding: 'utf8', timeout: 60000, maxBuffer: 2 * 1024 * 1024,
-        env: cloudflareUploadEnvironment(process.env, { CI: '1', WRANGLER_WRITE_LOGS: '0' }),
+        env: cloudflareWranglerEnvironment(process.env, { CI: '1', WRANGLER_WRITE_LOGS: '0' }),
       }),
     ]);
     detail = { raw: detailRaw, value: JSON.parse(detailRaw) };
@@ -193,8 +197,9 @@ try {
     attestedAt: new Date().toISOString(),
   };
   validateBootstrapAttestation(attestation);
-  await writeFile(candidatePath,
-    `${canonicalBootstrapAttestationPayload(attestation)}\n`, { flag: 'wx', mode: 0o600 });
+  await writeCanonicalEvidenceCreateOnly(
+    candidatePath, attestation, canonicalBootstrapAttestationPayload,
+  );
   console.log(JSON.stringify({
     contract: 'dwnc-cloudflare-deny-bootstrap-result-v1', environment,
     workerName: event.worker_name, versionId: event.version_id,

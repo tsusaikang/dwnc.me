@@ -76,8 +76,8 @@ let mockS3Calls = 0;
 const client = new R2S3Client({
   accountId: 'a'.repeat(32),
   bucket: 'dwnc-me-public-media-staging',
-  accessKeyId: 'SYNTHETIC_ACCESS',
-  secretAccessKey: 'synthetic-secret-value',
+  accessKeyId: 'b'.repeat(32),
+  secretAccessKey: 'c'.repeat(64),
   fetchImpl: async (_url, init) => {
     mockS3Calls += 1;
     assert.equal(init.method, 'HEAD');

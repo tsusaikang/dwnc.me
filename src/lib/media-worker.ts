@@ -1,3 +1,5 @@
+import { isCanonicalStagingSmokeToken } from './staging-smoke-token.js';
+
 export interface PublicMediaWorkerEntry {
   publicPath: string;
   key: string;
@@ -20,10 +22,16 @@ interface MediaCacheLike {
   put(request: Request, response: Response): Promise<void>;
 }
 
+function isMediaCacheLike(value: unknown): value is MediaCacheLike {
+  return value !== null && typeof value === 'object'
+    && 'match' in value && typeof value.match === 'function'
+    && 'put' in value && typeof value.put === 'function';
+}
+
 export type MediaWorkerEnvironment = Pick<Cloudflare.ProductionEnv, 'MEDIA_BUCKET' | 'ASSETS'> & {
   MEDIA_CACHE?: MediaCacheLike;
   DWNC_DEPLOYMENT_ENVIRONMENT?: 'staging' | 'production';
-  DWNC_STAGING_SMOKE_POLICY?: 'signed-header-non-access-origin';
+  DWNC_STAGING_SMOKE_POLICY?: 'bearer-token-non-access-origin';
   DWNC_STAGING_SMOKE_ORIGIN?: string;
   DWNC_STAGING_SMOKE_TOKEN?: string;
   CF_VERSION_METADATA?: { id: string; tag?: string; timestamp?: string };
@@ -68,12 +76,14 @@ async function sha256Text(value: string): Promise<string> {
 }
 
 async function secureTextEqual(left: string, right: string): Promise<boolean> {
-  const [leftDigest, rightDigest] = await Promise.all([sha256Text(left), sha256Text(right)]);
-  let difference = leftDigest.length ^ rightDigest.length;
-  for (let index = 0; index < leftDigest.length; index += 1) {
-    difference |= leftDigest.charCodeAt(index) ^ rightDigest.charCodeAt(index);
-  }
-  return difference === 0;
+  const [leftDigest, rightDigest] = await Promise.all([
+    crypto.subtle.digest('SHA-256', encoder.encode(left)),
+    crypto.subtle.digest('SHA-256', encoder.encode(right)),
+  ]);
+  const subtle = crypto.subtle as SubtleCrypto & {
+    timingSafeEqual(a: ArrayBuffer | ArrayBufferView, b: ArrayBuffer | ArrayBufferView): boolean;
+  };
+  return subtle.timingSafeEqual(leftDigest, rightDigest);
 }
 
 async function stagingSmokeAuthorized(
@@ -82,14 +92,17 @@ async function stagingSmokeAuthorized(
   env: MediaWorkerEnvironment,
 ): Promise<boolean | null> {
   if (env.DWNC_DEPLOYMENT_ENVIRONMENT !== 'staging') return null;
-  if (env.DWNC_STAGING_SMOKE_POLICY !== 'signed-header-non-access-origin'
+  const configuredToken = env.DWNC_STAGING_SMOKE_TOKEN;
+  if (env.DWNC_STAGING_SMOKE_POLICY !== 'bearer-token-non-access-origin'
     || typeof env.DWNC_STAGING_SMOKE_ORIGIN !== 'string'
     || url.origin !== env.DWNC_STAGING_SMOKE_ORIGIN
-    || typeof env.DWNC_STAGING_SMOKE_TOKEN !== 'string'
-    || env.DWNC_STAGING_SMOKE_TOKEN.length < 32) return false;
+    || typeof configuredToken !== 'string'
+    || !isCanonicalStagingSmokeToken(configuredToken)) return false;
   const authorization = request.headers.get('authorization');
   if (!authorization?.startsWith('Bearer ')) return false;
-  return secureTextEqual(authorization.slice('Bearer '.length), env.DWNC_STAGING_SMOKE_TOKEN);
+  const candidate = authorization.slice('Bearer '.length);
+  if (!isCanonicalStagingSmokeToken(candidate)) return false;
+  return secureTextEqual(candidate, configuredToken);
 }
 
 function withStagingCacheProbe(response: Response, enabled: boolean): Response {
@@ -241,8 +254,9 @@ function responseHeaders(entry: PublicMediaWorkerEntry, object: R2ObjectLike): H
 
 function cacheForEnvironment(env: MediaWorkerEnvironment): MediaCacheLike | null {
   if (env.MEDIA_CACHE) return env.MEDIA_CACHE;
-  const cacheStorage = (globalThis as unknown as { caches?: { default?: MediaCacheLike } }).caches;
-  return cacheStorage?.default ?? null;
+  const defaultCache: unknown = typeof caches === 'undefined'
+    ? undefined : Reflect.get(caches, 'default');
+  return isMediaCacheLike(defaultCache) ? defaultCache : null;
 }
 
 function cacheKey(url: URL, entry: PublicMediaWorkerEntry): Request {

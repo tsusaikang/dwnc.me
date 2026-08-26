@@ -1,9 +1,16 @@
 import { createHash, createHmac } from 'node:crypto';
+import { fstatSync, readSync } from 'node:fs';
+import { canonicalJson } from './cloudflare-release.mjs';
 import { publicMediaEntryManifestSha256 } from './public-media-manifest.mjs';
 
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 const SAFE_ACCOUNT = /^[a-f0-9]{32}$/u;
 const SAFE_BUCKET = /^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/u;
+const SAFE_ACCESS_KEY = /^[A-Fa-f0-9]{32}$/u;
+const SAFE_SECRET_KEY = /^[A-Fa-f0-9]{64}$/u;
+const LEGACY_CREDENTIAL_NAMES = Object.freeze([
+  'R2_ACCOUNT_ID', 'R2_BUCKET_NAME', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY',
+]);
 
 export class R2S3Error extends Error {
   constructor(code, { status = undefined, retryable = false } = {}) {
@@ -22,6 +29,80 @@ const encodeRfc3986 = (value) => encodeURIComponent(value).replace(/[!'()*]/gu, 
 
 function canonicalUri(bucket, key = '') {
   return `/${[bucket, ...key.split('/')].map(encodeRfc3986).join('/')}`;
+}
+
+export function validateR2AccountId(accountId) {
+  if (!SAFE_ACCOUNT.test(accountId ?? '')) fail('MEDIA_E_R2_ACCOUNT_ID');
+  return accountId;
+}
+
+export function validateR2AccessKeyId(accessKeyId) {
+  if (!SAFE_ACCESS_KEY.test(accessKeyId ?? '')) fail('MEDIA_E_R2_ACCESS_KEY_ID');
+  return accessKeyId;
+}
+
+export function validateR2SecretAccessKey(secretAccessKey) {
+  if (!SAFE_SECRET_KEY.test(secretAccessKey ?? '')) fail('MEDIA_E_R2_SECRET_ACCESS_KEY');
+  return secretAccessKey;
+}
+
+export function validateR2Credentials(credentials) {
+  const keys = ['schemaVersion', 'contract', 'accountId', 'bucket', 'accessKeyId', 'secretAccessKey'];
+  if (!credentials || typeof credentials !== 'object' || Array.isArray(credentials)
+    || Object.keys(credentials).length !== keys.length
+    || Object.keys(credentials).some((key) => !keys.includes(key))
+    || credentials.schemaVersion !== 1
+    || credentials.contract !== 'dwnc-r2-s3-credentials-v1'
+    || !SAFE_BUCKET.test(credentials.bucket ?? '')
+    || typeof credentials.accountId !== 'string'
+    || typeof credentials.accessKeyId !== 'string'
+    || typeof credentials.secretAccessKey !== 'string') fail('MEDIA_E_R2_CREDENTIALS');
+  validateR2AccountId(credentials.accountId);
+  validateR2AccessKeyId(credentials.accessKeyId);
+  validateR2SecretAccessKey(credentials.secretAccessKey);
+  return credentials;
+}
+
+export function r2CredentialsFromEnvironment(environment = process.env) {
+  const fdDefined = Object.hasOwn(environment, 'R2_CREDENTIALS_FD');
+  const legacyDefined = LEGACY_CREDENTIAL_NAMES.some((name) => Object.hasOwn(environment, name));
+  if (legacyDefined) fail('MEDIA_E_R2_CREDENTIALS_ENV_FORBIDDEN');
+  if (fdDefined) {
+    if (environment.R2_CREDENTIALS_FD !== '3') fail('MEDIA_E_R2_CREDENTIALS_FD');
+    let stats;
+    let bytes;
+    try {
+      stats = fstatSync(3);
+      if (!(stats.isFIFO() || stats.isSocket()) || stats.nlink !== 0
+        || ![0o600, 0o666].includes(stats.mode & 0o777)
+        || typeof process.getuid === 'function' && stats.uid !== process.getuid()
+        || stats.size < 0 || stats.size > 4096) fail('MEDIA_E_R2_CREDENTIALS_FD');
+      bytes = Buffer.alloc(4097);
+      let total = 0;
+      while (true) {
+        const read = readSync(3, bytes, total, bytes.length - total, null);
+        if (read === 0) break;
+        total += read;
+        if (total > 4096) fail('MEDIA_E_R2_CREDENTIALS_FD');
+      }
+      bytes = bytes.subarray(0, total);
+    } catch (error) {
+      if (error instanceof R2S3Error) throw error;
+      fail('MEDIA_E_R2_CREDENTIALS_FD');
+    }
+    try {
+      const raw = bytes.toString('utf8');
+      let credentials;
+      try { credentials = JSON.parse(raw); }
+      catch { fail('MEDIA_E_R2_CREDENTIALS'); }
+      validateR2Credentials(credentials);
+      if (canonicalJson(credentials) !== raw) fail('MEDIA_E_R2_CREDENTIALS_CANONICAL');
+      return credentials;
+    } finally {
+      bytes.fill(0);
+    }
+  }
+  fail('MEDIA_E_R2_CREDENTIALS_FD_REQUIRED');
 }
 
 function canonicalQuery(parameters) {
@@ -54,10 +135,10 @@ export function signR2S3Request({
   payloadSha256 = sha256Hex(''),
   now = new Date(),
 }) {
-  if (!SAFE_ACCOUNT.test(accountId ?? '') || !SAFE_BUCKET.test(bucket ?? '')
-    || typeof accessKeyId !== 'string' || accessKeyId.length < 8
-    || typeof secretAccessKey !== 'string' || secretAccessKey.length < 16
-    || !['GET', 'HEAD', 'PUT'].includes(method)
+  validateR2AccountId(accountId);
+  validateR2AccessKeyId(accessKeyId);
+  validateR2SecretAccessKey(secretAccessKey);
+  if (!SAFE_BUCKET.test(bucket ?? '') || !['GET', 'HEAD', 'PUT'].includes(method)
     || typeof key !== 'string' || key.startsWith('/') || key.includes('..') || key.includes('\\')
     || !/^[a-f0-9]{64}$/u.test(payloadSha256)) fail('MEDIA_E_R2_CONFIG');
   const endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
@@ -317,15 +398,12 @@ export class R2S3Client {
 }
 
 export function r2ClientFromEnvironment(environment = process.env, options = {}) {
-  const required = ['R2_ACCOUNT_ID', 'R2_BUCKET_NAME', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY'];
-  if (required.some((name) => typeof environment[name] !== 'string' || environment[name].length === 0)) {
-    fail('MEDIA_E_R2_CREDENTIALS_REQUIRED');
-  }
+  const credentials = r2CredentialsFromEnvironment(environment);
   return new R2S3Client({
-    accountId: environment.R2_ACCOUNT_ID,
-    bucket: environment.R2_BUCKET_NAME,
-    accessKeyId: environment.R2_ACCESS_KEY_ID,
-    secretAccessKey: environment.R2_SECRET_ACCESS_KEY,
+    accountId: credentials.accountId,
+    bucket: credentials.bucket,
+    accessKeyId: credentials.accessKeyId,
+    secretAccessKey: credentials.secretAccessKey,
     ...options,
   });
 }

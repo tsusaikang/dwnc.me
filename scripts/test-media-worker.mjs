@@ -1,7 +1,19 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { createMediaWorker } from '../src/lib/media-worker.ts';
 import { publicMediaEntryManifestSha256 } from './lib/public-media-manifest.mjs';
+
+// Node 24's Web Crypto surface does not yet expose the Workers-only method.
+// The production Worker calls crypto.subtle.timingSafeEqual directly; this shim
+// keeps the Node fixture behavior equivalent without changing Worker code.
+if (typeof crypto.subtle.timingSafeEqual !== 'function') {
+  Object.defineProperty(crypto.subtle, 'timingSafeEqual', {
+    value: (left, right) => timingSafeEqual(
+      Buffer.from(left.buffer ?? left, left.byteOffset ?? 0, left.byteLength),
+      Buffer.from(right.buffer ?? right, right.byteOffset ?? 0, right.byteLength),
+    ),
+  });
+}
 
 const manifestSha256 = 'a'.repeat(64);
 const bytes = Buffer.from('0123456789abcdef');
@@ -46,7 +58,7 @@ function environment({
   missing = false, headError = false, getError = false, mutate = undefined,
   mutateHead = undefined, mutateGet = undefined,
   cached = undefined, cacheMatchError = false, cachePutError = false,
-  workerEnvironment = {},
+  workerEnvironment = {}, withoutInjectedCache = false,
 } = {}) {
   const calls = { head: [], get: [], assets: [], cacheMatch: [], cachePut: [], waitUntil: [] };
   const base = object();
@@ -82,7 +94,7 @@ function environment({
           return new Response('asset fallback', { status: 200 });
         },
       },
-      MEDIA_CACHE: {
+      ...(withoutInjectedCache ? {} : { MEDIA_CACHE: {
         async match(request) {
           calls.cacheMatch.push(request.url);
           if (cacheMatchError) throw new Error('hidden cache error');
@@ -92,7 +104,7 @@ function environment({
           calls.cachePut.push({ request: request.url, response: response.clone() });
           if (cachePutError) throw new Error('hidden cache error');
         },
-      },
+      } }),
     },
     context: {
       waitUntil(promise) {
@@ -107,21 +119,107 @@ let assertions = 0;
 const equal = (actual, expected) => { assert.equal(actual, expected); assertions += 1; };
 
 {
-  const smokeToken = 'staging-smoke-token-with-at-least-32-characters';
+  const originalCaches = Object.getOwnPropertyDescriptor(globalThis, 'caches');
+  try {
+    delete globalThis.caches;
+    const absent = environment({ withoutInjectedCache: true });
+    const absentResponse = await handle(new Request(`https://dwnc.me${entry.publicPath}`),
+      absent.env, absent.context);
+    equal(absentResponse.status, 200);
+    equal(absent.calls.head.length, 1);
+    equal(absent.calls.get.length, 1);
+    equal(absent.calls.waitUntil.length, 0);
+
+    const globalCacheCalls = [];
+    const globalCachedResponse = new Response(bytes, {
+      status: 200,
+      headers: {
+        'accept-ranges': 'bytes',
+        'cache-control': entry.cacheControl,
+        'content-length': String(entry.size),
+        'content-type': entry.contentType,
+        etag: '"global-cache-etag"',
+        'last-modified': 'Tue, 25 Aug 2026 00:00:00 GMT',
+        'x-content-type-options': 'nosniff',
+      },
+    });
+    Object.defineProperty(globalThis, 'caches', {
+      configurable: true,
+      value: {
+        default: {
+          async match(request) {
+            globalCacheCalls.push(request.url);
+            return globalCachedResponse.clone();
+          },
+          async put() {},
+        },
+      },
+    });
+    const present = environment({ withoutInjectedCache: true });
+    const presentResponse = await handle(new Request(`https://dwnc.me${entry.publicPath}`),
+      present.env, present.context);
+    equal(presentResponse.status, 200);
+    equal(presentResponse.headers.get('etag'), '"global-cache-etag"');
+    equal(globalCacheCalls.length, 1);
+    equal(present.calls.head.length, 0);
+    equal(present.calls.get.length, 0);
+  } finally {
+    if (originalCaches) Object.defineProperty(globalThis, 'caches', originalCaches);
+    else delete globalThis.caches;
+  }
+}
+
+{
+  const smokeToken = 'A'.repeat(43);
   const workerEnvironment = {
     DWNC_DEPLOYMENT_ENVIRONMENT: 'staging',
-    DWNC_STAGING_SMOKE_POLICY: 'signed-header-non-access-origin',
-    DWNC_STAGING_SMOKE_ORIGIN: 'https://smoke-staging.dwnc.me',
+    DWNC_STAGING_SMOKE_POLICY: 'bearer-token-non-access-origin',
+    DWNC_STAGING_SMOKE_ORIGIN: 'https://dwnc-me-staging.dwnc.workers.dev',
     DWNC_STAGING_SMOKE_TOKEN: smokeToken,
     CF_VERSION_METADATA: { id: '22345678-1234-4123-8123-123456789abc' },
   };
   const denied = environment({ workerEnvironment });
-  const deniedResponse = await handle(new Request('https://smoke-staging.dwnc.me/about'), denied.env);
+  const deniedResponse = await handle(new Request('https://dwnc-me-staging.dwnc.workers.dev/about'), denied.env);
   equal(deniedResponse.status, 404);
   equal(denied.calls.assets.length, 0);
 
+  for (const authorization of [
+    `Bearer ${smokeToken.slice(0, -1)}`,
+    `Bearer ${smokeToken}x`,
+    `Bearer ${'x'.repeat(smokeToken.length)}`,
+    `Bearer ${'A'.repeat(44)}`,
+    smokeToken,
+  ]) {
+    const invalid = environment({ workerEnvironment });
+    const invalidResponse = await handle(new Request('https://dwnc-me-staging.dwnc.workers.dev/about', {
+      headers: { authorization },
+    }), invalid.env);
+    equal(invalidResponse.status, 404);
+    equal(invalid.calls.assets.length, 0);
+  }
+
+  const legacyPolicy = environment({
+    workerEnvironment: { ...workerEnvironment, DWNC_STAGING_SMOKE_POLICY: 'signed-header-non-access-origin' },
+  });
+  const legacyPolicyResponse = await handle(new Request('https://dwnc-me-staging.dwnc.workers.dev/about', {
+    headers: { authorization: `Bearer ${smokeToken}` },
+  }), legacyPolicy.env);
+  equal(legacyPolicyResponse.status, 404);
+  equal(legacyPolicy.calls.assets.length, 0);
+
+  const oversizedConfiguredToken = environment({
+    workerEnvironment: { ...workerEnvironment, DWNC_STAGING_SMOKE_TOKEN: 'A'.repeat(44) },
+  });
+  const oversizedConfiguredTokenResponse = await handle(new Request(
+    'https://dwnc-me-staging.dwnc.workers.dev/about', {
+      headers: { authorization: `Bearer ${'A'.repeat(44)}` },
+    },
+  ), oversizedConfiguredToken.env);
+  equal(oversizedConfiguredTokenResponse.status, 404);
+  equal(oversizedConfiguredToken.calls.assets.length, 0);
+
   const allowed = environment({ workerEnvironment });
-  const allowedResponse = await handle(new Request('https://smoke-staging.dwnc.me/about', {
+  const allowedResponse = await handle(new Request('https://dwnc-me-staging.dwnc.workers.dev/about', {
     headers: { authorization: `Bearer ${smokeToken}` },
   }), allowed.env);
   equal(allowedResponse.status, 200);
@@ -142,7 +240,7 @@ const equal = (actual, expected) => { assert.equal(actual, expected); assertions
   });
   const cacheHit = environment({ cached, workerEnvironment });
   const cacheHitResponse = await handle(new Request(
-    `https://smoke-staging.dwnc.me${entry.publicPath}`,
+    `https://dwnc-me-staging.dwnc.workers.dev${entry.publicPath}`,
     { headers: { authorization: `Bearer ${smokeToken}`, 'x-dwnc-smoke-cache-probe': '1' } },
   ), cacheHit.env);
   equal(cacheHitResponse.status, 200);

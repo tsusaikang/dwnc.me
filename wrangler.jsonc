@@ -40,8 +40,11 @@
       },
       "vars": {
         "DWNC_DEPLOYMENT_ENVIRONMENT": "staging",
-        "DWNC_STAGING_SMOKE_POLICY": "signed-header-non-access-origin",
-        "DWNC_STAGING_SMOKE_ORIGIN": "https://smoke-staging.dwnc.me"
+        "DWNC_STAGING_SMOKE_POLICY": "bearer-token-non-access-origin",
+        "DWNC_STAGING_SMOKE_ORIGIN": "https://dwnc-me-staging.dwnc.workers.dev"
+      },
+      "secrets": {
+        "required": ["DWNC_STAGING_SMOKE_TOKEN"]
       },
       "version_metadata": {
         "binding": "CF_VERSION_METADATA"

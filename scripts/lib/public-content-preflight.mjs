@@ -10,6 +10,17 @@ import {
   SequenceError,
   validateSourceIdentityInput,
 } from './global-sequence.mjs';
+import {
+  loadTrackedPublicMapLinkPolicy,
+  removePolicyMapBlocks,
+} from './public-map-link-policy.mjs';
+import {
+  applyPublicMediaCuration,
+  containsUncuratedStickerMarkup,
+  effectivePublicMediaPresentationData,
+  loadTrackedPublicMediaCurationPolicy,
+  publicMediaCurationExcludedAssets,
+} from './public-media-curation.mjs';
 
 const fail = (code) => { throw new SequenceError(code); };
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
@@ -110,13 +121,33 @@ function addReference(references, value, kind) {
   }
 }
 
-export function collectRenderableLocalAssetReferences(data, body) {
+export function collectRenderableLocalAssetReferences(data, body, {
+  mapLinkPolicy = null,
+  mediaCurationPolicy = null,
+} = {}) {
   const references = new Set();
-  addReference(references, data?.cover, 'cover');
-  const $ = cheerio.load(body, null, false);
+  let assetBody = body;
+  if (mapLinkPolicy) {
+    assetBody = removePolicyMapBlocks(body, data, mapLinkPolicy).html;
+  } else {
+    const mapCheck = cheerio.load(body, null, false);
+    if (mapCheck('.se_component.se_map, .se-component.se-map, figure.tistory-map').length) {
+      fail('SEQ_E_PUBLIC_MAP_POLICY');
+    }
+  }
+  if (mediaCurationPolicy) {
+    assetBody = applyPublicMediaCuration(assetBody, data, mediaCurationPolicy).html;
+  } else if (containsUncuratedStickerMarkup(assetBody)) {
+    fail('SEQ_E_PUBLIC_MEDIA_CURATION_POLICY');
+  }
+  const presentationData = mediaCurationPolicy
+    ? effectivePublicMediaPresentationData(data, mediaCurationPolicy)
+    : { cover: data?.cover };
+  addReference(references, presentationData.cover, 'cover');
+  const $ = cheerio.load(assetBody, null, false);
   if ($('object, embed').length) fail('SEQ_E_PUBLIC_ASSET_ACTIVE_EMBED');
-  if (/(?:&#0*47;|&#x0*2f;|&sol;|\\u0*02f|\\x2f|\\\/)media(?:\/|\\|%2f)/iu.test(body)
-    || /\b(?:src|poster|href|data|background)\s*=\s*\{[^}]*\/media\//iu.test(body)) {
+  if (/(?:&#0*47;|&#x0*2f;|&sol;|\\u0*02f|\\x2f|\\\/)media(?:\/|\\|%2f)/iu.test(assetBody)
+    || /\b(?:src|poster|href|data|background)\s*=\s*\{[^}]*\/media\//iu.test(assetBody)) {
     fail('SEQ_E_PUBLIC_ASSET_PATH');
   }
   $('*').each((_index, element) => {
@@ -134,17 +165,17 @@ export function collectRenderableLocalAssetReferences(data, body) {
       addReference(references, match[2], 'media');
     }
   });
-  for (const match of body.matchAll(/!?\[[^\]]*\]\(\s*(?:<([^>]+)>|([^\s)]+))/gu)) {
+  for (const match of assetBody.matchAll(/!?\[[^\]]*\]\(\s*(?:<([^>]+)>|([^\s)]+))/gu)) {
     addReference(references, match[1] ?? match[2], match[0].startsWith('!') ? 'media' : 'href');
   }
-  for (const match of body.matchAll(/^\s*\[[^\]]+\]:\s*(?:<([^>]+)>|(\S+))/gmu)) {
+  for (const match of assetBody.matchAll(/^\s*\[[^\]]+\]:\s*(?:<([^>]+)>|(\S+))/gmu)) {
     addReference(references, match[1] ?? match[2], 'href');
   }
-  for (const match of body.matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)/giu)) addReference(references, match[2], 'media');
-  for (const match of body.matchAll(/@import\s+(?!url\()(['"])(.*?)\1/giu)) {
+  for (const match of assetBody.matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)/giu)) addReference(references, match[2], 'media');
+  for (const match of assetBody.matchAll(/@import\s+(?!url\()(['"])(.*?)\1/giu)) {
     addReference(references, match[2], 'media');
   }
-  for (const match of body.matchAll(/<((?:\/media\/)[^>\s]+)>/giu)) addReference(references, match[1], 'media');
+  for (const match of assetBody.matchAll(/<((?:\/media\/)[^>\s]+)>/giu)) addReference(references, match[1], 'media');
   return [...references].sort((left, right) => left.localeCompare(right, 'en'));
 }
 
@@ -188,6 +219,12 @@ function identitySetDigest(identities) {
 export async function loadPublicAssetEvidence(root, {
   genesisIdentityEvidence = DEFAULT_GENESIS_IDENTITY_EVIDENCE,
 } = {}) {
+  const mapLinkPolicy = await loadTrackedPublicMapLinkPolicy(root, { allowMissing: true });
+  const mapExcludedAssets = new Set(mapLinkPolicy?.excludedAssets ?? []);
+  const mediaCurationPolicy = await loadTrackedPublicMediaCurationPolicy(root, { allowMissing: true });
+  const curatedExcludedAssets = mediaCurationPolicy
+    ? publicMediaCurationExcludedAssets(mediaCurationPolicy)
+    : new Set();
   if (!genesisIdentityEvidence || typeof genesisIdentityEvidence !== 'object'
     || !Number.isSafeInteger(genesisIdentityEvidence.tistory)
     || genesisIdentityEvidence.tistory < 0
@@ -358,7 +395,9 @@ export async function loadPublicAssetEvidence(root, {
     const separator = identity.indexOf(':');
     const prefix = `/media/${identity.slice(0, separator)}/${identity.slice(separator + 1)}/`;
     return [identity, [...trackedManifestIndex.keys()]
-      .filter((assetPath) => assetPath.startsWith(prefix))
+      .filter((assetPath) => assetPath.startsWith(prefix)
+        && !mapExcludedAssets.has(assetPath)
+        && !curatedExcludedAssets.has(assetPath))
       .sort((left, right) => left.localeCompare(right, 'en'))];
   }));
   return {
@@ -367,6 +406,8 @@ export async function loadPublicAssetEvidence(root, {
     genesisIdentities,
     genesisAssetPaths,
     receiptIndex,
+    mapLinkPolicy,
+    mediaCurationPolicy,
   };
 }
 
@@ -375,12 +416,16 @@ export async function loadPublicAssetManifestIndex(root) {
 }
 
 async function validateAssetReferences(root, data, body, manifestIndex, {
-  assetMode = 'local', allowMissingManifest = false,
+  assetMode = 'local', allowMissingManifest = false, mapLinkPolicy = null,
+  mediaCurationPolicy = null,
 } = {}) {
   if (!['local', 'manifest'].includes(assetMode)) fail('SEQ_E_PUBLIC_ASSET_MODE');
   const publicRoot = path.join(root, 'public');
   if (assetMode === 'local') await assertRealDirectory(publicRoot);
-  const references = collectRenderableLocalAssetReferences(data, body);
+  const references = collectRenderableLocalAssetReferences(data, body, {
+    mapLinkPolicy,
+    mediaCurationPolicy,
+  });
   for (const reference of references) {
     let decoded;
     try { decoded = decodeURIComponent(reference).normalize('NFC'); }
@@ -418,6 +463,8 @@ export async function indexPreparedPublicContent(root, {
   genesisAssetPaths = undefined,
   assetReceiptIndex = undefined,
   genesisIdentityEvidence = undefined,
+  mapLinkPolicy = undefined,
+  mediaCurationPolicy = undefined,
   assetMode = 'local',
 } = {}) {
   if (!['local', 'manifest'].includes(assetMode)) fail('SEQ_E_PUBLIC_ASSET_MODE');
@@ -435,6 +482,12 @@ export async function indexPreparedPublicContent(root, {
   const genesisIdentitySet = genesisIdentities ?? evidence.genesisIdentities;
   const genesisAssetPathIndex = genesisAssetPaths ?? evidence.genesisAssetPaths;
   const receiptIndex = assetReceiptIndex ?? evidence.receiptIndex;
+  const resolvedMapLinkPolicy = mapLinkPolicy === undefined
+    ? evidence?.mapLinkPolicy ?? await loadTrackedPublicMapLinkPolicy(root, { allowMissing: true })
+    : mapLinkPolicy;
+  const resolvedMediaCurationPolicy = mediaCurationPolicy === undefined
+    ? evidence?.mediaCurationPolicy ?? await loadTrackedPublicMediaCurationPolicy(root, { allowMissing: true })
+    : mediaCurationPolicy;
   const roots = [
     ['tistory', path.join(contentRoot, 'tistory'), false],
     ['naver', path.join(contentRoot, 'naver'), false],
@@ -459,7 +512,10 @@ export async function indexPreparedPublicContent(root, {
       const receipt = receiptIndex.get(key);
       const genesisIdentity = genesisIdentitySet.has(key);
       const assetPaths = await validateAssetReferences(root, data, body, manifestIndex, {
-        assetMode, allowMissingManifest: genesisIdentity,
+        assetMode,
+        allowMissingManifest: genesisIdentity,
+        mapLinkPolicy: resolvedMapLinkPolicy,
+        mediaCurationPolicy: resolvedMediaCurationPolicy,
       });
       const identityAssetPrefix = `/media/${validated.source}/${validated.sourceId}/`;
       if (assetPaths.some((assetPath) => !assetPath.startsWith(identityAssetPrefix))) {

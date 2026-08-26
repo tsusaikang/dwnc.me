@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import {
-  chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile,
+  chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile,
 } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -47,19 +47,50 @@ import {
   cloudflareAccountIdSha256,
   publicKeySpkiSha256,
 } from './lib/public-media-manifest.mjs';
+import { writeAnonymousInheritedInput } from './lib/cloudflare-process.mjs';
 
 const exec = promisify(execFile);
 const executor = path.resolve('scripts/execute-cloudflare-production-promotion.mjs');
 const stagingExecutor = path.resolve('scripts/activate-cloudflare-staging-version.mjs');
 const stagingUploadExecutor = path.resolve('scripts/upload-cloudflare-staging-version.mjs');
 const bootstrapExecutor = path.resolve('scripts/bootstrap-cloudflare-service.mjs');
-const temporary = await mkdtemp(path.join(os.tmpdir(), 'dwnc-promotion-executor-'));
+const temporary = await realpath(await mkdtemp(path.join(os.tmpdir(), 'dwnc-promotion-executor-')));
 const accountId = 'a'.repeat(32);
 const accountIdSha256 = cloudflareAccountIdSha256(accountId);
 const bootstrapVersionId = '12345678-1234-4123-8123-123456789abc';
 const targetVersionId = '22345678-1234-4123-8123-123456789abc';
 const deploymentId = '32345678-1234-4123-8123-123456789abc';
 let assertions = 0;
+
+async function execWithAnonymousToken(command, args, { cwd, env, token, maxBuffer }) {
+  const child = spawn(command, args, {
+    cwd,
+    env: { ...env, CLOUDFLARE_API_TOKEN_FD: '3' },
+    stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
+  });
+  const output = [];
+  const errors = [];
+  let outputBytes = 0;
+  let errorBytes = 0;
+  child.stdout.on('data', (chunk) => { outputBytes += chunk.length; if (outputBytes <= maxBuffer) output.push(chunk); });
+  child.stderr.on('data', (chunk) => { errorBytes += chunk.length; if (errorBytes <= maxBuffer) errors.push(chunk); });
+  const [, code] = await Promise.all([
+    writeAnonymousInheritedInput(child.stdio[3], token, { descriptor: 3, maximumBytes: 4096 }),
+    new Promise((resolve, reject) => {
+      child.once('error', reject);
+      child.once('close', resolve);
+    }),
+  ]);
+  const stdout = Buffer.concat(output).toString('utf8');
+  const stderr = Buffer.concat(errors).toString('utf8');
+  if (code !== 0 || outputBytes > maxBuffer || errorBytes > maxBuffer) {
+    const error = new Error('synthetic child failed');
+    error.stdout = stdout;
+    error.stderr = stderr;
+    throw error;
+  }
+  return { stdout, stderr };
+}
 
 const equal = (actual, expected) => { assert.deepEqual(actual, expected); assertions += 1; };
 const unlock = async (directory) => {
@@ -111,7 +142,7 @@ async function makeFixture(name, mode) {
     accountIdSha256,
     publicKeySpkiSha256: fingerprint,
     releasePublicKeySpkiSha256: fingerprint,
-    smokeOrigin: environment === 'staging' ? 'https://smoke-staging.dwnc.me' : null,
+    smokeOrigin: environment === 'staging' ? 'https://dwnc-me-staging.dwnc.workers.dev' : null,
     smokeAccessPolicySha256: environment === 'staging' ? sha256Hex('staging-policy') : null,
     requiredVerificationLevel: 'full-get-sha256',
     requiredBucketExposure: 'cloudflare-control-plane-private',
@@ -234,7 +265,9 @@ process.exit(24);
     target: { environment: 'production', bucket: 'dwnc-me-public-media-production', accountIdSha256 },
     verificationLevel: 'full-get-sha256',
     bucketExposure: {
-      verification: 'cloudflare-control-plane', r2DevEnabled: false, customDomainCount: 0,
+      verification: 'cloudflare-control-plane', jurisdiction: 'default', location: 'ENAM',
+      storageClass: 'Standard', bucketPropertiesSha256: sha256Hex('bucket-properties'),
+      r2DevEnabled: false, customDomainCount: 0,
       verifiedAt: new Date().toISOString(), evidenceSha256: sha256Hex('private-bucket'),
     },
     verifiedAt: new Date().toISOString(),
@@ -324,7 +357,6 @@ process.exit(24);
     canonicalPromotionAuthorizationPayload, privateKey, publicKeyPem);
   const childEnvironment = {
     ...process.env,
-    CLOUDFLARE_API_TOKEN: 'fixture-token-never-sent',
     CLOUDFLARE_ACCOUNT_ID: accountId,
     CLOUDFLARE_PREUPLOAD_ARTIFACT_DIR: artifactResult.directory,
     CLOUDFLARE_PROMOTION_STATE_DIR: state,
@@ -368,7 +400,7 @@ try {
     canonicalUploadAuthorizationPayload, stagingUpload.privateKey, stagingUpload.publicKeyPem);
   const protectedSecretDirectory = path.join(temporary, 'staging-upload-protected-secret');
   await mkdir(protectedSecretDirectory, { mode: 0o700 });
-  const smokeSecretValue = 'S'.repeat(43);
+  const smokeSecretValue = 'A'.repeat(43);
   const smokeSecretsRaw = `${JSON.stringify({
     DWNC_STAGING_SMOKE_TOKEN: smokeSecretValue,
   })}\n`;
@@ -405,7 +437,7 @@ try {
     cwd: stagingUpload.root,
     env: {
       ...process.env,
-      CLOUDFLARE_API_TOKEN: 'fixture-token-never-sent', CLOUDFLARE_ACCOUNT_ID: accountId,
+      CLOUDFLARE_ACCOUNT_ID: accountId,
       WORKERS_CI_COMMIT_SHA: stagingUploadArtifact.ciSourceGitSha,
       WORKERS_CI_BUILD_UUID: stagingUploadBuildUuid,
       CLOUDFLARE_PREUPLOAD_ARTIFACT_DIR: stagingUpload.artifactResult.directory,
@@ -490,12 +522,13 @@ try {
   await writeFile(mockFetchModule, `globalThis.fetch = async () => new Response(JSON.stringify({
   success: false, result: null, errors: [{ code: 10007, message: "not found" }]
 }), { status: 404 });\n`);
-  const bootstrapRun = await exec(process.execPath, [bootstrapExecutor, '--environment=production'], {
+  const bootstrapToken = 'synthetic_bootstrap_token_1234567890';
+  const bootstrapRun = await execWithAnonymousToken(
+    process.execPath, [bootstrapExecutor, '--environment=production'], {
     cwd: bootstrap.root,
     env: {
       ...process.env,
       NODE_OPTIONS: `--import=${mockFetchModule}`,
-      CLOUDFLARE_API_TOKEN: 'fixture-token-never-sent',
       CLOUDFLARE_ACCOUNT_ID: accountId,
       CLOUDFLARE_DENY_BOOTSTRAP_APPROVED: 'production:dwnc-me:external-surface-0',
       CLOUDFLARE_SERVICE_EXISTENCE_RECEIPT_PATH: bootstrapEvidencePaths.receiptPath,
@@ -509,8 +542,10 @@ try {
       CLOUDFLARE_BOOTSTRAP_ATTESTATION_CANDIDATE_PATH: bootstrapCandidate,
       CLOUDFLARE_BOOTSTRAP_FRESH_ABSENCE_CAPTURE_PATH: bootstrapFreshCapture,
     },
+    token: bootstrapToken,
     maxBuffer: 2 * 1024 * 1024,
   });
+  equal(`${bootstrapRun.stdout}\n${bootstrapRun.stderr}`.includes(bootstrapToken), false);
   equal(JSON.parse(bootstrapRun.stdout).externalSurfaceCount, 0);
   equal(JSON.parse(await readFile(bootstrapCandidate, 'utf8')).versionId, bootstrapCreatedVersionId);
 
@@ -567,7 +602,7 @@ try {
     versionId: stagingVersionId,
     accountIdSha256: accountIdSha256,
     workerName: 'dwnc-me-staging',
-    originSha256: sha256Hex('https://smoke-staging.dwnc.me'),
+    originSha256: sha256Hex('https://dwnc-me-staging.dwnc.workers.dev'),
     accessPolicySha256: sha256Hex('staging-policy'),
     deploymentStatusBeforeSha256: sha256Hex(
       canonicalDeploymentStatusEvidencePayload(stagingStatusBefore)),
@@ -589,7 +624,6 @@ try {
   const stagingCandidate = path.join(staging.output, 'staging-status-candidate.json');
   const stagingEnvironment = {
       ...process.env,
-      CLOUDFLARE_API_TOKEN: 'fixture-token-never-sent',
       CLOUDFLARE_ACCOUNT_ID: accountId,
       CLOUDFLARE_STAGING_ACTIVATION_APPROVED: 'staging:dwnc-me-staging:exact-version-100',
       CLOUDFLARE_PREUPLOAD_ARTIFACT_DIR: staging.artifactResult.directory,

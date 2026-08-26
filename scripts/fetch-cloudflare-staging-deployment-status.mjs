@@ -1,13 +1,13 @@
 import { execFile } from 'node:child_process';
-import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { validateStagingUploadArtifactDirectory } from './lib/cloudflare-artifact.mjs';
-import { canonicalJson, createDeploymentStatusEvidence, sha256Hex } from './lib/cloudflare-release.mjs';
+import { createDeploymentStatusEvidence } from './lib/cloudflare-release.mjs';
+import { produceDeploymentStatusCaptureAndEvidence } from './lib/cloudflare-deployment-status.mjs';
 import {
   assertCloudflareAccountTarget,
   assertPinnedWranglerInstalled,
-  cloudflareUploadEnvironment,
+  cloudflareWranglerEnvironment,
   installStructuredErrorHandler,
 } from './lib/cloudflare-process.mjs';
 import {
@@ -22,7 +22,9 @@ const absolute = (value) => {
   return value;
 };
 const artifactDirectory = absolute(process.env.CLOUDFLARE_PREUPLOAD_ARTIFACT_DIR);
-const outputPath = absolute(process.env.CLOUDFLARE_STAGING_DEPLOYMENT_STATUS_EVIDENCE_PATH);
+const capturePath = absolute(process.env.CLOUDFLARE_STAGING_DEPLOYMENT_STATUS_CAPTURE_PATH);
+const evidencePath = absolute(process.env.CLOUDFLARE_STAGING_DEPLOYMENT_STATUS_EVIDENCE_PATH);
+if (capturePath === evidencePath) throw new Error('CLOUDFLARE_E_STATUS_PATH');
 const targetVersionId = process.env.CLOUDFLARE_STAGING_EXPECTED_DEPLOYMENT_VERSION_ID;
 const policy = await loadTrackedPublicMediaReleasePolicy(ROOT);
 const { receipt: artifact } = await validateStagingUploadArtifactDirectory(
@@ -42,7 +44,7 @@ let stdout;
 try {
   ({ stdout } = await promisify(execFile)(path.join(ROOT, 'node_modules/.bin/wrangler'), args, {
     cwd: ROOT, encoding: 'utf8', maxBuffer: 2 * 1024 * 1024, timeout: 60000,
-    env: cloudflareUploadEnvironment(process.env, {
+    env: cloudflareWranglerEnvironment(process.env, {
       CI: '1', WRANGLER_WRITE_LOGS: '0', WRANGLER_SEND_METRICS: 'false',
       WRANGLER_NO_SKILLS_UPDATE_PROMPTS: 'true',
     }),
@@ -56,19 +58,18 @@ const evidence = createDeploymentStatusEvidence({
   rawStatus, targetVersionId, observedAt,
   environment: 'staging', workerName: 'dwnc-me-staging',
 });
-const capture = {
-  schemaVersion: 1,
-  contract: 'dwnc-cloudflare-deployment-status-capture-v1',
-  commandSha256: sha256Hex(canonicalJson(args)),
-  rawStdoutSha256: sha256Hex(stdout),
-  rawStdout: stdout,
+const capture = await produceDeploymentStatusCaptureAndEvidence({
+  capturePath,
+  evidencePath,
+  args,
+  stdout,
   startedAt,
   completedAt: observedAt,
   evidence,
   rawStatus,
-};
-await writeFile(outputPath, `${canonicalJson(capture)}\n`, { flag: 'wx', mode: 0o600 });
+});
 console.log(JSON.stringify({
   contract: capture.contract, targetVersionId, deploymentId: evidence.deploymentId,
-  environment: 'staging', traffic: '100%', readOnly: true,
+  environment: 'staging', traffic: '100%', captureWritten: true,
+  evidenceWritten: true, readOnly: true,
 }, null, 2));

@@ -1,23 +1,21 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmod, lstat, mkdtemp, open, readFile, rm, rmdir } from 'node:fs/promises';
-import os from 'node:os';
+import { fstatSync, readSync } from 'node:fs';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { cloudflareAccountIdSha256 } from './public-media-manifest.mjs';
+import { readSecureFile, writeSecureCreateOnly } from './cloudflare-signing-key.mjs';
+import { validateStagingSmokeToken } from '../../src/lib/staging-smoke-token.js';
 
 const SAFE_ENVIRONMENT_NAMES = Object.freeze([
   'PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL', 'TZ', 'CI', 'NO_COLOR', 'FORCE_COLOR',
 ]);
 
 export const R2_VALIDATION_ENVIRONMENT_NAMES = Object.freeze([
-  'R2_ACCOUNT_ID', 'R2_BUCKET_NAME', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY',
+  'R2_CREDENTIALS_FD',
   'PUBLIC_MEDIA_REMOTE_RECEIPT_PATH', 'PUBLIC_MEDIA_REMOTE_SIGNATURE_PATH',
   'PUBLIC_MEDIA_REMOTE_PUBLIC_KEY_PATH',
 ]);
-export const CLOUDFLARE_UPLOAD_ENVIRONMENT_NAMES = Object.freeze([
-  'CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_COMPLIANCE_REGION',
-]);
-
 const SAFE_ERROR_CODE = /^[A-Z][A-Z0-9_]{2,80}$/u;
 
 export function structuredErrorCode(error, fallback = 'CLOUDFLARE_E_UNEXPECTED') {
@@ -57,16 +55,136 @@ export function remoteValidationEnvironment(source = process.env) {
   return environment;
 }
 
-export function cloudflareUploadEnvironment(source = process.env, extra = {}) {
-  const environment = sanitizedEnvironment(source);
-  for (const name of CLOUDFLARE_UPLOAD_ENVIRONMENT_NAMES) {
-    if (typeof source[name] === 'string') environment[name] = source[name];
+export function cloudflareWranglerEnvironment(source = process.env, extra = {}) {
+  if (Object.hasOwn(source, 'CLOUDFLARE_API_TOKEN')
+    || Object.hasOwn(source, 'CF_API_TOKEN')
+    || Object.hasOwn(extra, 'CLOUDFLARE_API_TOKEN')
+    || Object.hasOwn(extra, 'CF_API_TOKEN')) {
+    throw new Error('CLOUDFLARE_E_WRANGLER_TOKEN_ENV_FORBIDDEN');
   }
-  if (typeof environment.CLOUDFLARE_API_TOKEN !== 'string'
-    || typeof environment.CLOUDFLARE_ACCOUNT_ID !== 'string') {
-    throw new Error('CLOUDFLARE_E_UPLOAD_CREDENTIALS');
+  if (typeof source.CLOUDFLARE_ACCOUNT_ID !== 'string'
+    || !/^[A-Fa-f0-9]{32}$/u.test(source.CLOUDFLARE_ACCOUNT_ID)) {
+    throw new Error('CLOUDFLARE_E_WRANGLER_ACCOUNT');
   }
-  return { ...environment, ...extra };
+  return sanitizedEnvironment(source, {
+    CLOUDFLARE_ACCOUNT_ID: source.CLOUDFLARE_ACCOUNT_ID,
+    ...(typeof source.CLOUDFLARE_COMPLIANCE_REGION === 'string'
+      ? { CLOUDFLARE_COMPLIANCE_REGION: source.CLOUDFLARE_COMPLIANCE_REGION } : {}),
+    ...extra,
+  });
+}
+
+export function cloudflareControlPlaneCredentials(source = process.env) {
+  const fdDefined = Object.hasOwn(source, 'CLOUDFLARE_API_TOKEN_FD');
+  const legacyDefined = Object.hasOwn(source, 'CLOUDFLARE_API_TOKEN');
+  const r2S3Defined = [
+    'R2_ACCOUNT_ID', 'R2_BUCKET_NAME', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY',
+    'R2_CREDENTIALS_FD',
+  ].some((name) => Object.hasOwn(source, name));
+  if (r2S3Defined) throw new Error('CLOUDFLARE_E_CONTROL_CREDENTIAL_AMBIGUOUS');
+  if (fdDefined && legacyDefined) throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_AMBIGUOUS');
+  if (legacyDefined || !fdDefined) throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD_REQUIRED');
+  if (source.CLOUDFLARE_API_TOKEN_FD !== '3'
+    || typeof source.CLOUDFLARE_ACCOUNT_ID !== 'string'
+    || !/^[A-Fa-f0-9]{32}$/u.test(source.CLOUDFLARE_ACCOUNT_ID)) {
+    throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
+  }
+  let bytes;
+  try {
+    const stats = fstatSync(3);
+    if (!(stats.isFIFO() || stats.isSocket()) || stats.nlink !== 0
+      || ![0o600, 0o666].includes(stats.mode & 0o777)
+      || typeof process.getuid === 'function' && stats.uid !== process.getuid()
+      || stats.size < 0 || stats.size > 4096) {
+      throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
+    }
+    bytes = Buffer.alloc(4097);
+    let total = 0;
+    while (true) {
+      const read = readSync(3, bytes, total, bytes.length - total, null);
+      if (read === 0) break;
+      total += read;
+      if (total > 4096) throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
+    }
+    const apiToken = bytes.subarray(0, total).toString('utf8');
+    if (!/^[A-Za-z0-9._~+\/-]{20,4096}={0,2}$/u.test(apiToken)) {
+      throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
+    }
+    return {
+      accountId: source.CLOUDFLARE_ACCOUNT_ID,
+      apiToken,
+      environment: sanitizedEnvironment(source, {
+        CLOUDFLARE_ACCOUNT_ID: source.CLOUDFLARE_ACCOUNT_ID,
+        CLOUDFLARE_API_TOKEN_FD: '3',
+      }),
+    };
+  } catch (error) {
+    if (error?.message?.startsWith('CLOUDFLARE_E_CONTROL_TOKEN_')) throw error;
+    throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
+  } finally {
+    bytes?.fill(0);
+  }
+}
+
+export const cloudflareControlPlaneReadCredentials = cloudflareControlPlaneCredentials;
+
+export function stagingSmokeTokenFromEnvironment(source = process.env, {
+  descriptor = 3,
+} = {}) {
+  if (Object.hasOwn(source, 'CLOUDFLARE_STAGING_SMOKE_TOKEN')) {
+    throw new Error('CLOUDFLARE_E_SMOKE_TOKEN_ENV_FORBIDDEN');
+  }
+  if (!Number.isSafeInteger(descriptor) || descriptor < 3 || descriptor > 64
+    || source.CLOUDFLARE_STAGING_SMOKE_TOKEN_FD !== String(descriptor)) {
+    throw new Error('CLOUDFLARE_E_SMOKE_TOKEN_FD_REQUIRED');
+  }
+  let bytes;
+  try {
+    const stats = fstatSync(descriptor);
+    if (!(stats.isFIFO() || stats.isSocket()) || stats.nlink !== 0
+      || ![0o600, 0o666].includes(stats.mode & 0o777)
+      || typeof process.getuid === 'function' && stats.uid !== process.getuid()
+      || stats.size < 0) {
+      throw new Error('CLOUDFLARE_E_SMOKE_TOKEN_FD');
+    }
+    bytes = Buffer.alloc(44);
+    let total = 0;
+    while (true) {
+      const count = readSync(descriptor, bytes, total, bytes.length - total, null);
+      if (count === 0) break;
+      total += count;
+      if (total > 43) throw new Error('CLOUDFLARE_E_SMOKE_TOKEN_BYTES');
+    }
+    if (total !== 43) throw new Error('CLOUDFLARE_E_SMOKE_TOKEN_BYTES');
+    let token;
+    try { token = new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, total)); }
+    catch { throw new Error('CLOUDFLARE_E_SMOKE_TOKEN_BYTES'); }
+    if (Buffer.byteLength(token, 'utf8') !== total) throw new Error('CLOUDFLARE_E_SMOKE_TOKEN_BYTES');
+    return validateStagingSmokeToken(token);
+  } catch (error) {
+    if (error?.message?.startsWith('CLOUDFLARE_E_SMOKE_TOKEN_')) throw error;
+    throw new Error('CLOUDFLARE_E_SMOKE_TOKEN_FD');
+  } finally { bytes?.fill(0); }
+}
+
+export function stagingSmokeTokenBytesFromSecretsFile(stored) {
+  if (!Buffer.isBuffer(stored) || stored.length === 0 || stored.length > 4096) {
+    throw new Error('CLOUDFLARE_E_STAGING_SECRET_FILE');
+  }
+  let raw;
+  try { raw = new TextDecoder('utf-8', { fatal: true }).decode(stored); }
+  catch { throw new Error('CLOUDFLARE_E_STAGING_SECRET_FILE'); }
+  let payload;
+  try { payload = JSON.parse(raw); }
+  catch { throw new Error('CLOUDFLARE_E_STAGING_SECRET_FILE'); }
+  const token = payload?.DWNC_STAGING_SMOKE_TOKEN;
+  if (!payload || Object.keys(payload).length !== 1
+    || raw !== `${JSON.stringify({ DWNC_STAGING_SMOKE_TOKEN: token })}\n`) {
+    throw new Error('CLOUDFLARE_E_STAGING_SECRET_FILE');
+  }
+  try { validateStagingSmokeToken(token); }
+  catch { throw new Error('CLOUDFLARE_E_STAGING_SECRET_FILE'); }
+  return Buffer.from(token, 'utf8');
 }
 
 export function assertCloudflareAccountTarget(accountId, expectedSha256) {
@@ -92,17 +210,14 @@ export async function assertPinnedWranglerInstalled(root = process.cwd()) {
   return installedVersion;
 }
 
-export async function claimOneTimeAuthorization({ directory, authorizationSha256, scope, target }) {
+export async function claimOneTimeAuthorization({
+  directory, authorizationSha256, scope, target, hooks = {},
+}) {
   if (typeof directory !== 'string' || !path.isAbsolute(directory)
     || !/^[a-f0-9]{64}$/u.test(authorizationSha256 ?? '')
     || !/^[a-z][a-z0-9-]{2,40}$/u.test(scope ?? '')
     || typeof target !== 'string' || target.length === 0 || target.length > 128
     || /[\u0000-\u001f\u007f]/u.test(target)) {
-    throw new Error('CLOUDFLARE_E_AUTHORIZATION_ATTEMPT');
-  }
-  const directoryStats = await lstat(directory).catch(() => null);
-  if (!directoryStats?.isDirectory() || directoryStats.isSymbolicLink()
-    || (directoryStats.mode & 0o777) !== 0o700) {
     throw new Error('CLOUDFLARE_E_AUTHORIZATION_ATTEMPT');
   }
   const file = path.join(directory, `${scope}-${authorizationSha256}.json`);
@@ -114,14 +229,16 @@ export async function claimOneTimeAuthorization({ directory, authorizationSha256
     targetSha256: createHash('sha256').update(target).digest('hex'),
     claimedAt: new Date().toISOString(),
   });
-  const handle = await open(file, 'wx', 0o600).catch(() => {
-    throw new Error('CLOUDFLARE_E_AUTHORIZATION_REPLAY');
-  });
-  await handle.writeFile(`${payload}\n`);
-  await handle.sync();
-  await handle.close();
-  const directoryHandle = await open(directory, 'r');
-  try { await directoryHandle.sync(); } finally { await directoryHandle.close(); }
+  try { await writeSecureCreateOnly(file, `${payload}\n`, { hooks }); }
+  catch (error) {
+    if (error?.message === 'CLOUDFLARE_E_SIGNING_FILE_EXISTS') {
+      throw new Error('CLOUDFLARE_E_AUTHORIZATION_REPLAY');
+    }
+    if (error?.message?.startsWith('CLOUDFLARE_E_SIGNING_FILE')) {
+      throw new Error('CLOUDFLARE_E_AUTHORIZATION_ATTEMPT');
+    }
+    throw error;
+  }
   return file;
 }
 
@@ -135,12 +252,13 @@ export async function assertOneTimeAuthorizationClaim({
     throw new Error('CLOUDFLARE_E_AUTHORIZATION_ATTEMPT');
   }
   const file = path.join(directory, `${scope}-${authorizationSha256}.json`);
-  const stats = await lstat(file).catch(() => null);
-  if (!stats?.isFile() || stats.isSymbolicLink() || stats.nlink !== 1
-    || (stats.mode & 0o777) !== 0o600) throw new Error('CLOUDFLARE_E_AUTHORIZATION_ATTEMPT');
+  let stored;
   let payload;
-  try { payload = JSON.parse(await readFile(file, 'utf8')); }
-  catch { throw new Error('CLOUDFLARE_E_AUTHORIZATION_ATTEMPT'); }
+  try {
+    stored = await readSecureFile(file, 64 * 1024);
+    payload = JSON.parse(stored.toString('utf8'));
+  } catch { throw new Error('CLOUDFLARE_E_AUTHORIZATION_ATTEMPT'); }
+  finally { stored?.fill(0); }
   const keys = ['schemaVersion', 'contract', 'authorizationSha256', 'scope', 'targetSha256', 'claimedAt'];
   if (!payload || Object.keys(payload).length !== keys.length
     || Object.keys(payload).some((key) => !keys.includes(key))
@@ -154,63 +272,55 @@ export async function assertOneTimeAuthorizationClaim({
   return file;
 }
 
-export async function createSealedInheritedInput(value, {
-  descriptor = 3, prefix = 'dwnc-sealed-input-', maximumBytes = 1024 * 1024,
+export async function writeAnonymousInheritedInput(stream, value, {
+  descriptor = 3, maximumBytes = 1024 * 1024,
 } = {}) {
   const bytes = Buffer.isBuffer(value) ? Buffer.from(value)
     : typeof value === 'string' ? Buffer.from(value) : null;
   if (!bytes || bytes.length === 0 || bytes.length > maximumBytes
     || !Number.isSafeInteger(descriptor) || descriptor < 3 || descriptor > 64
-    || !/^[a-z][a-z0-9-]{2,40}$/u.test(prefix)) {
+    || !stream || typeof stream.end !== 'function' || typeof stream.once !== 'function') {
     throw new Error('CLOUDFLARE_E_SEALED_INPUT');
   }
-  const directory = await mkdtemp(path.join(os.tmpdir(), prefix));
-  await chmod(directory, 0o700);
-  const file = path.join(directory, 'input');
-  let handle;
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  const byteLength = bytes.length;
   try {
-    handle = await open(file, 'wx+', 0o600);
-    let written = 0;
-    while (written < bytes.length) {
-      const result = await handle.write(bytes, written, bytes.length - written, written);
-      if (result.bytesWritten <= 0) throw new Error('CLOUDFLARE_E_SEALED_INPUT');
-      written += result.bytesWritten;
-    }
-    await handle.sync();
-    const stats = await handle.stat();
-    const verification = Buffer.alloc(bytes.length);
-    let read = 0;
-    while (read < verification.length) {
-      const result = await handle.read(verification, read, verification.length - read, read);
-      if (result.bytesRead <= 0) throw new Error('CLOUDFLARE_E_SEALED_INPUT');
-      read += result.bytesRead;
-    }
-    if (!stats.isFile() || stats.nlink !== 1 || (stats.mode & 0o777) !== 0o600
-      || stats.size !== bytes.length || verification.length !== bytes.length
-      || !createHash('sha256').update(verification).digest().equals(
-        createHash('sha256').update(bytes).digest())) {
-      throw new Error('CLOUDFLARE_E_SEALED_INPUT');
-    }
-    await rm(file);
-    await rmdir(directory);
-    let closed = false;
-    return {
-      descriptor,
-      path: `/dev/fd/${descriptor}`,
-      fd: handle.fd,
-      sha256: createHash('sha256').update(bytes).digest('hex'),
-      bytes: bytes.length,
-      close: async () => {
-        if (closed) return;
-        closed = true;
-        await handle.close();
-      },
-    };
-  } catch (error) {
-    if (handle) await handle.close().catch(() => undefined);
-    await rm(directory, { recursive: true, force: true });
-    throw error;
+    await new Promise((resolve, reject) => {
+      const onError = () => reject(new Error('CLOUDFLARE_E_SEALED_INPUT'));
+      stream.once('error', onError);
+      stream.end(bytes, () => {
+        stream.off('error', onError);
+        resolve();
+      });
+    });
+    return { descriptor, path: `/dev/fd/${descriptor}`, sha256, bytes: byteLength };
+  } finally { bytes.fill(0); }
+}
+
+export async function runCheckedWithAnonymousInput(command, args, input, {
+  cwd = process.cwd(), env, descriptor = 3, maximumBytes = 1024 * 1024,
+} = {}) {
+  if (!Number.isSafeInteger(descriptor) || descriptor < 3 || descriptor > 64) {
+    throw new Error('CLOUDFLARE_E_SEALED_INPUT');
   }
+  const stdio = ['ignore', 'inherit', 'inherit'];
+  while (stdio.length < descriptor) stdio.push('ignore');
+  stdio.push('pipe');
+  const child = spawn(command, args, { cwd, env, stdio });
+  const pipe = child.stdio[descriptor];
+  if (!pipe) {
+    child.kill();
+    throw new Error('CLOUDFLARE_E_SEALED_INPUT');
+  }
+  const [result, code] = await Promise.all([
+    writeAnonymousInheritedInput(pipe, input, { descriptor, maximumBytes }),
+    new Promise((resolve, reject) => {
+      child.once('error', reject);
+      child.once('close', resolve);
+    }),
+  ]);
+  if (code !== 0) throw new Error('CLOUDFLARE_E_VERIFICATION_STEP');
+  return result;
 }
 
 export async function runChecked(command, args, { cwd = process.cwd(), env, stdio = 'inherit' } = {}) {

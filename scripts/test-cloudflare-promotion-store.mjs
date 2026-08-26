@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
-import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -25,7 +25,7 @@ import {
 import { publicKeySpkiSha256 } from './lib/public-media-manifest.mjs';
 import { claimOneTimeAuthorization } from './lib/cloudflare-process.mjs';
 
-const temporary = await mkdtemp(path.join(os.tmpdir(), 'dwnc-promotion-store-'));
+const temporary = await realpath(await mkdtemp(path.join(os.tmpdir(), 'dwnc-promotion-store-')));
 const store = path.join(temporary, 'store');
 await mkdir(store, { mode: 0o700 });
 let assertions = 0;

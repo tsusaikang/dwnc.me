@@ -7,6 +7,11 @@ import {
   validatePublicMediaPath,
 } from './lib/public-media-manifest.mjs';
 import { validateProjectedDistAssets } from './lib/public-dist-assets.mjs';
+import { loadTrackedPublicMapLinkPolicy } from './lib/public-map-link-policy.mjs';
+import {
+  loadTrackedPublicMediaCurationPolicy,
+  publicMediaCurationExcludedAssets,
+} from './lib/public-media-curation.mjs';
 
 const ROOT = process.cwd();
 
@@ -31,9 +36,20 @@ const tracked = await loadTrackedPublicMediaManifest(ROOT);
 const { manifest, contentRows } = await collectProjectedPublicMedia(ROOT, { assetMode: 'local' });
 assertManifestEqual(manifest, tracked);
 const distEvidence = await validateProjectedDistAssets(path.join(ROOT, 'public'), contentRows);
+const mapPolicy = await loadTrackedPublicMapLinkPolicy(ROOT);
+const curationPolicy = await loadTrackedPublicMediaCurationPolicy(ROOT);
+const preservedExcludedPaths = new Set([
+  ...mapPolicy.excludedAssets,
+  ...publicMediaCurationExcludedAssets(curationPolicy),
+]);
 const actualPaths = (await walk(path.join(ROOT, 'public/media'), path.join(ROOT, 'public')))
   .sort((left, right) => Buffer.compare(Buffer.from(left), Buffer.from(right)));
-const expectedPaths = tracked.entries.map((entry) => entry.publicPath);
+const manifestPaths = new Set(tracked.entries.map((entry) => entry.publicPath));
+if ([...preservedExcludedPaths].some((publicPath) => manifestPaths.has(publicPath))) {
+  throw new Error('MEDIA_E_LOCAL_EXCLUSION_OVERLAP');
+}
+const expectedPaths = [...manifestPaths, ...preservedExcludedPaths]
+  .sort((left, right) => Buffer.compare(Buffer.from(left), Buffer.from(right)));
 if (JSON.stringify(actualPaths) !== JSON.stringify(expectedPaths)
   || distEvidence.total !== tracked.objectCount) throw new Error('MEDIA_E_LOCAL_EXACT_SET');
 
@@ -43,6 +59,7 @@ console.log(JSON.stringify({
   objectCount: tracked.objectCount,
   totalBytes: tracked.totalBytes,
   manifestSha256: tracked.manifestSha256,
+  preservedExcluded: preservedExcludedPaths.size,
   missing: 0,
   orphan: 0,
   sha256Mismatch: 0,

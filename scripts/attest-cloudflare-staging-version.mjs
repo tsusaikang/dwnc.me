@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { validateStagingUploadArtifactDirectory } from './lib/cloudflare-artifact.mjs';
 import {
@@ -9,6 +9,7 @@ import {
   validateVersionUploadResult,
 } from './lib/cloudflare-release.mjs';
 import { installStructuredErrorHandler } from './lib/cloudflare-process.mjs';
+import { writeCanonicalEvidenceCreateOnly } from './lib/cloudflare-signing-key.mjs';
 import {
   loadTrackedPublicMediaManifest,
   loadTrackedPublicMediaReleasePolicy,
@@ -70,9 +71,7 @@ const attestation = createVersionAttestationFromDetail({
   expectedBindingsSha256: artifact.stagingBindingsSha256,
   expectedAssetsConfigSha256: artifact.stagingAssetsConfigSha256,
 });
-await writeFile(outputPath, `${canonicalVersionAttestationPayload(attestation)}\n`, {
-  flag: 'wx', mode: 0o600,
-});
+await writeCanonicalEvidenceCreateOnly(outputPath, attestation, canonicalVersionAttestationPayload);
 console.log(JSON.stringify({
   contract: attestation.contract, artifactSha256, payloadSha256: attestation.payloadSha256,
   versionId: attestation.versionId, environment: 'staging', signed: false,

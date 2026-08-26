@@ -1,4 +1,4 @@
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { validateArtifactDirectory } from './lib/cloudflare-artifact.mjs';
 import {
@@ -9,6 +9,7 @@ import {
   validateVersionUploadResult,
 } from './lib/cloudflare-release.mjs';
 import { installStructuredErrorHandler } from './lib/cloudflare-process.mjs';
+import { writeCanonicalEvidenceCreateOnly } from './lib/cloudflare-signing-key.mjs';
 
 installStructuredErrorHandler('cloudflare-attest-version');
 const absolute = (value) => {
@@ -63,9 +64,7 @@ if (evidence.commandSha256 !== sha256Hex(canonicalJson(expectedViewArguments))) 
 const attestation = createVersionAttestationFromDetail({
   artifact, uploadResult, detail: evidence.detail, now: createdAt, expiresAt,
 });
-await writeFile(outputPath, `${canonicalVersionAttestationPayload(attestation)}\n`, {
-  flag: 'wx', mode: 0o600,
-});
+await writeCanonicalEvidenceCreateOnly(outputPath, attestation, canonicalVersionAttestationPayload);
 console.log(JSON.stringify({
   contract: attestation.contract,
   artifactSha256,

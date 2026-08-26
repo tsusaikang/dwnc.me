@@ -9,9 +9,9 @@ export const PUBLIC_MEDIA_KEY_RULE = 'publicPath.slice(1)';
 export const PUBLIC_MEDIA_CACHE_CONTROL = 'public, max-age=31536000, immutable';
 export const PUBLIC_MEDIA_MANIFEST_PATH = 'src/data/public-media-r2-v1.json';
 export const PUBLIC_MEDIA_RELEASE_POLICY_PATH = 'src/data/public-media-release-policy-v1.json';
-export const PUBLIC_MEDIA_BASELINE_OBJECTS = 2_889;
-export const PUBLIC_MEDIA_BASELINE_BYTES = 2_350_053_092;
-export const PUBLIC_MEDIA_BASELINE_SHA256 = '5b9eb93474c0e96b3b371d233b4ea64cc24918a31d0fb754410c968544c2b165';
+export const PUBLIC_MEDIA_BASELINE_OBJECTS = 2_758;
+export const PUBLIC_MEDIA_BASELINE_BYTES = 2_346_220_246;
+export const PUBLIC_MEDIA_BASELINE_SHA256 = '61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532';
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 const MIME_PATTERN = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/u;
@@ -236,7 +236,7 @@ export function validatePublicMediaReleasePolicy(policy, { requireComplete = fal
       || ![null, undefined].includes(target.releasePublicKeySpkiSha256)
         && !SHA256_PATTERN.test(target.releasePublicKeySpkiSha256)
       || (environment === 'staging'
-        ? target.smokeOrigin !== 'https://smoke-staging.dwnc.me'
+        ? target.smokeOrigin !== 'https://dwnc-me-staging.dwnc.workers.dev'
           || ![null, undefined].includes(target.smokeAccessPolicySha256)
             && !SHA256_PATTERN.test(target.smokeAccessPolicySha256)
         : target.smokeOrigin !== null || target.smokeAccessPolicySha256 !== null)
@@ -302,7 +302,8 @@ export function validateRemoteReceipt(receipt, manifest) {
     || !SHA256_PATTERN.test(receipt.target.accountIdSha256 ?? '')
     || !VERIFICATION_LEVELS.has(receipt.verificationLevel)
     || !exactKeys(receipt.bucketExposure, [
-      'verification', 'r2DevEnabled', 'customDomainCount', 'verifiedAt', 'evidenceSha256',
+      'verification', 'jurisdiction', 'location', 'storageClass', 'bucketPropertiesSha256',
+      'r2DevEnabled', 'customDomainCount', 'verifiedAt', 'evidenceSha256',
     ])
     || typeof receipt.verifiedAt !== 'string'
     || Number.isNaN(Date.parse(receipt.verifiedAt))
@@ -321,11 +322,19 @@ export function validateRemoteReceipt(receipt, manifest) {
     || receipt.objects.length !== manifest.entries.length) fail('MEDIA_E_REMOTE_RECEIPT');
   const exposure = receipt.bucketExposure;
   const unverifiedExposure = exposure.verification === 'unverified'
+    && exposure.jurisdiction === null
+    && exposure.location === null
+    && exposure.storageClass === null
+    && exposure.bucketPropertiesSha256 === null
     && exposure.r2DevEnabled === null
     && exposure.customDomainCount === null
     && exposure.verifiedAt === null
     && exposure.evidenceSha256 === null;
   const verifiedPrivateExposure = exposure.verification === 'cloudflare-control-plane'
+    && exposure.jurisdiction === 'default'
+    && /^[A-Za-z0-9_-]{1,64}$/u.test(exposure.location ?? '')
+    && /^[A-Za-z0-9_-]{1,64}$/u.test(exposure.storageClass ?? '')
+    && SHA256_PATTERN.test(exposure.bucketPropertiesSha256 ?? '')
     && exposure.r2DevEnabled === false
     && exposure.customDomainCount === 0
     && typeof exposure.verifiedAt === 'string'
@@ -411,6 +420,8 @@ export function validateProductionReleaseTarget({
     || receipt.verificationLevel !== production.requiredVerificationLevel
     || production.requiredBucketExposure !== 'cloudflare-control-plane-private'
     || receipt.bucketExposure.verification !== 'cloudflare-control-plane'
+    || receipt.bucketExposure.jurisdiction !== 'default'
+    || !SHA256_PATTERN.test(receipt.bucketExposure.bucketPropertiesSha256 ?? '')
     || receipt.bucketExposure.r2DevEnabled !== false
     || receipt.bucketExposure.customDomainCount !== 0
     || receipt.audit.orphanCount !== production.approvedOrphanCount
@@ -445,6 +456,8 @@ export function validateStagingReleaseTarget({
     || receipt.verificationLevel !== staging.requiredVerificationLevel
     || staging.requiredBucketExposure !== 'cloudflare-control-plane-private'
     || receipt.bucketExposure.verification !== 'cloudflare-control-plane'
+    || receipt.bucketExposure.jurisdiction !== 'default'
+    || !SHA256_PATTERN.test(receipt.bucketExposure.bucketPropertiesSha256 ?? '')
     || receipt.bucketExposure.r2DevEnabled !== false
     || receipt.bucketExposure.customDomainCount !== 0
     || receipt.audit.orphanCount !== staging.approvedOrphanCount

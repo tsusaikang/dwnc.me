@@ -20,16 +20,16 @@ import {
 import {
   assertCloudflareAccountTarget,
   assertPinnedWranglerInstalled,
-  cloudflareUploadEnvironment,
+  cloudflareWranglerEnvironment,
   claimOneTimeAuthorization,
-  createSealedInheritedInput,
   installStructuredErrorHandler,
-  runChecked,
+  runCheckedWithAnonymousInput,
 } from './lib/cloudflare-process.mjs';
 import {
   loadTrackedPublicMediaManifest,
   loadTrackedPublicMediaReleasePolicy,
 } from './lib/public-media-manifest.mjs';
+import { validateStagingSmokeToken } from '../src/lib/staging-smoke-token.js';
 
 const ROOT = process.cwd();
 installStructuredErrorHandler('cloudflare-upload-staging-version');
@@ -76,11 +76,11 @@ try { secretsPayload = JSON.parse(secretsFileRaw); }
 catch { throw new Error('CLOUDFLARE_E_STAGING_SECRET_FILE'); }
 const secretName = 'DWNC_STAGING_SMOKE_TOKEN';
 if (!secretsPayload || Object.keys(secretsPayload).length !== 1
-  || typeof secretsPayload[secretName] !== 'string'
-  || !/^[A-Za-z0-9_-]{43,128}$/u.test(secretsPayload[secretName])
   || secretsFileRaw !== `${JSON.stringify({ [secretName]: secretsPayload[secretName] })}\n`) {
   throw new Error('CLOUDFLARE_E_STAGING_SECRET_FILE');
 }
+try { validateStagingSmokeToken(secretsPayload[secretName]); }
+catch { throw new Error('CLOUDFLARE_E_STAGING_SECRET_FILE'); }
 const policy = await loadTrackedPublicMediaReleasePolicy(ROOT);
 const { receipt: artifact, artifactSha256 } = await validateStagingUploadArtifactDirectory(
   artifactDirectory,
@@ -163,22 +163,22 @@ await claimOneTimeAuthorization({
 const handle = await open(outputPath, 'wx', 0o600);
 const identity = await handle.stat();
 await handle.close();
-const sealedInput = await createSealedInheritedInput(secretsFileRaw, {
-  descriptor: 3, prefix: 'dwnc-staging-secret-',
-});
+const secretBytes = Buffer.from(secretsFileRaw);
 try {
+  const sealedInput = await runCheckedWithAnonymousInput(
+    path.join(ROOT, 'node_modules/.bin/wrangler'), args, secretBytes, {
+      cwd: ROOT,
+      env: cloudflareWranglerEnvironment(process.env, {
+        CI: '1', WRANGLER_OUTPUT_FILE_PATH: outputPath, WRANGLER_WRITE_LOGS: '0',
+        WRANGLER_SEND_METRICS: 'false', WRANGLER_NO_SKILLS_UPDATE_PROMPTS: 'true',
+      }),
+      descriptor: 3,
+    },
+  );
   if (sealedInput.path !== inheritedSecretsFile || sealedInput.sha256 !== secretsFileSha256) {
     throw new Error('CLOUDFLARE_E_STAGING_SECRET_FILE');
   }
-  await runChecked(path.join(ROOT, 'node_modules/.bin/wrangler'), args, {
-    cwd: ROOT,
-    env: cloudflareUploadEnvironment(process.env, {
-      CI: '1', WRANGLER_OUTPUT_FILE_PATH: outputPath, WRANGLER_WRITE_LOGS: '0',
-      WRANGLER_SEND_METRICS: 'false', WRANGLER_NO_SKILLS_UPDATE_PROMPTS: 'true',
-    }),
-    stdio: ['ignore', 'inherit', 'inherit', sealedInput.fd],
-  });
-} finally { await sealedInput.close(); }
+} finally { secretBytes.fill(0); }
 const rawOutput = await readFile(outputPath, 'utf8');
 const stats = await lstat(outputPath);
 if (!stats.isFile() || stats.isSymbolicLink() || stats.nlink !== 1

@@ -10,7 +10,10 @@ import {
   inspectRemotePublicMedia,
   loadRemoteReceiptFiles,
 } from './lib/public-media-remote.mjs';
-import { r2ClientFromEnvironment } from './lib/r2-s3-client.mjs';
+import {
+  r2ClientFromEnvironment,
+  r2CredentialsFromEnvironment,
+} from './lib/r2-s3-client.mjs';
 import { installStructuredErrorHandler } from './lib/cloudflare-process.mjs';
 
 const ROOT = process.cwd();
@@ -22,13 +25,14 @@ const receiptFiles = await loadRemoteReceiptFiles({
   publicKeyPath: process.env.PUBLIC_MEDIA_REMOTE_PUBLIC_KEY_PATH,
 });
 validateRemoteReceipt(receiptFiles.receipt, manifest);
+const r2Credentials = r2CredentialsFromEnvironment(process.env);
 const policy = await loadTrackedPublicMediaReleasePolicy(ROOT, { requireComplete: true });
 const wranglerConfig = JSON.parse(await readFile('wrangler.jsonc', 'utf8'));
 validateProductionReleaseTarget({
   policy,
   receipt: receiptFiles.receipt,
-  accountId: process.env.R2_ACCOUNT_ID,
-  bucket: process.env.R2_BUCKET_NAME,
+  accountId: r2Credentials.accountId,
+  bucket: r2Credentials.bucket,
   publicKeyPem: receiptFiles.publicKeyPem,
   wranglerConfig,
 });

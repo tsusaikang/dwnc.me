@@ -114,7 +114,8 @@ export function createUnsignedRemoteReceipt(manifest, heads, {
   verificationLevel = 'head-exact',
   orphanCount = 0,
   bucketExposure = {
-    verification: 'unverified', r2DevEnabled: null, customDomainCount: null,
+    verification: 'unverified', jurisdiction: null, location: null, storageClass: null,
+    bucketPropertiesSha256: null, r2DevEnabled: null, customDomainCount: null,
     verifiedAt: null, evidenceSha256: null,
   },
 } = {}) {

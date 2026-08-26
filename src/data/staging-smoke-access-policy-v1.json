@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "contract": "dwnc-staging-smoke-access-policy-v1",
+  "environment": "staging",
+  "workerName": "dwnc-me-staging",
+  "origin": "https://dwnc-me-staging.dwnc.workers.dev",
+  "authentication": {
+    "scheme": "Bearer",
+    "requestHeader": "authorization",
+    "secretBinding": "DWNC_STAGING_SMOKE_TOKEN",
+    "randomBytes": 32,
+    "encodedCharacters": 43,
+    "encoding": "base64url",
+    "padding": "forbidden",
+    "canonicalEncodingRequired": true
+  },
+  "unauthenticatedResponse": {
+    "status": 404,
+    "cacheControl": "no-store"
+  },
+  "workersDevRequired": true,
+  "previewUrlsEnabled": false
+}

@@ -1,4 +1,3 @@
-import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   canonicalServiceExistenceCapturePayload,
@@ -6,7 +5,11 @@ import {
   fetchServiceExistenceCapture,
   validateServiceExistenceEvidence,
 } from './lib/cloudflare-bootstrap.mjs';
-import { cloudflareUploadEnvironment, installStructuredErrorHandler } from './lib/cloudflare-process.mjs';
+import {
+  cloudflareControlPlaneCredentials,
+  installStructuredErrorHandler,
+} from './lib/cloudflare-process.mjs';
+import { writeCanonicalEvidenceCreateOnly } from './lib/cloudflare-signing-key.mjs';
 import { cloudflareAccountIdSha256, loadTrackedPublicMediaReleasePolicy } from './lib/public-media-manifest.mjs';
 
 const ROOT = process.cwd();
@@ -19,19 +22,22 @@ if (typeof outputPath !== 'string' || !path.isAbsolute(outputPath)
   || typeof capturePath !== 'string' || !path.isAbsolute(capturePath)
   || capturePath === outputPath) throw new Error('CLOUDFLARE_E_SERVICE_EXISTENCE_PATH');
 const policy = await loadTrackedPublicMediaReleasePolicy(ROOT);
-const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-if (cloudflareAccountIdSha256(accountId?.toLowerCase()) !== policy[environment].accountIdSha256) {
+const controlPlane = cloudflareControlPlaneCredentials(process.env);
+if (cloudflareAccountIdSha256(controlPlane.accountId.toLowerCase())
+  !== policy[environment].accountIdSha256) {
   throw new Error('CLOUDFLARE_E_ACCOUNT_TARGET');
 }
-const childEnvironment = cloudflareUploadEnvironment(process.env);
 const capture = await fetchServiceExistenceCapture({
-  environment, accountId, apiToken: childEnvironment.CLOUDFLARE_API_TOKEN,
+  environment, accountId: controlPlane.accountId, apiToken: controlPlane.apiToken,
 });
 const receipt = capture.evidence;
 validateServiceExistenceEvidence(receipt);
-await writeFile(capturePath, `${canonicalServiceExistenceCapturePayload(capture)}\n`,
-  { flag: 'wx', mode: 0o600 });
-await writeFile(outputPath, `${canonicalServiceExistenceEvidencePayload(receipt)}\n`, { flag: 'wx', mode: 0o600 });
+await writeCanonicalEvidenceCreateOnly(
+  capturePath, capture, canonicalServiceExistenceCapturePayload,
+);
+await writeCanonicalEvidenceCreateOnly(
+  outputPath, receipt, canonicalServiceExistenceEvidencePayload,
+);
 console.log(JSON.stringify({
   contract: receipt.contract, environment, exists: receipt.exists,
   captureWritten: true, signed: false,
