@@ -4,6 +4,6 @@
 
 <!-- requirements-archive-policy: status=done order=updated-at-id-asc movement=oldest-first -->
 
-archive에는 `done` 항목만 `(Updated-at, ID)` 오름차순으로 둔다. archive의 requirement ID, 제목, 상태, 갱신일, 완료 조건과 증거는 삭제하거나 재사용하지 않는다. 잘못된 과거 기록을 바로잡아야 하면 기존 항목을 보존한 채 새 요구사항과 증거로 정정 관계를 남긴다.
+이 보관 문서에는 완료된 항목만 날짜와 요구사항 번호 순서로 둔다. 요구사항 번호, 제목, 상태, 갱신일, 관련 계획, 우선순위, 완료 조건과 확인 근거는 삭제하거나 재사용하지 않는다. 과거 기록을 바로잡아야 하면 기존 내용을 지우지 않고 새 요구사항과 근거로 정정 관계를 남긴다.
 
 현재 archive로 이동한 요구사항은 없다.

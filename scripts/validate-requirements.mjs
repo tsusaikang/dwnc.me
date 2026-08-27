@@ -14,20 +14,29 @@ const allowedCurrentStatuses = new Set([
   'done',
 ]);
 const allowedArchiveStatuses = new Set(['done']);
+const allowedPriorities = new Set(['P0', 'P1', 'P2', 'P3']);
+const allowedPlanStatuses = new Set(['계속 적용', '완료', '진행 중', '대기', '사용자 결정 필요']);
 const requirementHeadingPattern = /^### `([A-Z0-9-]+)` — (.+)$/;
+const planRowPattern = /^\| `(PLAN-\d{2})` \| [^\n]+ \| [^\n]+ \| `([^`]+)` \|$/gm;
 const archivePolicy =
   '<!-- requirements-archive-policy: status=done order=updated-at-id-asc movement=oldest-first -->';
 const dashboardHeading = '## 한눈에 보는 진행 상황';
 const ledgerHeading = '## 요구사항 원장';
 const completedHeading = '## 최근 완료된 요구사항';
+const technicalReferenceHeading = '### 기술 참고';
+const plainLanguageRequirementId = 'DWNC-OPS-004';
+const planTraceabilityRequirementId = 'DWNC-OPS-005';
 const requiredDashboardSections = [
-  '### 현재 목표',
-  '### 전체 상태',
+  '### 최종 결과',
+  '### 전체 계획',
+  '### 현재 위치',
   '### 미디어 정리 결과',
   '### 아직 결정할 일과 진행을 막는 조건',
-  '### 바로 다음 단계',
+  '### 바로 다음 작업',
   '### 최근 완료',
   '### 이번 작업에서 하지 않는 것',
+  '### 새 요청 반영 방법',
+  technicalReferenceHeading,
 ];
 const credentialAssignmentPattern =
   /\b(?:R2_SECRET_ACCESS_KEY|R2_ACCESS_KEY_ID|CF_API_TOKEN|CLOUDFLARE_API_TOKEN|AWS_SECRET_ACCESS_KEY|AWS_ACCESS_KEY_ID)\s*[:=]/i;
@@ -88,6 +97,24 @@ function listField(blockLines, label, filePath, id) {
     addError(filePath, `${id} ${label} must contain at least one non-empty item`);
   }
   return items;
+}
+
+function plansField(blockLines, filePath, id) {
+  const prefix = '- **Plans:** ';
+  const matches = blockLines.filter((line) => line.startsWith(prefix));
+  if (matches.length !== 1) {
+    addError(filePath, `${id} must have exactly one Plans field`);
+    return [];
+  }
+  const rawValue = matches[0].slice(prefix.length);
+  const plans = [...rawValue.matchAll(/`(PLAN-\d{2})`/g)].map((match) => match[1]);
+  if (plans.length === 0 || rawValue !== plans.map((plan) => `\`${plan}\``).join(', ')) {
+    addError(filePath, `${id} Plans must be comma-separated backticked PLAN IDs`);
+  }
+  if (new Set(plans).size !== plans.length) {
+    addError(filePath, `${id} Plans must not contain duplicates`);
+  }
+  return plans;
 }
 
 function validIsoDate(value) {
@@ -165,6 +192,8 @@ function parseRequirements(filePath, kind) {
 
     const status = fieldValue(blockLines, 'Status', filePath, id);
     const updatedAt = fieldValue(blockLines, 'Updated-at', filePath, id);
+    const plans = plansField(blockLines, filePath, id);
+    const priority = fieldValue(blockLines, 'Priority', filePath, id);
     const acceptance = listField(blockLines, 'Acceptance', filePath, id);
     const evidence = listField(blockLines, 'Evidence', filePath, id);
     const allowedStatuses = kind === 'current' ? allowedCurrentStatuses : allowedArchiveStatuses;
@@ -175,6 +204,9 @@ function parseRequirements(filePath, kind) {
     if (updatedAt && !validIsoDate(updatedAt)) {
       addError(filePath, `${id} Updated-at is not a real ISO date: ${updatedAt}`);
     }
+    if (priority && !allowedPriorities.has(priority)) {
+      addError(filePath, `${id} has invalid priority ${priority}`);
+    }
     if (kind === 'current' && status === 'done' && index < completedLineIndex) {
       addError(filePath, `${id} is done but is outside Recent completed requirements`);
     }
@@ -182,7 +214,7 @@ function parseRequirements(filePath, kind) {
       addError(filePath, `${id} is not done but is inside Recent completed requirements`);
     }
 
-    requirements.push({ id, title, status, updatedAt, acceptance, evidence, filePath });
+    requirements.push({ id, title, status, updatedAt, plans, priority, acceptance, evidence, filePath });
     index = end - 1;
   }
 
@@ -204,6 +236,106 @@ const current = parseRequirements(currentPath, 'current');
 const archive = parseRequirements(archivePath, 'archive');
 validateLocalLinks(currentPath, current.text);
 validateLocalLinks(archivePath, archive.text);
+
+const plans = [...current.text.matchAll(planRowPattern)].map((match) => ({
+  id: match[1],
+  status: match[2],
+}));
+const planIds = new Set();
+for (const plan of plans) {
+  if (planIds.has(plan.id)) addError(currentPath, `duplicate plan ID ${plan.id}`);
+  planIds.add(plan.id);
+  if (!allowedPlanStatuses.has(plan.status)) {
+    addError(currentPath, `${plan.id} has invalid plan status ${plan.status}`);
+  }
+}
+if (plans.length === 0) addError(currentPath, 'overall plan must contain at least one PLAN row');
+const activePlans = plans.filter(({ status }) => status === '진행 중');
+if (activePlans.length !== 1) {
+  addError(currentPath, `overall plan must have exactly one in-progress PLAN; found ${activePlans.length}`);
+}
+for (const requirement of [...current.requirements, ...archive.requirements]) {
+  for (const planId of requirement.plans) {
+    if (!planIds.has(planId)) {
+      addError(requirement.filePath, `${requirement.id} references unknown plan ID ${planId}`);
+    }
+  }
+}
+
+const plainLanguageRequirement = current.requirements.find(
+  ({ id }) => id === plainLanguageRequirementId,
+);
+if (!plainLanguageRequirement) {
+  addError(currentPath, `missing ongoing plain-language requirement ${plainLanguageRequirementId}`);
+} else {
+  if (plainLanguageRequirement.status !== 'in-progress') {
+    addError(currentPath, `${plainLanguageRequirementId} must remain in-progress while the project is active`);
+  }
+  const acceptanceText = plainLanguageRequirement.acceptance.join('\n');
+  for (const requiredPhrase of [
+    '일상적인 한국어',
+    '사용자에게 어떤 의미인지',
+    '`기술 참고`',
+    '버튼 이름',
+  ]) {
+    if (!acceptanceText.includes(requiredPhrase)) {
+      addError(
+        currentPath,
+        `${plainLanguageRequirementId} Acceptance is missing plain-language rule: ${requiredPhrase}`,
+      );
+    }
+  }
+}
+
+const planTraceabilityRequirement = current.requirements.find(
+  ({ id }) => id === planTraceabilityRequirementId,
+);
+if (!planTraceabilityRequirement) {
+  addError(currentPath, `missing ongoing plan traceability requirement ${planTraceabilityRequirementId}`);
+} else {
+  if (planTraceabilityRequirement.status !== 'in-progress') {
+    addError(currentPath, `${planTraceabilityRequirementId} must remain in-progress while the project is active`);
+  }
+  const acceptanceText = planTraceabilityRequirement.acceptance.join('\n');
+  for (const requiredPhrase of [
+    '요구사항 번호',
+    '계획 ID',
+    '우선순위',
+    '`현재 위치`',
+    '`바로 다음 작업`',
+    '대화 내용만 공식 상태로 삼지 않고',
+  ]) {
+    if (!acceptanceText.includes(requiredPhrase)) {
+      addError(
+        currentPath,
+        `${planTraceabilityRequirementId} Acceptance is missing plan rule: ${requiredPhrase}`,
+      );
+    }
+  }
+}
+
+const dashboardStart = current.text.indexOf(dashboardHeading);
+const technicalReferenceStart = current.text.indexOf(technicalReferenceHeading);
+if (dashboardStart !== -1 && technicalReferenceStart !== -1) {
+  const userSummary = current.text.slice(dashboardStart, technicalReferenceStart);
+  for (const requiredPhrase of ['사용자에게 이는', '다음에는']) {
+    if (!userSummary.includes(requiredPhrase)) {
+      addError(currentPath, `user summary is missing a plain-language explanation: ${requiredPhrase}`);
+    }
+  }
+  const unclearTerm = userSummary.match(/\b(?:gate|NO-GO|fail-closed|exact tree)\b|별도 금지선/i)?.[0];
+  if (unclearTerm) {
+    addError(currentPath, `user summary contains unclear technical wording: ${unclearTerm}`);
+  }
+  if (activePlans.length === 1) {
+    const currentPositionStart = current.text.indexOf('### 현재 위치');
+    const currentPositionEnd = current.text.indexOf('\n### ', currentPositionStart + 1);
+    const currentPosition = current.text.slice(currentPositionStart, currentPositionEnd);
+    if (!currentPosition.includes(`진행 중인 계획은 \`${activePlans[0].id}\` 하나다`)) {
+      addError(currentPath, `current position must name the only in-progress plan ${activePlans[0].id}`);
+    }
+  }
+}
 
 const all = [...current.requirements, ...archive.requirements];
 const seenIds = new Map();

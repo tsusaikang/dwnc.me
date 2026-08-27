@@ -1,6 +1,6 @@
 # dwnc.me 공개 미디어 전달 계약 v1
 
-상태: **현재 기준 HEAD `9d0b3c80b896f14bfce8182fd4f3fec927286a57`·tree `cf9f8756f3b78b26d26dc7de3f0de3fac3d54394`·push 0 / 대표 객체 1개 HEAD+full GET/SHA-256 검증 완료·exact 1·missing 2,757·mismatch 0·orphan 0 / private-exposure read-only 수집 경로는 commit 완료·실제 API capture 대기 / bulk upload·strict inspection·full audit 안전장치는 다음 로컬 commit 전 / bulk upload·smoke token·Worker·version·activation 없음 / 실제 도메인·DNS 미연결**
+상태: **현재 기준 HEAD `ccec8bb855e45ef679a4b99faf0f0633a99e089e`·tree `241a654acc387233d4e2d5e076754b345619e9ac`·push 0 / staging R2 bulk upload 완료·exact 2,758·missing 0·mismatch 0·orphan 0·overwrite 0·delete 0 / private-exposure canonical API capture와 전체 2,758개 full GET/SHA-256 audit 대기 / smoke token·Worker·version·activation 없음 / 실제 도메인·DNS 미연결**
 
 이 문서는 공개 글이 참조하는 대용량 미디어를 동일 출처 `https://dwnc.me/media/*`로 제공하기 위한 계약이다. 기존 URL, 로컬 원본, SHA-256 증거를 바꾸지 않고 private R2 bucket을 전달용 복제본으로 사용한다.
 
@@ -264,14 +264,15 @@ Cloudflare Cache API는 저장 시 쓴 내부 cache key를 사용하므로 공�
 
 단일 객체 validator-only HEAD+streaming full-GET 명령은 source commit `df3c678456f6af3471d846a32e28faa5751b9a2e`·tree `bbe8306cbf6577cd556533079593872020ddc8b5`에 포함됐고 push는 0이다. 같은 source에서 대표 객체를 PUT 없이 검증해 request HEAD 1·GET 1·PUT 0·DELETE 0, ETag `"d3ded31a7b52f467702909afbc7d5340"`, Last-Modified `2026-08-27T00:24:12.000Z`, version `null`을 확인했다. 검증 시각은 `2026-08-27T05:07:48.418Z`, validation receipt SHA-256은 `fa72b1849496a9b6e4697721cfef9d4fcd17b8f463b41dcacd714c5f9bb2352a`다. 이어 `2026-08-27T05:09:09.996Z`에 inspection을 다시 수행해 exact 1·missing 2,757·mismatch 0·orphan 0을 확인했고 post-one inspection receipt SHA-256은 `f00f3c13c9ae99f8a36599db85d7a180e31d8779776653bca72c2aee596d380e`다.
 
-현재 최종 manifest는 2,758개·2,346,220,246바이트·SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`이고 로컬·source-only·build·Worker 회귀를 통과했다. 최초 빈-bucket 검사 기록 SHA-256은 `d058fce27c6a9114751fcbf5f2ba67f2dda9b8f385ad1d733c2864c847e4e263`이고, 단일 객체 검증 뒤 현재 권위 있는 inspection receipt는 위 `f00f3c...` 전체 digest다. 첫 uploader 실행의 PUT은 최대 1회였고 재시도·overwrite·DELETE는 0이다. 정리 전 2,889개는 역사 기준선일 뿐 현재 원격 작업 기준이 아니다. private-exposure read-only 수집 경로는 commit `9d0b3c80b896f14bfce8182fd4f3fec927286a57`·tree `cf9f8756f3b78b26d26dc7de3f0de3fac3d54394`에 기록했고 push는 0이다. 현재 working tree의 bulk upload·strict inspection·full audit 안전장치는 Cloudflare 관련 21 suites·1,452 assertions를 통과했지만 아직 commit하지 않았고, 이 변경을 검증하는 동안 실제 Chrome·Cloudflare API·Keychain·R2 접근과 원격 변경은 모두 0이다.
+현재 최종 manifest는 2,758개·2,346,220,246바이트·SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`이고 로컬·source-only·build·Worker 회귀를 통과했다. bulk 안전장치는 commit `ccec8bb855e45ef679a4b99faf0f0633a99e089e`·tree `241a654acc387233d4e2d5e076754b345619e9ac`에 기록했고 push는 0이다. 같은 source의 clean 상태에서 pre exact 1·missing 2,757·mismatch 0·orphan 0을 확인하고 기존 1개를 건너뛴 채 missing 2,757개만 조건부 생성했다. bulk와 독립 post-inspection 모두 exact 2,758·missing 0·mismatch 0·orphan 0이며 overwrite·DELETE는 0이다. bulk receipt SHA-256은 `2974384ff720326830f5f3dcd9e2439dc56af4ec96c813bade88a2d0b7815444`, post-inspection receipt SHA-256은 `f562129e14a65918bfebac26de313ff5e461ad3067774f9084a0e0514def0d84`다. 정리 전 2,889개는 역사 기준선일 뿐 현재 원격 작업 기준이 아니다.
+
+private-exposure 설정 확인에 쓰려고 만든 읽기 전용 API token 두 개는 안전한 전달에 실패해 각각 API GET 0·capture 0 상태로 폐기했다. 다음 token을 만들기 전에 전달 경로를 다시 설계하고 비밀이 아닌 안전 문구로 먼저 검증한다. token 값과 raw account ID는 기록하지 않았다.
 
 다음은 현재 수행하지 않았다.
 
-- 현재 bulk upload·strict inspection·full audit 안전장치 변경을 로컬 commit하고 exact commit/tree를 기록
-- 필요하면 업로드 전에 짧은 수명의 최소 권한 token으로 bucket 설정 확인용 GET 3회 증거를 남기고 즉시 token 폐기. 이 capture는 full audit에 재사용하지 않음
-- final manifest의 missing 2,757개 create-only upload와 strict post-inspection
-- bulk 완료 뒤 새 900초 capture를 수집해 즉시 2,758개 원격 full GET/SHA-256 검증. 만료되면 새 capture·새 receipt 경로로 전수 감사 재실행
+- 다음 token 생성 전에 clipboard→anonymous FD 전달 경로를 재설계하고 안전 문구로 먼저 검증
+- 짧은 수명의 최소 권한 token으로 bucket 비공개 설정 GET 3회 증거를 남기고 즉시 token 폐기
+- 새 900초 capture를 수집해 즉시 2,758개 원격 full GET/SHA-256 검증. 만료되면 새 capture·새 receipt 경로로 전수 감사 재실행
 - 새 자격증명 작동 확인 뒤 2026-08-25의 사용 불가능한 Active token 두 개 정리
 - production receipt의 보호 환경 full-GET/SHA 감사·서명과 account/public-key fingerprint 확정
 - staging·production bucket의 `r2.dev` 비활성·custom domain 0 canonical control-plane 감사 증거 확정. staging dashboard 관측은 완료됐지만 API 원본·canonical receipt는 아직 없음

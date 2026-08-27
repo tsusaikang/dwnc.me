@@ -66,6 +66,8 @@ function archivedRequirement({ id, updatedAt, status = 'done' }) {
     `### \`${id}\` — archive fixture ${id}`,
     `- **Status:** \`${status}\``,
     `- **Updated-at:** \`${updatedAt}\``,
+    '- **Plans:** `PLAN-09`',
+    '- **Priority:** `P2`',
     '- **Acceptance:**',
     '  - fixture acceptance',
     '- **Evidence:**',
@@ -116,6 +118,8 @@ const overflowDone = Array.from({ length: 13 - recentDoneMatches.length }, (_, i
     `### \`DWNC-P2-${id}\` — retention fixture ${id}`,
     '- **Status:** `done`',
     `- **Updated-at:** \`${overflowDate}\``,
+    '- **Plans:** `PLAN-09`',
+    '- **Priority:** `P2`',
     '- **Acceptance:**',
     '  - fixture acceptance',
     '- **Evidence:**',
@@ -203,4 +207,59 @@ withFixture(
   (result) => assertRejected(result, /oldest-first movement violated/),
 );
 
-console.log('requirements validator tests PASS: baseline=1, negative=12');
+withFixture(
+  {
+    current: sourceCurrent.replace(
+      /\n### `DWNC-OPS-004`[\s\S]*?(?=\n### |\n## |$)/,
+      '',
+    ),
+  },
+  (result) => assertRejected(result, /missing ongoing plain-language requirement DWNC-OPS-004/),
+);
+
+withFixture(
+  { current: sourceCurrent.replace('사용자에게 이는', '이 작업은') },
+  (result) => assertRejected(result, /user summary is missing a plain-language explanation/),
+);
+
+withFixture(
+  {
+    current: sourceCurrent.replace(
+      '### 최종 결과\n',
+      '### 최종 결과\n\n다음 gate를 준비한다.\n',
+    ),
+  },
+  (result) => assertRejected(result, /user summary contains unclear technical wording: gate/),
+);
+
+withFixture(
+  {
+    current: sourceCurrent.replace(
+      /\n### `DWNC-OPS-005`[\s\S]*?(?=\n### |\n## |$)/,
+      '',
+    ),
+  },
+  (result) => assertRejected(result, /missing ongoing plan traceability requirement DWNC-OPS-005/),
+);
+
+withFixture(
+  { current: sourceCurrent.replace('- **Plans:** `PLAN-05`', '- **Plans:** `PLAN-99`') },
+  (result) => assertRejected(result, /references unknown plan ID PLAN-99/),
+);
+
+withFixture(
+  {
+    current: sourceCurrent.replace(
+      '| `PLAN-06` | 실제 도메인과 연결되지 않은 시험용 사이트를 올려 점검한다. | 새 Worker 버전에서 정적 페이지, 예전 주소 349개와 사진 응답 검사를 모두 통과한다. | `대기` |',
+      '| `PLAN-06` | 실제 도메인과 연결되지 않은 시험용 사이트를 올려 점검한다. | 새 Worker 버전에서 정적 페이지, 예전 주소 349개와 사진 응답 검사를 모두 통과한다. | `진행 중` |',
+    ),
+  },
+  (result) => assertRejected(result, /overall plan must have exactly one in-progress PLAN; found 2/),
+);
+
+withFixture(
+  { current: sourceCurrent.replace('- **Priority:** `P0`', '- **Priority:** `urgent`') },
+  (result) => assertRejected(result, /has invalid priority urgent/),
+);
+
+console.log('requirements validator tests PASS: baseline=1, negative=19');

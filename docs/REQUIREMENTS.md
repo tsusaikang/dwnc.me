@@ -2,103 +2,143 @@
 
 최종 갱신: 2026-08-27 KST
 
-이 문서는 사용자가 현재 상태와 다음 작업을 빠르게 확인하는 요약과 요구사항 원장이다. 구현 세부사항, 검증 수치와 인수인계 기준점은 [`PROJECT_STATE.md`](../PROJECT_STATE.md)가 담당하고, 공개 미디어의 불변 전달 규칙은 [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)가 담당한다. 세 문서가 다르면 실제 Git 상태, 검증 결과와 Cloudflare 설정 재확인 결과를 기준으로 같은 변경에서 바로잡는다.
+이 문서는 사용자가 최종 목표, 전체 계획, 현재 위치와 다음 작업을 빠르게 확인하는 공식 기록이다. 자세한 작업 기록은 [`PROJECT_STATE.md`](../PROJECT_STATE.md), 사진을 안전하게 제공하는 기술 규칙은 [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)에 둔다. 문서끼리 내용이 다르면 실제 파일과 검사 결과, Cloudflare에서 다시 확인한 설정을 기준으로 함께 바로잡는다.
 
 <!-- requirements-policy: recent-complete-limit=12 -->
 
-완료 요구사항은 이 문서에 최근 12개까지 `(Updated-at, ID)` 오름차순으로 유지한다. 13번째 완료가 생기면 같은 정렬에서 가장 오래된 완료 항목을 [`REQUIREMENTS_ARCHIVE.md`](REQUIREMENTS_ARCHIVE.md) 끝으로 옮기며 ID·완료 조건·증거·날짜를 삭제하거나 재사용하지 않는다.
+완료된 요구사항은 최근 12개까지만 이 문서에 둔다. 그보다 오래된 항목은 [`REQUIREMENTS_ARCHIVE.md`](REQUIREMENTS_ARCHIVE.md)로 옮기되 요구사항 번호, 완료 조건, 확인 근거와 날짜를 지우거나 다시 사용하지 않는다.
 
 ## 한눈에 보는 진행 상황
 
-### 현재 목표
+### 최종 결과
 
-현재 기준 HEAD는 private-exposure read-only 수집 commit `9d0b3c80b896f14bfce8182fd4f3fec927286a57`·tree `cf9f8756f3b78b26d26dc7de3f0de3fac3d54394`이고 push는 0이다. 그 이전 validator source에서 대표 객체를 PUT 없이 HEAD 1회·full GET 1회로 검증했으며 PUT 0·DELETE 0, ETag `"d3ded31a7b52f467702909afbc7d5340"`, Last-Modified `2026-08-27T00:24:12.000Z`, version `null`이 HEAD와 GET에서 일치했다. create-only validation receipt SHA-256은 `fa72b1849496a9b6e4697721cfef9d4fcd17b8f463b41dcacd714c5f9bb2352a`다. 이어 PUT 없이 전수 HEAD inspection을 다시 수행해 exact 1·missing 2,757·mismatch 0·orphan 0을 확인했고 receipt SHA-256은 `f00f3c13c9ae99f8a36599db85d7a180e31d8779776653bca72c2aee596d380e`다. 현재 working tree에는 missing-only bulk upload, strict post-inspection과 full GET/SHA-256 audit 안전장치가 있고 아직 commit하지 않았다. 실제 `dwnc.me` 도메인과 DNS는 Cloudflare에 연결되지 않았다.
+이 프로젝트의 최종 목표는 티스토리와 네이버에 있던 사용자의 글과 사진을 안전하게 보존하면서, 특정 블로그 서비스에 묶이지 않고 직접 운영할 수 있는 `dwnc.me` 블로그를 완성하는 것이다.
 
-### 전체 상태
+완성된 상태에는 다음 내용이 포함된다.
 
-| 영역 | 상태 | 현재 증거 |
-|---|---|---|
-| 콘텐츠 보존·새 사이트 | 완료 | 티스토리 공개 164개, 네이버 공개 185개, 비공개 로컬 247개와 canonical/alias 349개가 로컬 전수 검증을 통과했다. |
-| Stage 3 로컬 안전장치 | private-exposure commit 완료 / bulk hardening commit 전 | 기준 HEAD `9d0b3c80b896f14bfce8182fd4f3fec927286a57`·tree `cf9f8756f3b78b26d26dc7de3f0de3fac3d54394`·push 0이다. 현재 bulk fixture는 기존 exact 객체 PUT 0, missing-only 조건부 생성, 부분 실패 뒤 재실행, exact 412 복구, post-orphan 거부, 최종 receipt 경합 뒤 경쟁 파일 보존·새 경로 안전 재실행, receipt/Git 사전검사 실패 시 network 0, 요청 수와 비밀값 비노출을 검증한다. bulk receipt를 `media-receipt`로 서명하려는 시도도 거부한다. Cloudflare 전체 21 suites·1,452 assertions가 통과했고 실제 network·Keychain·overwrite·delete는 0이다. |
-| Cloudflare Builds | 설정 재확인 완료 | account fingerprint가 정책과 일치했고 `SKIP_DEPENDENCY_INSTALL=1`, Build `npm ci && npm run cloudflare:prepare:production`, Deploy `npm run cloudflare:upload:production-version`, Version `npx wrangler versions upload`를 확인했다. 보호 절차 없이 직접 실행하는 `wrangler deploy`는 없었다. |
-| staging R2 저장소 | 대표 객체 full GET 완료·bulk upload 대기 | private bucket `dwnc-me-public-media-staging`의 대표 객체는 validation receipt `fa72b1849496a9b6e4697721cfef9d4fcd17b8f463b41dcacd714c5f9bb2352a`로 full SHA-256과 같은 세대임을 확인했다. 후속 inspection은 exact 1·missing 2,757·mismatch 0·orphan 0, receipt `f00f3c13c9ae99f8a36599db85d7a180e31d8779776653bca72c2aee596d380e`이며 추가 PUT·overwrite·DELETE는 0이다. |
-| 최종 공개 미디어 | 완료 | 2,758개·2,346,220,246바이트, manifest SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`를 로컬·source-only 전수 검증했다. |
-| 공개 요청 경로 | 완료 | 1,410경로, SHA-256 `1666d8dd85ac05c2274513cfbe438f24ead06a190f873af3b67f7e3aa373307c`로 확정했다. |
-| staging Worker | signing key 완료·Worker 미실행 | media public fingerprint는 `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`, release public fingerprint는 `2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2`다. private key는 macOS Keychain에만 보관했고 export하지 않았다. Worker·smoke token·version·activation은 아직 없다. |
-| 실제 도메인 | 미연결 | `dwnc.me` DNS·route·custom domain을 Cloudflare Worker에 연결하지 않았다. Cloudflare 안의 production 이름 자원을 변경해도 현재 사이트 방문자에게 영향이 없다. |
+- 티스토리 공개 글 164개와 네이버 공개 글 185개를 새 사이트에서 제공한다. 네이버 비공개 글 247개는 공개하지 않고 별도 로컬 보존 영역에 둔다.
+- 원문과 사진의 출처·크기·내용 확인값을 보존해 이전 과정에서 빠지거나 바뀐 자료가 없는지 확인할 수 있게 한다.
+- 공개 글 349개를 독립 사이트의 새 주소로 제공하고, 예전 티스토리·네이버 주소 349개도 올바른 새 글로 이어지게 한다.
+- 큰 사진 파일은 Cloudflare의 비공개 저장소(R2)에 두고, 사이트 프로그램(Worker)을 통해서만 안전하게 보여 준다.
+- 시험용 주소에서 글, 예전 주소 349개, 사진 표시와 부분 전송을 모두 확인한 뒤 운영용 구성을 준비한다.
+- 실제 `dwnc.me` 주소 연결은 사용자의 별도 결정 후 진행한다. 연결을 결정하면 실제 주소에서 글·예전 주소·사진·모바일과 데스크톱 화면을 다시 확인해야 전체 운영 전환이 끝난다.
+
+현재 콘텐츠 보존과 독립 사이트의 로컬 구현은 완료됐지만 Cloudflare의 파일 내용 전수 확인, 시험용 Worker, 실제 도메인 연결과 운영 전환 검증은 아직 남아 있다. 따라서 **사이트 전체가 이미 운영 중이라고 표현하지 않는다.** 근거는 [`PROJECT_STATE.md`](../PROJECT_STATE.md), [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md), [`URL_CONTRACT.md`](URL_CONTRACT.md)에 나누어 기록한다.
+
+### 전체 계획
+
+| 계획 ID | 목적과 주요 작업 | 완료 기준 | 현재 상태 |
+|---|---|---|---|
+| `PLAN-00` | 새 요청, 진행 순서와 사용자 안내를 한곳에서 관리한다. | 모든 새 요청에 요구사항 번호와 관련 계획을 연결하고 문서를 최신 상태로 유지한다. | `계속 적용` |
+| `PLAN-01` | 두 원본 블로그의 글과 자료 범위를 확인하고 원본을 보존한다. | 티스토리 공개 164개, 네이버 직접 작성 432개의 원본과 공개 범위를 확인한다. | `완료` |
+| `PLAN-02` | 공개 글과 비공개 글을 분리해 새 사이트용 내용으로 바꾼다. | 공개 349개가 새 사이트에 들어가고 비공개 247개가 공개 영역 밖에 남는다. | `완료` |
+| `PLAN-03` | 독립 사이트와 주소 체계를 만든다. | 공개 글 349개, 예전 주소 349개, 검색·분류·RSS·사이트맵과 모바일·데스크톱 화면 검사를 통과한다. | `완료` |
+| `PLAN-04` | 공개할 미디어를 정리하고 최종 목록을 확정한다. | 사용자 소유 사진 2,757개와 직접 제작 GIF 1개를 확정하고 제외·대체 결정을 반영한다. | `완료` |
+| `PLAN-05` | 시험용 비공개 저장소에 파일을 옮기고 내용까지 전부 확인한다. | 2,758개가 모두 있고, 각 파일 내용과 전체 용량이 원본과 같으며 덮어쓰기·삭제가 없다. | `진행 중` |
+| `PLAN-06` | 실제 도메인과 연결되지 않은 시험용 사이트를 올려 점검한다. | 새 Worker 버전에서 정적 페이지, 예전 주소 349개와 사진 응답 검사를 모두 통과한다. | `대기` |
+| `PLAN-07` | 운영용 이름의 Cloudflare 저장소와 사이트 버전을 같은 방식으로 준비한다. | 시험용에서 통과한 절차를 운영용 자원에도 적용하고 결과를 기록한다. 실제 도메인은 아직 연결하지 않는다. | `대기` |
+| `PLAN-08` | 실제 `dwnc.me` 주소를 연결하고 운영 전환을 확인한다. | 사용자 결정 후 DNS를 연결하고 실제 주소의 글·예전 주소·사진·화면을 다시 검사한다. | `사용자 결정 필요` |
+| `PLAN-09` | 새 글 작성, 공유 글 10개, 댓글과 비공개 백업 방식을 정한다. | 각 항목의 운영 방식을 사용자가 결정하고 보존·복구 절차를 문서화한다. | `사용자 결정 필요` |
+
+### 현재 위치
+
+**진행 중인 계획은 `PLAN-05` 하나다.** 공개 미디어 2,758개의 업로드와 업로드 뒤 목록 확인은 끝났다. 지금은 모든 파일 내용을 다시 내려받아 원본과 비교하기 위한 준비 단계다. Cloudflare 계정을 읽는 열쇠가 안전하게 전달되도록 방식을 다시 설계하는 일과, 비개발자도 이해하기 쉬운 요구사항 문서 정리를 함께 진행하고 있다.
+
+사용자에게 이는 **파일은 모두 시험용 저장소에 들어갔지만 실제 내용을 한 개씩 다시 확인하는 마지막 검사가 남았다는 뜻**이다. 다음에는 안전한 읽기 방식이 확인되는 즉시 저장소의 비공개 설정을 확인하고 2,758개 전체 내용을 비교한다. 시험용 Worker의 업로드와 적용은 아직 시작하지 않았다.
 
 ### 미디어 정리 결과
 
-후보 132개는 current manifest와 경로·크기·MIME·SHA가 모두 일치했고, 반복 파일을 합치면 고유 SHA-256은 65개다.
+플랫폼에서 자동으로 붙인 것으로 보이는 이미지 후보 132개를 모두 살펴보고 다음처럼 정리했다.
 
 | 묶음 | 수량 | 현재 결정 | 다음 확인 |
 |---|---:|---|---|
-| Naver·Kakao 지도 이미지·타일·핀·축척·커서 | 99 | 제외·대체 완료 | 영향 글 5개에 장소 카드 16개를 렌더한다. 15개는 원 장소 링크, 원 주소가 없는 1개는 Naver 검색 fallback이며 구조·desktop/mobile·light/dark 시각 QA를 통과했다. |
-| LINE store 스티커 | 5 | 제외·표현 보완 완료 | 링크·이미지·빈 wrapper는 0이고 본문 문자는 보존됐다. 최초 시각 QA에서 발견한 두 영향 글의 큰 세로 공백은 파생 표현 계층의 exact-boundary collapse로 해소했고 구조·build validation을 통과했다. |
-| 1×1 빈 SVG/GIF placeholder | 27 | B 선택·제외 완료 | 빈 객체와 53개 video poster는 제외했다. 대신 재생 불가 안내·재생시간 53개와 작성자 캡션 23개는 유지했고, placeholder를 cover로 쓰던 13개 글의 파생 cover는 `null`로 두었다. |
-| SBS 수영 방송 화면 GIF | 1 | 포함 | 본문·cover의 실제 GIF가 desktop/mobile에서 정상 렌더됨을 확인했고 사용자의 포함 결정을 유지한다. |
+| 네이버·카카오 지도 이미지와 표시 요소 | 99 | 제외·대체 완료 | 영향받은 글 5개에는 장소 카드 16개를 넣었다. 15개는 원래 장소 링크, 주소를 확인할 수 없던 1개는 네이버지도 검색 링크이며 컴퓨터와 휴대전화 화면에서 확인했다. |
+| LINE 스티커 | 5 | 제외·빈 공간 정리 완료 | 스티커와 연결 주소를 빼되 본문 글자는 유지했다. 제거 뒤 두 글에 생긴 큰 빈 공간도 정리했다. |
+| 화면에 보이지 않는 1×1 크기 빈 이미지 | 27 | 사용자의 B 선택에 따라 제외 완료 | 영상 재생 불가 안내 53개, 재생시간 53개와 작성자 설명 23개는 그대로 남겼다. 이 빈 이미지를 대표 이미지로 쓰던 글 13개는 대표 이미지 없음으로 처리했다. |
+| 사용자가 직접 만든 SBS 수영 방송 화면 GIF | 1 | 포함 | 본문과 대표 이미지에서 컴퓨터·휴대전화 모두 정상 표시되는 것을 확인했다. |
 
-사용자가 소유를 확인한 사진 2,757개에 직접 제작한 SBS 수영 GIF 1개를 더한 2,758개가 최종 공개 집합이다. 지도 99개는 자산 집합에서 빼고 영향 글 5개의 장소 카드 16개로 바꾸었다. 15개는 원 장소 네이버지도 링크, 1개는 네이버지도 검색 링크다. LINE 스티커 5개와 placeholder 27개는 제외했고, SBS GIF `/media/naver/221172590451/001-e467d08a3a01.gif`의 1,299,862바이트·SHA-256 `e467d08a3a01bf5bcc53c79f2a40e89d0181a8c920e08b62a1a513c3d93656d9`는 본문과 cover에서 그대로 유지했다.
+사용자가 소유를 확인한 사진 2,757개와 직접 만든 SBS GIF 1개, 총 2,758개가 최종 공개 대상이다. 지도 99개는 장소 카드와 네이버지도 링크로 바꾸었고 LINE 스티커 5개와 화면에 보이지 않는 빈 이미지 27개는 제외했다.
 
 ### 아직 결정할 일과 진행을 막는 조건
 
-1. bucket 속성·`r2.dev`·custom domain을 Cloudflare REST API의 읽기 전용 GET 3회로 다시 수집하는 canonical evidence는 아직 없다. 대상 account 하나의 `Workers R2 Storage: Read`만 가진 15분 이내 token을 clipboard→익명 FD로 한 번만 전달하고, exact account fingerprint·bucket·Git commit/tree에 묶어 수집한 직후 revoke해야 한다. Cloudflare token 자체는 account 범위이므로 로컬 명령이 exact bucket·GET-only를 추가로 강제한다. 업로드 전 설정 확인용 capture와 bulk 뒤 full audit에 쓸 fresh capture는 구분한다.
-2. 2026-08-25에 만든 사용 불가능한 R2 token 두 개는 아직 Active다. 새 자격증명의 정상 작동을 확인한 뒤 대상 두 개만 안전하게 정리한다.
-3. staging media·release Ed25519 key는 생성·정책 고정을 마쳤지만 smoke token은 아직 생성하지 않았다. smoke token 규칙은 암호학적 난수 32바이트를 padding 없는 base64url 43문자로 표현하는 것으로 확정했다.
-4. staging Worker `dwnc-me-staging`은 아직 없으며 Worker version·activation은 0이다. R2에는 full GET까지 검증된 대표 객체 1개만 있다.
-5. 공유·스크랩 추정 10개, 새 글 편집 방식, 과거 댓글, 비공개 자료의 암호화 백업 정책은 Stage 3와 무관한 사용자 결정으로 남아 있다.
+1. 모든 파일의 실제 내용을 확인하기 전에, 저장소가 외부에 공개되지 않았는지 Cloudflare에서 한 번 더 읽어 와야 한다. 이를 위해 잠깐만 쓰는 읽기 전용 열쇠가 필요하다.
+2. 앞서 만든 읽기 전용 열쇠 두 개는 전달 과정이 안전하지 않아 사용하지 않았고 모두 폐기했다. 두 시도 모두 Cloudflare 정보를 읽은 횟수와 결과 파일 수가 0이다. 새 열쇠를 만들기 전에 전달 방식을 다시 설계하고 시험해야 하며, 그때까지 사용자가 할 일은 없다.
+3. 파일을 방문자에게 보여 줄 시험용 프로그램은 아직 만들지 않았다. 저장소의 모든 파일 내용이 원본과 같은지 확인한 뒤 진행한다.
+4. 공유·스크랩으로 보이는 글 10개, 새 글 작성 방식, 과거 댓글, 비공개 자료의 암호화 백업 방식은 Stage 3와 관계없는 사용자 결정으로 남아 있다.
 
-### 바로 다음 단계
+### 바로 다음 작업
 
-1. 현재 bulk upload·strict inspection·full audit 안전장치의 diff·테스트를 검토한 뒤 로컬 Git에 commit하고 exact SHA/tree를 기록한다. push는 하지 않는다.
-2. 필요하면 업로드 전에 짧은 수명의 최소 권한 Cloudflare API token으로 exact bucket 속성, managed domain, custom domains를 GET 3회만 확인하고 즉시 token을 폐기한다. 이 설정 확인 capture는 full audit 증거로 재사용하지 않는다.
-   - capture가 생성됐지만 evidence 기록이 실패하면 token/API를 다시 쓰지 않고 `cloudflare:r2:exposure:recover`로 secure capture를 재검증해 누락 evidence만 생성한다.
-3. 최종 2,758개 중 missing 2,757개를 create-only로 올린 뒤 strict post-inspection에서 exact 2,758·missing/mismatch/orphan 0을 확인한다.
-4. bulk와 post-inspection이 끝난 뒤 새 900초 capture를 수집하고 곧바로 모든 2,758개를 GET해 SHA-256·총 바이트를 대조한다. 감사 시작과 receipt 후보 생성이 모두 `expiresAt` 전이어야 하며, 만료되면 새 capture와 아직 쓰지 않은 새 receipt 경로로 전수 감사를 처음부터 다시 실행한다.
-5. 새 자격증명의 작동이 확인됐으므로 2026-08-25의 사용 불가능한 Active token 두 개를 정확히 식별해 정리한다.
-6. 생성한 staging signing key를 사용해 보호된 smoke token과 서명 증거를 준비하고, Worker 부재 상태를 다시 확인한 뒤 deny-only staging Worker를 최초 생성한다.
-7. 확정된 Git SHA와 R2 감사 증거에 묶인 staging Worker version만 올리고 100%로 적용한 뒤 정적 페이지·349 redirect·media GET/HEAD/304/206/416을 `workers.dev`에서 검증한다.
-8. production 이름의 Cloudflare 자원·버전 작업이 필요하면 같은 안전 절차로 계속한다. 실제 `dwnc.me` 도메인·DNS는 연결하지 않는다.
+1. 짧게만 사용할 새 읽기 전용 열쇠를 만들기 전에, 열쇠가 화면이나 기록에 남지 않는 전달 방법을 먼저 시험한다.
+2. 안전한 전달이 확인되면 저장소가 비공개 상태인지 읽기만 해서 확인하고, 사용한 열쇠는 바로 폐기한다. Cloudflare 화면에서 열쇠 생성이나 폐기 직전에 사용자의 클릭이 꼭 필요할 때만 버튼 이름과 순서를 안내한다.
+3. 저장소의 파일 2,758개를 하나씩 다시 내려받아 원본과 내용 및 전체 용량이 같은지 확인한다.
+4. 확인이 끝나면 실제 도메인과 연결되지 않은 시험용 주소에 사이트 새 버전을 올린다.
+5. 시험용 주소에서 정적 페이지, 기존 주소 349개, 이미지의 일반 표시·변경 없음 응답·부분 전송·범위를 벗어난 요청을 점검한다.
+6. 운영용 이름의 Cloudflare 자원이 더 필요하면 같은 순서로 준비하되 실제 `dwnc.me` 주소와 DNS는 연결하지 않는다.
+
+사용자가 지금 바로 해야 할 일은 없다. 실제 `dwnc.me` 주소 연결은 `PLAN-08`에서 사용자 결정이 있어야만 진행한다. 이미 승인된 시험용 작업은 안전 조건이 충족되면 단순히 승인을 다시 받기 위해 멈추지 않는다.
 
 ### 최근 완료
 
-- R2 subscription을 올바른 Cloudflare account에서 활성화하고 private staging bucket을 만들었다.
-- exact staging bucket에만 접근하는 uploader와 read-only validator 자격증명을 TTL 2026-09-03으로 다시 만들었다. 노출 가능성이 생긴 실패 uploader는 즉시 revoked했고 정상 자격증명의 일반 출력·로그 비밀값 노출과 clipboard 사용은 0이다.
-- 후보 132개를 전수 재구성·시각 감사해 지도 99, 스티커 5, 빈 placeholder 27, 방송 GIF 1로 분류했다.
-- 지도 99개를 영향 글 5개의 장소 카드 16개로 대체하고 15개 원 장소 링크와 1개 검색 fallback을 구조·시각 검증했다. 스티커 5개 제거 뒤 최초 시각 QA에서 찾은 세로 공백도 exact-boundary collapse로 해소해 구조·build validation을 통과했고 SBS GIF 보존을 렌더에서 확인했다.
-- B 선택에 따라 placeholder 27개를 제외하면서 53개 재생 불가 안내·재생시간과 23개 캡션을 유지했고 13개 파생 cover를 `null`로 정리했다.
-- 최종 2,758개·2,346,220,246바이트 manifest와 로컬·source-only·build·Worker 회귀를 검증했다.
-- Cloudflare Builds의 raw deploy를 제거하고 version-only wrapper 설정을 인증된 Chrome에서 재확인했다.
-- Stage 3 signing identity를 commit `9da8e87525f3e8ff6bd593d7047bd10fb6d1d57d`·tree `60a245dea016761f274cb08d093b69f928a9f6f5`로 기록했으며 push하지 않았다.
-- staging media·release Ed25519 private key를 macOS Keychain에 보관하고 private export 없이 두 public fingerprint를 release policy에 고정했다.
-- 실제 staging validator 재검사에서 대표 객체 1개 exact·missing 2,757·mismatch 0·orphan 0을 확인했다. 기록 SHA-256은 `27bf50a94fb6166a01201f3fb3a4a2dfc954b3d983e29a47f53ea38cbab31cd3`이고 첫 uploader 실행 뒤 추가 PUT·overwrite·DELETE는 0이었다.
-- validator commit `df3c678456f6af3471d846a32e28faa5751b9a2e`에서 대표 객체를 PUT 없이 HEAD 1·full GET 1로 검증했다. validation receipt SHA-256은 `fa72b1849496a9b6e4697721cfef9d4fcd17b8f463b41dcacd714c5f9bb2352a`, 후속 exact 1·missing 2,757 inspection receipt SHA-256은 `f00f3c13c9ae99f8a36599db85d7a180e31d8779776653bca72c2aee596d380e`다.
+- 올바른 Cloudflare 계정에서 파일 저장 기능을 활성화하고 외부에 공개되지 않는 시험용 저장소를 만들었다.
+- 시험용 저장소에만 접근할 수 있는 업로드용 열쇠와 읽기 전용 열쇠를 따로 만들었다. 노출될 가능성이 생긴 실패 열쇠는 즉시 폐기했다.
+- 검토 대상 132개를 지도 99개, 스티커 5개, 빈 이미지 27개, 사용자가 만든 GIF 1개로 분류했다.
+- 지도 99개를 장소 카드 16개로 바꾸고 원래 장소 링크 15개와 검색 링크 1개를 컴퓨터와 휴대전화 화면에서 확인했다.
+- 사용자의 B 선택에 따라 빈 이미지 27개를 제외하면서 영상 안내와 작성자 설명은 유지했다.
+- 최종 공개 대상 2,758개가 로컬 원본, 사이트 화면과 파일 목록에서 서로 맞는지 확인했다.
+- Cloudflare의 자동 작업은 실제 사이트를 바로 바꾸지 않고 새 버전만 올리도록 고쳤다.
+- 시험용 배포 결과를 확인하는 전용 서명 열쇠를 안전한 macOS 보관소에 두고 외부 파일로 내보내지 않았다.
+- 먼저 대표 파일 1개를 저장하고 실제 내용을 다시 내려받아 원본과 같은지 확인했다.
+- 시험용 R2 저장소에 남아 있던 2,757개를 추가해 최종 2,758개 업로드를 마쳤다. 다시 확인한 결과 빠짐·내용 차이·불필요한 파일은 0개였고 덮어쓰기와 삭제도 0회였다.
+- 전달 과정이 안전하지 않았던 읽기 전용 열쇠 두 개를 Cloudflare 정보 조회 전에 폐기했다. 두 시도의 정보 조회와 결과 파일 생성은 모두 0회였다.
 
 ### 이번 작업에서 하지 않는 것
 
 - 실제 `dwnc.me` 도메인 연결과 DNS 변경
-- 보호된 bootstrap/version-only 절차를 거치지 않고 직접 실행하는 `wrangler deploy`
-- 기존 파일·R2 객체 덮어쓰기, 객체 삭제, orphan 자동 삭제
+- 정해진 안전 확인 절차를 건너뛰고 사이트를 직접 배포하는 일
+- 기존 파일이나 Cloudflare 저장소의 파일을 덮어쓰거나 삭제하는 일
 - Git push
-- 자격증명·token·private key 값, raw Cloudflare account ID, private 콘텐츠 또는 개인식별정보의 문서·로그 기록
+- 계정 열쇠, 비밀 서명값, Cloudflare 계정 원본 번호, 비공개 콘텐츠나 개인정보를 문서 또는 작업 기록에 남기는 일
+
+### 새 요청 반영 방법
+
+1. 사용자가 새 요청이나 조건을 말하면 `DWNC-...` 형식의 변하지 않는 요구사항 번호를 부여한다.
+2. 각 요구사항에 관련된 `PLAN-..` 번호를 연결하고 우선순위, 완료 기준, 현재 상태와 확인 근거를 함께 적는다.
+3. 기존 계획에 없는 요청이면 가장 가까운 계획에 새 하위 작업을 추가한다. 프로젝트 결과나 순서가 크게 바뀌면 무엇이 왜 달라졌는지 범위 변경으로 명확히 기록한다.
+4. 진행 중인 작업 사이에 새 요청이 들어오면 `현재 위치`와 `바로 다음 작업`도 같은 변경에서 고쳐 실제 순서와 문서가 어긋나지 않게 한다.
+5. 대화 내용만을 공식 상태로 삼지 않는다. 이 요구사항 원장과 `PROJECT_STATE.md`에 반영하고 검사를 통과한 상태를 공식 기록으로 삼는다.
+6. 완료 항목은 이 문서에 최근 12개까지만 두고, 오래된 완료 기록은 [`REQUIREMENTS_ARCHIVE.md`](REQUIREMENTS_ARCHIVE.md)로 옮겨 문서가 끝없이 길어지지 않게 한다.
+
+### 기술 참고
+
+- 현재 로컬 기준은 commit `ccec8bb855e45ef679a4b99faf0f0633a99e089e`, tree `241a654acc387233d4e2d5e076754b345619e9ac`이며 Git push는 하지 않았다.
+- 플랫폼 이미지 후보 132개는 현재 목록의 경로·크기·파일 종류·내용 확인값과 일치했고, 같은 내용을 하나로 세면 65개다.
+- 최종 미디어 목록은 2,758개·2,346,220,246바이트이고 목록 SHA-256은 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`다.
+- SBS GIF 경로는 `/media/naver/221172590451/001-e467d08a3a01.gif`, 크기는 1,299,862바이트, SHA-256은 `e467d08a3a01bf5bcc53c79f2a40e89d0181a8c920e08b62a1a513c3d93656d9`다.
+- 일괄 업로드 기록 SHA-256은 `2974384ff720326830f5f3dcd9e2439dc56af4ec96c813bade88a2d0b7815444`, 업로드 뒤 전수 목록 확인 기록 SHA-256은 `f562129e14a65918bfebac26de313ff5e461ad3067774f9084a0e0514def0d84`다. 이 값은 결과 파일이 나중에 바뀌지 않았는지 확인하는 긴 확인 번호다.
+- 업로드는 기존 1개를 그대로 두고 빠진 2,757개만 새로 만들었다. 최종 확인은 exact 2,758·missing 0·mismatch 0·orphan 0, overwrite 0·delete 0이다.
+- 아직 남은 `full GET/SHA-256` 검사는 저장소의 파일 내용을 모두 다시 내려받아 로컬 원본과 한 개씩 비교하는 절차다.
 
 ## 요구사항 원장
 
 ### `DWNC-S3-008` — staging R2 create-only bulk upload와 full audit
 - **Status:** `in-progress`
 - **Updated-at:** `2026-08-27`
+- **Plans:** `PLAN-05`
+- **Priority:** `P0`
 - **Acceptance:**
   - 단일 객체 admission이 exact인 final manifest만 create-only로 업로드한다.
   - overwrite·delete 없이 manifest 전체를 GET해 개별 SHA-256과 총 bytes를 전수 검증한다.
   - missing, mismatch, orphan을 각각 0 또는 명시적으로 보고한다. bulk `dwnc-public-media-r2-bulk-sync-v1` receipt는 운영 증거로만 남기고 signer·release 입력으로 쓰지 않으며, 전체 GET/SHA-256 감사가 만든 `dwnc-public-media-r2-receipt-v1`만 별도 서명 입력 후보로 만든다.
 - **Evidence:**
-  - 선행 요구사항 `DWNC-S3-007`은 validation receipt `fa72b1849496a9b6e4697721cfef9d4fcd17b8f463b41dcacd714c5f9bb2352a`와 후속 inspection receipt `f00f3c13c9ae99f8a36599db85d7a180e31d8779776653bca72c2aee596d380e`로 완료됐다.
-  - 현재 exact 1·missing 2,757·mismatch 0·orphan 0이며 [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 full-get-sha256 gate를 다음에 수행한다.
-  - commit 전 bulk hardening은 receipt 목적지와 exact Git commit/tree/clean 상태를 원격 요청 전에 검사하고, 기존 exact 객체 PUT 0·missing-only `If-None-Match:*`·부분 실패 재실행·412 exact 복구·post orphan 0·실제 요청 수를 영수증에서 강제한다. 첫 PUT 뒤 경쟁 receipt가 생겨도 기존 bytes를 보존하고 실패하며, 새 경로 재실행은 이미 exact인 객체 PUT 0으로 정상 완료한다. strict inspection은 네 기대 수치를 모두 요구한다. full audit는 bulk와 post-inspection 뒤 새 900초 capture를 수집해 시작·receipt 생성 시각을 만료 전으로 강제하며, 만료되면 새 capture·새 receipt 경로로 2,758개 감사를 전부 다시 한다. signing negative test는 bulk contract를 `media-receipt` 입력으로 거부한다.
+  - 파일 2,758개 업로드를 마쳤다. 업로드 뒤 목록을 다시 확인해 빠짐·내용 차이·불필요한 파일이 모두 0개이며, 기존 파일 덮어쓰기와 삭제도 0회임을 확인했다.
+  - 기존 1개는 그대로 두고 빠진 2,757개만 새로 만들었다. 다음에는 2,758개 전체의 실제 내용을 다시 내려받아 원본과 비교해야 하므로 이 요구사항은 아직 진행 중이다.
+  - 기술 증거: source commit `ccec8bb855e45ef679a4b99faf0f0633a99e089e`·tree `241a654acc387233d4e2d5e076754b345619e9ac`, bulk receipt SHA-256 `2974384ff720326830f5f3dcd9e2439dc56af4ec96c813bade88a2d0b7815444`, post-inspection receipt SHA-256 `f562129e14a65918bfebac26de313ff5e461ad3067774f9084a0e0514def0d84`다.
 
 ### `DWNC-S3-009` — deny-only staging Worker 최초 생성과 신뢰 정책
 - **Status:** `in-progress`
 - **Updated-at:** `2026-08-27`
+- **Plans:** `PLAN-06`
+- **Priority:** `P0`
 - **Acceptance:**
   - staging media/release public-key fingerprint와 smoke access policy fingerprint를 보호된 환경 증거로 확정한다.
   - 서명된 Worker 부재 증거와 1회용 실행 권한으로 `dwnc-me-staging` deny-only service를 한 번만 최초 생성한다.
@@ -111,6 +151,8 @@
 ### `DWNC-S3-010` — staging version-only upload·activation·synthetic smoke
 - **Status:** `blocked`
 - **Updated-at:** `2026-08-27`
+- **Plans:** `PLAN-06`
+- **Priority:** `P0`
 - **Acceptance:**
   - local commit과 full audit receipt에 묶인 staging version만 version-only로 업로드한다.
   - 해당 version ID를 staging에 100% 적용하고 모호한 결과는 자동 재시도하지 않는다.
@@ -123,6 +165,8 @@
 ### `DWNC-S3-011` — production 이름 Cloudflare 자원·버전 준비
 - **Status:** `planned`
 - **Updated-at:** `2026-08-27`
+- **Plans:** `PLAN-07`
+- **Priority:** `P1`
 - **Acceptance:**
   - staging 결과, full Git SHA와 Cloudflare version ID를 기록한다.
   - staging에서 통과한 안전 절차를 production 이름의 R2·Worker version에도 같게 적용한다. 앞 단계가 통과하면 추가 승인 요청 때문에 임의로 멈추지 않는다.
@@ -134,6 +178,8 @@
 ### `DWNC-S3-012` — 사용 불가능한 기존 staging R2 token 정리
 - **Status:** `planned`
 - **Updated-at:** `2026-08-27`
+- **Plans:** `PLAN-05`
+- **Priority:** `P1`
 - **Acceptance:**
   - 새 uploader·validator로 exact bucket의 단일 객체 쓰기·읽기 교차 검증을 먼저 통과한다.
   - 2026-08-25에 만든 사용 불가능한 기존 uploader·validator token 두 개만 정확히 식별해 revoke한다.
@@ -145,6 +191,8 @@
 ### `DWNC-OPS-001` — 공유·스크랩 추정 10개 처리 결정
 - **Status:** `decision-needed`
 - **Updated-at:** `2026-08-26`
+- **Plans:** `PLAN-09`
+- **Priority:** `P2`
 - **Acceptance:**
   - 10개 각각을 링크형 기록 또는 제외로 결정한다.
   - 원문 복제나 공개 registry·검색·RSS·sitemap 편입은 권리와 공개 범위를 증명한 경우에만 허용한다.
@@ -154,6 +202,8 @@
 ### `DWNC-OPS-002` — 지속적인 새 글 작성 방식 결정
 - **Status:** `decision-needed`
 - **Updated-at:** `2026-08-26`
+- **Plans:** `PLAN-09`
+- **Priority:** `P1`
 - **Acceptance:**
   - 저장소 기반 편집 또는 로그인형 편집기의 운영·보안·백업 방식을 선택한다.
   - 새 글도 append-only global sequence와 public asset receipt 계약을 따른다.
@@ -163,6 +213,8 @@
 ### `DWNC-OPS-003` — 댓글과 private backup 정책 결정
 - **Status:** `decision-needed`
 - **Updated-at:** `2026-08-26`
+- **Plans:** `PLAN-09`
+- **Priority:** `P1`
 - **Acceptance:**
   - 과거 댓글을 이식·읽기 전용 보존·제외 중 하나로 결정한다.
   - private raw·본문·미디어의 암호화 백업과 복구 검증 절차를 정한다.
@@ -170,9 +222,44 @@
 - **Evidence:**
   - [`PROJECT_STATE.md`](../PROJECT_STATE.md)의 댓글·암호화 백업 미해결 항목.
 
+### `DWNC-OPS-004` — 비개발자도 이해하기 쉬운 진행 설명
+- **Status:** `in-progress`
+- **Updated-at:** `2026-08-27`
+- **Plans:** `PLAN-00`
+- **Priority:** `P0`
+- **Acceptance:**
+  - 모든 진행 상황, 질문과 결과 보고를 비개발자도 한 번에 이해할 수 있는 일상적인 한국어로 먼저 설명한다.
+  - 먼저 무엇을 확인하거나 완료했는지, 사용자에게 어떤 의미인지, 다음에 무엇을 하는지를 차례로 말한다.
+  - 명령어, 내부 함수·파일 형식, 긴 확인 번호와 요청 횟수 같은 기술 정보는 사용자가 요청했거나 검증에 꼭 필요한 경우에만 뒤쪽 `기술 참고`로 분리하고, 필요한 경우에도 바로 쉬운 뜻을 함께 설명한다.
+  - `gate`, `NO-GO`, `별도 금지선`, `fail-closed`, `exact tree`처럼 번역투이거나 조직 내부에서만 통하는 표현을 사용자에게 그대로 쓰지 않는다.
+  - 사용자가 직접 해야 할 일이 있으면 버튼 이름과 누르는 순서를 짧고 구체적으로 안내한다.
+- **Evidence:**
+  - 사용자가 2026-08-27에 이 기준을 요구사항 문서와 앞으로의 모든 대화에 계속 적용하도록 명시했다.
+  - 이 문서의 첫 화면은 결과, 사용자에게 미치는 의미, 다음 작업을 쉬운 한국어로 먼저 보여 주고 긴 확인 번호는 `기술 참고`로 분리한다.
+  - `npm run requirements:validate`는 이 상시 요구사항과 사용자용 설명 순서가 빠지거나, 쉬운 설명 없이 금지한 기술 표현만 쓰인 경우를 거부한다.
+
+### `DWNC-OPS-005` — 새 요청과 전체 계획을 빠짐없이 연결
+- **Status:** `in-progress`
+- **Updated-at:** `2026-08-27`
+- **Plans:** `PLAN-00`
+- **Priority:** `P0`
+- **Acceptance:**
+  - 모든 새 요청과 조건에 변하지 않는 요구사항 번호를 부여하고 관련된 계획 ID를 하나 이상 연결한다.
+  - 각 요구사항에 우선순위, 완료 기준, 현재 상태와 확인 근거를 기록한다.
+  - 기존 계획 밖의 요청은 관련 계획에 하위 작업으로 추가하거나, 결과·범위·순서가 달라진 이유를 범위 변경으로 기록한다.
+  - 진행 중인 작업 사이에 새 요청이 들어오면 `현재 위치`와 `바로 다음 작업`도 같은 변경에서 고친다.
+  - 대화 내용만 공식 상태로 삼지 않고 `REQUIREMENTS.md`와 `PROJECT_STATE.md`를 함께 갱신한다.
+  - 최근 완료는 12개까지만 두고 오래된 완료 기록은 보관 문서로 옮긴다.
+- **Evidence:**
+  - 사용자용 요약에 `PLAN-00`부터 `PLAN-09`까지 목적·완료 기준·현재 상태를 기록했고 진행 중인 실행 계획을 `PLAN-05` 하나로 표시했다.
+  - 모든 현재 요구사항의 `Plans` 항목을 계획표와 연결했다.
+  - `npm run requirements:validate`는 이 상시 요구사항, 계획표, 현재 위치 한 개와 요구사항별 계획 연결이 빠지거나 잘못되면 거부한다.
+
 ### `DWNC-P2-001` — 후속 접근성·탐색 개선
 - **Status:** `planned`
 - **Updated-at:** `2026-08-26`
+- **Plans:** `PLAN-09`
+- **Priority:** `P2`
 - **Acceptance:**
   - 공개 이미지 대체텍스트를 원본 불변 범위의 파생 정책으로 개선한다.
   - tag 660개의 추가 탐색과 검증된 fragment map을 별도 설계한다.
@@ -185,6 +272,8 @@
 ### `DWNC-CORE-001` — 콘텐츠 보존과 로컬 사이트 기준선
 - **Status:** `done`
 - **Updated-at:** `2026-08-24`
+- **Plans:** `PLAN-01`, `PLAN-02`, `PLAN-03`
+- **Priority:** `P0`
 - **Acceptance:**
   - 티스토리 공개 164개와 네이버 소유 432개를 공개·private 물리 경계에 맞게 보존한다.
   - 공개 canonical 349개, legacy alias 349개와 관련 local build/validator를 통과한다.
@@ -195,6 +284,8 @@
 ### `DWNC-S3-001` — guarded local Cloudflare media release pipeline
 - **Status:** `done`
 - **Updated-at:** `2026-08-25`
+- **Plans:** `PLAN-05`, `PLAN-06`, `PLAN-07`
+- **Priority:** `P0`
 - **Acceptance:**
   - create-only R2 client, same-origin Worker, version-only upload와 staging/production 분리 gate를 구현한다.
   - local mock·artifact·release·bootstrap·staging 회귀를 통과한다.
@@ -205,6 +296,8 @@
 ### `DWNC-S3-002` — Cloudflare Builds raw deploy 제거
 - **Status:** `done`
 - **Updated-at:** `2026-08-25`
+- **Plans:** `PLAN-07`
+- **Priority:** `P0`
 - **Acceptance:**
   - Build를 production prepare wrapper로, Deploy를 version-only wrapper로 제한한다.
   - 인증된 account·Worker·repository에서 exact server setting을 다시 읽고 raw deploy 설정과 traffic change가 0임을 확인한다.
@@ -215,6 +308,8 @@
 ### `DWNC-S3-004` — 플랫폼 후보 132개 provenance·시각 감사
 - **Status:** `done`
 - **Updated-at:** `2026-08-26`
+- **Plans:** `PLAN-04`
+- **Priority:** `P1`
 - **Acceptance:**
   - current manifest와 후보 경로·size·MIME·SHA를 exact join한다.
   - 모든 고유 시각 자료를 검사하고 사용자 사진 오분류와 본문 의미 손실 가능성을 분리한다.
@@ -225,12 +320,14 @@
 ### `DWNC-S3-003` — private staging R2와 최소 권한 자격증명 준비
 - **Status:** `done`
 - **Updated-at:** `2026-08-27`
+- **Plans:** `PLAN-05`
+- **Priority:** `P0`
 - **Acceptance:**
   - 올바른 Cloudflare account fingerprint를 확인하고 R2 subscription을 활성화한다.
   - exact private bucket `dwnc-me-public-media-staging`을 만들고 public access와 object를 0으로 유지한다.
   - bucket 한정 uploader와 별도 read-only validator 자격증명을 만들고 비밀값을 repo·로그에 남기지 않는다.
 - **Evidence:**
-  - bucket은 생성·첫 PUT 직전 object 0이었고 public access 꺼짐, jurisdiction `default`, location `APAC`, storage class `Standard`였다. 현재는 대표 객체 1개가 HEAD exact다.
+  - bucket은 생성·첫 PUT 직전 object 0이었고 public access 꺼짐, jurisdiction `default`, location `APAC`, storage class `Standard`였다. 현재는 최종 대상 2,758개가 있으며 빠짐·내용 차이·불필요한 파일은 0개다.
   - Active uploader `dwnc-me-public-media-staging-uploader-v3-20260827`은 exact bucket Object Read & Write, Active validator `dwnc-me-public-media-staging-validator-v2-20260827`은 exact bucket Object Read only이며 TTL은 모두 2026-09-03이다.
   - uploader access-key ID SHA-256은 `6a6df74afbbc4a47fe050b11997b41b6e5e7ba9d02884eb69bb9ac88d82bb976`, metadata SHA-256은 `6d92f8e095050757c407bf31a02e8358c4064e7b9852f44c98037de7f331721e`다.
   - validator access-key ID SHA-256은 `be4156f1e29c6282568d18e504d11888907e0df9c8f67a551318a839c735ee5a`, metadata SHA-256은 `03011557f3ae08f1128c10bd5df0508dc50e0bdbbc5652de08f63f05e142fe0c`다.
@@ -239,6 +336,8 @@
 ### `DWNC-S3-005` — 최종 공개 미디어 집합 확정
 - **Status:** `done`
 - **Updated-at:** `2026-08-27`
+- **Plans:** `PLAN-04`
+- **Priority:** `P0`
 - **Acceptance:**
   - 사용자 소유 사진 2,757개, 지도 99개 제외, LINE 스티커 5개 제외, SBS GIF 1개 포함 결정을 공개 표현과 manifest에 반영한다.
   - B 선택에 따라 placeholder 27개를 제외하되 재생 불가 안내·재생시간 53개와 작성자 캡션 23개를 유지한다.
@@ -252,6 +351,8 @@
 ### `DWNC-S3-006` — 미디어 집합 변경의 로컬 검증과 커밋
 - **Status:** `done`
 - **Updated-at:** `2026-08-27`
+- **Plans:** `PLAN-04`, `PLAN-05`
+- **Priority:** `P0`
 - **Acceptance:**
   - 미디어 파생 표현, 최종 manifest, 단일 객체 CLI, staging-only artifact·smoke·fingerprint 관련 변경만 포함한다.
   - source/full-local/build/Worker·Cloudflare 회귀와 `npm run requirements:validate`, `npm run requirements:test`, `git diff --check`를 통과한다.
@@ -265,6 +366,8 @@
 ### `DWNC-S3-007` — staging R2 단일 객체 시험
 - **Status:** `done`
 - **Updated-at:** `2026-08-27`
+- **Plans:** `PLAN-05`
+- **Priority:** `P0`
 - **Acceptance:**
   - 최종 manifest의 사용자 소유 객체 1개만 private staging bucket에 create-only로 만든다.
   - PUT 전후 HEAD와 full GET의 SHA-256·size·MIME·cache metadata가 정확히 일치하는지 검증한다.
