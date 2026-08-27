@@ -13,6 +13,16 @@ const COMMANDS = Object.freeze({
     injectEnvironment: true,
     allowApply: true,
   }),
+  'staging-inspect': Object.freeze({
+    script: 'scripts/inspect-public-media-r2.mjs',
+    environment: 'staging',
+    role: 'validator',
+    injectEnvironment: true,
+    allowApply: false,
+    allowedForwardedNames: Object.freeze([
+      '--concurrency', '--expected-manifest-sha256', '--receipt-output',
+    ]),
+  }),
   'staging-audit-full': Object.freeze({
     script: 'scripts/audit-public-media-r2-full.mjs',
     environment: 'staging',
@@ -44,6 +54,19 @@ const COMMANDS = Object.freeze({
   }),
 });
 
+const AMBIGUOUS_CREDENTIAL_ENVIRONMENT_NAMES = Object.freeze([
+  'R2_ACCOUNT_ID', 'R2_BUCKET_NAME', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY',
+  'R2_CREDENTIALS_FD',
+]);
+
+export function assertR2RunnerCredentialEnvironment(environment = {}) {
+  if (!environment || typeof environment !== 'object'
+    || AMBIGUOUS_CREDENTIAL_ENVIRONMENT_NAMES.some((name) => Object.hasOwn(environment, name))) {
+    throw new Error('MEDIA_E_R2_RUNNER_CREDENTIAL_AMBIGUOUS');
+  }
+  return true;
+}
+
 export function buildR2RunnerInvocation(command, forwarded = []) {
   const selected = COMMANDS[command];
   if (!selected || !Array.isArray(forwarded)
@@ -55,6 +78,17 @@ export function buildR2RunnerInvocation(command, forwarded = []) {
   const applyCount = forwarded.filter((value) => value === '--apply').length;
   if (applyCount > 1 || applyCount === 1 && !selected.allowApply) {
     throw new Error('MEDIA_E_R2_RUNNER_APPLY');
+  }
+  if (selected.allowedForwardedNames) {
+    const seen = new Set();
+    for (const value of forwarded) {
+      const separator = value.indexOf('=');
+      const name = separator > 0 ? value.slice(0, separator) : value;
+      if (separator < 1 || !selected.allowedForwardedNames.includes(name) || seen.has(name)) {
+        throw new Error('MEDIA_E_R2_RUNNER_ARGUMENT');
+      }
+      seen.add(name);
+    }
   }
   return {
     ...selected,

@@ -1,6 +1,6 @@
 # dwnc.me 공개 미디어 전달 계약 v1
 
-상태: **release-source commit `1f726f63381a903afdd04ec80c90407c742c82cd`·tree `46ec12f98c74a4fdbbc92e3749574bf085ad21ee` 완료·push 0 / staging media·release signing key는 Keychain에 생성·public fingerprint policy 고정 / private staging R2는 비어 있음 / 사용 가능한 R2 자격증명·smoke token·Worker·version·activation 없음 / 실제 도메인·DNS 미연결**
+상태: **현재 HEAD `9da8e87525f3e8ff6bd593d7047bd10fb6d1d57d`·tree `60a245dea016761f274cb08d093b69f928a9f6f5`·push 0 / staging signing key와 분리된 최소 권한 R2 자격증명 준비 완료 / private staging R2 객체 0 / smoke token·Worker·version·activation 없음 / 실제 도메인·DNS 미연결**
 
 이 문서는 공개 글이 참조하는 대용량 미디어를 동일 출처 `https://dwnc.me/media/*`로 제공하기 위한 계약이다. 기존 URL, 로컬 원본, SHA-256 증거를 바꾸지 않고 private R2 bucket을 전달용 복제본으로 사용한다.
 
@@ -73,16 +73,21 @@ same-origin이므로 기본 CORS header는 넣지 않는다. CORS는 hotlink 방
 
 ## 3. upload-once sync
 
-`scripts/sync-public-media-r2.mjs`는 S3-compatible API를 SigV4로 서명하되 URL·credential을 출력하지 않는다. 기본은 dry-run이며 remote `LIST` pagination과 desired key 전수 `HEAD`를 수행한다.
+`scripts/inspect-public-media-r2.mjs`는 validator 자격증명으로 remote `LIST` pagination과 manifest key 전수 `HEAD`만 수행한다. `scripts/sync-public-media-r2.mjs`는 uploader 자격증명의 기본 dry-run과 create-only 적용을 담당한다. 두 명령 모두 S3-compatible API를 SigV4로 서명하되 URL·credential을 출력하지 않는다.
 
-운영 명령은 네 개의 legacy R2 환경변수를 사용자가 직접 넘기지 않는다. 자격증명은 macOS Keychain에 보관하고, repository 밖의 create-only metadata 파일 절대경로만 `R2_CREDENTIAL_METADATA_PATH`에 지정해 `scripts/run-with-r2-credentials.mjs` wrapper를 실행한다. wrapper가 package command에 고정된 `staging`·`uploader` 대상을 선택하고 metadata와 Keychain 값을 대조한 뒤, 자격증명 bytes를 익명 pipe FD 3으로만 child에 전달하고 메모리 buffer를 지운다.
+운영 명령은 네 개의 legacy R2 환경변수를 사용자가 직접 넘기지 않는다. 자격증명은 macOS Keychain에 보관하고, repository 밖의 create-only metadata 파일 절대경로만 `R2_CREDENTIAL_METADATA_PATH`에 지정해 `scripts/run-with-r2-credentials.mjs` wrapper를 실행한다. wrapper는 package command에 고정된 환경과 역할을 선택하고 metadata와 Keychain 값을 대조한 뒤, 자격증명 bytes를 익명 pipe FD 3으로 한 번만 child에 전달하고 메모리 buffer를 지운다. 사용자가 `--environment`, `--role`, credential metadata 인자를 덧붙이거나 legacy 자격증명 환경변수·FD를 함께 지정하면 실행 전에 거부한다.
 
-credential 값은 저장소·manifest·receipt·로그에 기록하지 않는다. uploader token은 해당 bucket의 Object Read+Write로 제한하고, validator는 같은 환경의 exact bucket에만 접근하는 별도 Object Read token을 사용한다. 예전에 만든 staging token 두 개는 Cloudflare에서 활성 상태지만 로컬에 비밀값이 남아 있지 않아 사용할 수 없다. 새 staging·production 자격증명은 아직 만들지 않았다.
+credential 값은 저장소·manifest·receipt·로그에 기록하지 않는다. 현재 uploader `dwnc-me-public-media-staging-uploader-v3-20260827`은 exact staging bucket Object Read & Write, validator `dwnc-me-public-media-staging-validator-v2-20260827`은 같은 exact bucket Object Read only로 제한했다. 둘 다 Active이고 TTL은 2026-09-03이다. uploader access-key ID·metadata SHA-256은 각각 `6a6df74afbbc4a47fe050b11997b41b6e5e7ba9d02884eb69bb9ac88d82bb976`·`6d92f8e095050757c407bf31a02e8358c4064e7b9852f44c98037de7f331721e`, validator는 `be4156f1e29c6282568d18e504d11888907e0df9c8f67a551318a839c735ee5a`·`03011557f3ae08f1128c10bd5df0508dc50e0bdbbc5652de08f63f05e142fe0c`다.
+
+생성 실패 과정에서 비밀값 노출 가능성이 생긴 uploader v2는 즉시 revoked했다. 정상 생성된 두 자격증명은 일반 출력·로그 비밀값 노출 0, clipboard 사용 0이다. 2026-08-25에 만든 기존 staging token 두 개는 비밀값을 잃어 사용할 수 없지만 Cloudflare에서 아직 Active이므로 새 자격증명 검증 뒤 별도로 정리한다.
 
 ```sh
-# 읽기 전용 분류: exact / missing / mismatch / orphan
-R2_CREDENTIAL_METADATA_PATH=/approved/local/path/staging-uploader-metadata.json \
-  npm run media:r2:dry-run
+# validator 읽기 전용 분류: exact / missing / mismatch / orphan
+# receipt parent는 저장소 밖의 본인 소유 mode 700 디렉터리여야 한다.
+R2_CREDENTIAL_METADATA_PATH=/approved/local/path/staging-validator-metadata.json \
+  npm run media:r2:staging:inspect:secure -- \
+  --expected-manifest-sha256=<approved-final-manifest-sha256> \
+  --receipt-output=/approved/local/path/staging-r2-inspection-v1.json
 
 # 직전 account·bucket·manifest 일치와 자격증명 보호 조건이 통과한 뒤에만 실행한다.
 R2_CREDENTIAL_METADATA_PATH=/approved/local/path/staging-uploader-metadata.json \
@@ -91,6 +96,8 @@ R2_CREDENTIAL_METADATA_PATH=/approved/local/path/staging-uploader-metadata.json 
   --expected-orphan-count=0 \
   --receipt-output=/approved/local/path/public-media-r2-receipt-v1.json
 ```
+
+검사 명령은 staging·validator 역할에 고정되어 `--apply`, production 환경 주입, uploader metadata, overwrite·delete 인자를 받지 않는다. 원격 요청은 bucket 목록 조회 `GET`과 객체별 `HEAD`뿐이며 PUT·DELETE 코드 경로가 없다. 결과 파일은 exact·missing·mismatch·orphan 개수와 manifest·account fingerprint·bucket을 묶은 읽기 전용 검사 기록이고, release용 `full-get-sha256` receipt를 대신하지 않는다. 저장소 밖의 mode 700 디렉터리에 create-only·mode 600으로 기록한다.
 
 적용 규칙:
 
@@ -111,12 +118,12 @@ production receipt는 manifest digest, 객체 수·총 bytes, 검증시각과 ke
 
 tracked `src/data/public-media-release-policy-v1.json`은 Worker binding·bucket·요구 검증 수준과 `r2.dev 비활성·custom domain 0`인 private exposure 정책을 고정한다. staging media Ed25519 public-key SPKI fingerprint는 `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`, release fingerprint는 `2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2`로 고정했다. private key는 macOS Keychain에만 보관하고 export하지 않는다. production account·media·release fingerprint는 모두 `null`을 유지하므로 staging key나 receipt로 production gate를 통과할 수 없다.
 
-필수 환경변수 이름:
+production remote 검증 entrypoint의 비자격증명 증거 경로:
 
 - `PUBLIC_MEDIA_REMOTE_RECEIPT_PATH`
 - `PUBLIC_MEDIA_REMOTE_SIGNATURE_PATH`
 - `PUBLIC_MEDIA_REMOTE_PUBLIC_KEY_PATH`
-- 위 R2 read-only 변수 4개
+- R2 자격증명은 wrapper가 `R2_CREDENTIALS_FD=3`으로 전달하며 legacy access-key 환경변수 네 개를 직접 받지 않는다.
 
 ```sh
 npm run media:validate:remote
@@ -170,7 +177,7 @@ Cloudflare Dashboard의 최신 Stage 3 Builds guard exact readback은 올바른 
 - Version: `npx wrangler versions upload`
 - traffic promotion은 Git trigger 밖의 별도 승인 job
 
-변경 전 readback은 `Build=None`, `Deploy=npx wrangler deploy`였고, 변경 후 raw live deploy 설정·실행은 0이다. private staging bucket은 객체 0, `r2.dev` 꺼짐, custom domain 0으로 재확인했다. 예전 R2 token은 활성 상태지만 비밀값을 잃어 사용할 수 없고 새 token은 아직 없다. staging Worker `dwnc-me-staging`도 아직 없다. 최초 Worker가 부재한 환경에서는 `versions upload`로 bootstrap할 수 없으므로, route·custom domain·trigger·asset·binding 0인 deny-all service를 signed service-existence evidence·one-time authorization 아래 한 번만 만든다. 실제 `dwnc.me` 도메인과 DNS는 Cloudflare Worker에 연결되지 않았다.
+변경 전 readback은 `Build=None`, `Deploy=npx wrangler deploy`였고, 변경 후 raw live deploy 설정·실행은 0이다. private staging bucket은 객체 0, `r2.dev` 꺼짐, custom domain 0, jurisdiction `default`, location `APAC`, storage class `Standard`로 재확인했다. exact bucket 한정 uploader·validator는 Active이고 2026-08-25의 사용 불가능한 기존 두 token은 후속 정리 전까지 Active다. staging Worker `dwnc-me-staging`은 아직 없다. 최초 Worker가 부재한 환경에서는 `versions upload`로 bootstrap할 수 없으므로, route·custom domain·trigger·asset·binding 0인 deny-all service를 signed service-existence evidence·one-time authorization 아래 한 번만 만든다. 실제 `dwnc.me` 도메인과 DNS는 Cloudflare Worker에 연결되지 않았다.
 
 ## 6. redirects와 canonical
 
@@ -195,16 +202,16 @@ Cloudflare Cache API는 저장 시 쓴 내부 cache key를 사용하므로 공�
 
 ## 8. 현재 Cloudflare 상태와 남은 작업
 
-최신 사전점검에서 올바른 Cloudflare account fingerprint가 정책과 exact 일치했다. private staging bucket `dwnc-me-public-media-staging`은 객체 0, `r2.dev` 꺼짐, custom domain 0이다. 예전에 만든 bucket 한정 token 두 개는 활성 상태지만 비밀값을 잃어 사용할 수 없고, 새 uploader·read-only validator 자격증명은 아직 만들지 않았다. staging media·release Ed25519 key는 실제 생성해 private key를 macOS Keychain에만 보관했고, public fingerprint를 release policy에 고정했다. private key export·저장소·로그 기록은 0이다. staging Worker, R2 객체, receipt, smoke token, version, activation도 없다.
+최신 사전점검에서 올바른 Cloudflare account fingerprint가 정책과 exact 일치했다. private staging bucket `dwnc-me-public-media-staging`은 객체 0, `r2.dev` 꺼짐, custom domain 0, jurisdiction `default`, location `APAC`, storage class `Standard`다. exact bucket 한정 Object Read & Write uploader와 별도 Object Read validator는 Active·TTL 2026-09-03이고, 실패 uploader v2는 revoked했다. 2026-08-25의 사용 불가능한 기존 두 token만 후속 정리 전까지 Active다. staging media·release Ed25519 private key는 macOS Keychain에만 보관하고 public fingerprint를 policy에 고정했다. 정상 생성 자격증명의 일반 출력·로그 비밀값 노출, clipboard 사용, private key export는 모두 0이다. staging Worker, R2 객체, receipt, smoke token, version, activation도 없다.
 
-release-source 준비는 commit `1f726f63381a903afdd04ec80c90407c742c82cd`·tree `46ec12f98c74a4fdbbc92e3749574bf085ad21ee`로 로컬 Git에 기록했고 push는 0이다. 현재 signing-key 안전장치·policy·문서 변경은 다음 로컬 commit 전이다.
+signing identity와 안전장치는 commit `9da8e87525f3e8ff6bd593d7047bd10fb6d1d57d`·tree `60a245dea016761f274cb08d093b69f928a9f6f5`로 로컬 Git에 기록했고 push는 0이다. 현재 validator 전용 inspection·FD 단일 읽기·문서 변경은 다음 로컬 commit 전이다.
 
-현재 최종 manifest는 2,758개·2,346,220,246바이트·SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`이고 로컬·source-only·build·Worker 회귀를 통과했다. Cloudflare 관련 18개 test suite·833개 assertion, 정적 페이지 1,404개, 308 redirect 349개, 사진형 148·장문형 201를 확인했다. 정리 전 2,889개는 역사 기준선일 뿐 현재 원격 작업 기준이 아니다.
+현재 최종 manifest는 2,758개·2,346,220,246바이트·SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`이고 로컬·source-only·build·Worker 회귀를 통과했다. Cloudflare 관련 19개 test suite·922개 assertion, 정적 페이지 1,404개, 308 redirect 349개, 사진형 148·장문형 201를 확인했다. 빈 mock bucket의 validator inspection은 exact 0·missing 2,758·mismatch 0·orphan 0, PUT 0·DELETE 0을 확인했으며 실제 staging bucket 감사나 upload가 아니다. 정리 전 2,889개는 역사 기준선일 뿐 현재 원격 작업 기준이 아니다.
 
 다음은 현재 수행하지 않았다.
 
-- 사용 가능한 staging uploader·read-only validator 자격증명 생성
 - staging 단일 객체 admission, final manifest 객체 create-only upload·원격 full verification
+- 새 자격증명 작동 확인 뒤 2026-08-25의 사용 불가능한 Active token 두 개 정리
 - production receipt의 보호 환경 full-GET/SHA 감사·서명과 account/public-key fingerprint 확정
 - staging·production bucket의 `r2.dev` 비활성·custom domain 0 control-plane 감사 증거 확정
 - production account·bucket·media/release trust fingerprint로 production release policy 완성. staging public fingerprint는 이미 고정됨

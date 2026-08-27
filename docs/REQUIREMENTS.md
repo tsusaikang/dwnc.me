@@ -12,16 +12,16 @@
 
 ### 현재 목표
 
-최종 공개 미디어 2,758개와 Stage 3 release-source 준비를 commit `1f726f63381a903afdd04ec80c90407c742c82cd`·tree `46ec12f98c74a4fdbbc92e3749574bf085ad21ee`로 로컬 Git에 기록했고 push는 0이다. staging media·release Ed25519 key도 실제 생성해 private key는 macOS Keychain에만 보관하고 public fingerprint를 정책에 고정했다. 현재 key 안전장치·정책·문서 변경은 다음 로컬 commit 전이며, 이후 private staging R2 자격증명 재생성→단일 객체→전체 업로드·전수 대조→staging Worker 검증을 순서대로 진행한다. 실제 `dwnc.me` 도메인과 DNS는 Cloudflare에 연결되지 않았다.
+현재 HEAD는 signing identity commit `9da8e87525f3e8ff6bd593d7047bd10fb6d1d57d`·tree `60a245dea016761f274cb08d093b69f928a9f6f5`이고 push는 0이다. staging media·release Ed25519 key와 exact private bucket에 한정된 uploader·read-only validator 자격증명 준비를 마쳤다. 현재 validator 전용 read-only inspection과 FD 자격증명 단일 읽기 보강은 다음 로컬 commit 전이며, 이후 단일 객체→전체 업로드·전수 대조→staging Worker 검증을 순서대로 진행한다. 실제 `dwnc.me` 도메인과 DNS는 Cloudflare에 연결되지 않았다.
 
 ### 전체 상태
 
 | 영역 | 상태 | 현재 증거 |
 |---|---|---|
 | 콘텐츠 보존·새 사이트 | 완료 | 티스토리 공개 164개, 네이버 공개 185개, 비공개 로컬 247개와 canonical/alias 349개가 로컬 전수 검증을 통과했다. |
-| Stage 3 로컬 안전장치 | release-source commit 완료·key 정책 후속 변경 커밋 전 | Cloudflare 관련 18개 test suite·833개 assertion, 정적 페이지 1,404개, 308 redirect 349개, 사진형 148·장문형 201 분류가 통과했다. 현재 HEAD는 `1f726f63381a903afdd04ec80c90407c742c82cd`, tree는 `46ec12f98c74a4fdbbc92e3749574bf085ad21ee`이고 push는 0이다. |
+| Stage 3 로컬 안전장치 | signing identity commit 완료·inspection 보강 커밋 전 | Cloudflare 관련 19개 test suite·922개 assertion, 정적 페이지 1,404개, 308 redirect 349개, 사진형 148·장문형 201 분류가 통과했다. 현재 HEAD는 `9da8e87525f3e8ff6bd593d7047bd10fb6d1d57d`, tree는 `60a245dea016761f274cb08d093b69f928a9f6f5`이고 push는 0이다. |
 | Cloudflare Builds | 설정 재확인 완료 | account fingerprint가 정책과 일치했고 `SKIP_DEPENDENCY_INSTALL=1`, Build `npm ci && npm run cloudflare:prepare:production`, Deploy `npm run cloudflare:upload:production-version`, Version `npx wrangler versions upload`를 확인했다. 보호 절차 없이 직접 실행하는 `wrangler deploy`는 없었다. |
-| staging R2 저장소 | 준비됨·사용 불가 | private bucket `dwnc-me-public-media-staging`은 객체 0, `r2.dev` 꺼짐, custom domain 0이다. 예전에 만든 bucket 한정 token 두 개는 Cloudflare에서 활성 상태지만 로컬에 비밀값이 남아 있지 않아 사용할 수 없다. 새 자격증명은 아직 만들지 않았다. |
+| staging R2 저장소 | 자격증명까지 준비 완료·객체 0 | private bucket `dwnc-me-public-media-staging`은 객체 0, public access 꺼짐, jurisdiction `default`, location `APAC`, storage class `Standard`다. exact bucket Object Read & Write uploader와 별도 Object Read validator가 Active이고 TTL은 2026-09-03이다. 2026-08-25의 사용 불가능한 두 token은 아직 Active라 후속 정리가 필요하다. |
 | 최종 공개 미디어 | 완료 | 2,758개·2,346,220,246바이트, manifest SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`를 로컬·source-only 전수 검증했다. |
 | 공개 요청 경로 | 완료 | 1,410경로, SHA-256 `1666d8dd85ac05c2274513cfbe438f24ead06a190f873af3b67f7e3aa373307c`로 확정했다. |
 | staging Worker | signing key 완료·Worker 미실행 | media public fingerprint는 `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`, release public fingerprint는 `2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2`다. private key는 macOS Keychain에만 보관했고 export하지 않았다. Worker·smoke token·version·activation은 아직 없다. |
@@ -42,30 +42,32 @@
 
 ### 아직 결정할 일과 진행을 막는 조건
 
-1. 예전 R2 token은 활성 상태지만 비밀값을 복구할 수 없어 새 uploader·read-only validator 자격증명을 다시 만들어야 한다. 이것은 사용자의 추가 의사결정이 아니라 외부 작업의 기술적 선행 조건이다.
-2. staging media·release Ed25519 key는 생성·정책 고정을 마쳤지만 smoke token은 아직 생성하지 않았다. smoke token 규칙은 암호학적 난수 32바이트를 padding 없는 base64url 43문자로 표현하는 것으로 확정했다.
-3. staging Worker `dwnc-me-staging`은 아직 없으며 R2 객체·receipt·Worker version·activation도 0이다. 현재 signing-key 안전장치·정책 변경의 로컬 commit과 R2 자격증명 준비 뒤에 시작한다.
-4. 공유·스크랩 추정 10개, 새 글 편집 방식, 과거 댓글, 비공개 자료의 암호화 백업 정책은 Stage 3와 무관한 사용자 결정으로 남아 있다.
+1. 새 uploader·validator 자격증명은 준비됐지만 단일 객체 PUT→HEAD→GET과 실제 validator inspection은 아직 실행하지 않았다. 현재 inspector·FD 단일 읽기 보강을 먼저 로컬 commit해야 한다.
+2. 2026-08-25에 만든 사용 불가능한 R2 token 두 개는 아직 Active다. 새 자격증명의 정상 작동을 확인한 뒤 대상 두 개만 안전하게 정리한다.
+3. staging media·release Ed25519 key는 생성·정책 고정을 마쳤지만 smoke token은 아직 생성하지 않았다. smoke token 규칙은 암호학적 난수 32바이트를 padding 없는 base64url 43문자로 표현하는 것으로 확정했다.
+4. staging Worker `dwnc-me-staging`은 아직 없으며 R2 객체·receipt·Worker version·activation도 0이다.
+5. 공유·스크랩 추정 10개, 새 글 편집 방식, 과거 댓글, 비공개 자료의 암호화 백업 정책은 Stage 3와 무관한 사용자 결정으로 남아 있다.
 
 ### 바로 다음 단계
 
-1. 현재 signing-key 안전장치·정책·문서 변경을 검증한 뒤 로컬 Git에 commit하고 exact full SHA를 기록한다. push는 하지 않는다.
-2. 올바른 Cloudflare account에서 staging bucket에만 제한된 uploader·read-only validator 자격증명을 새로 만들고, 대표 객체 1개로 create-only PUT→HEAD→GET/SHA-256 시험을 수행한다.
+1. 현재 validator inspection·FD 단일 읽기·문서 변경을 검증한 뒤 로컬 Git에 commit하고 exact full SHA를 기록한다. push는 하지 않는다.
+2. Active uploader로 대표 객체 1개만 create-only PUT→HEAD→GET/SHA-256 시험하고, 별도 validator로 읽기 결과를 교차 확인한다.
 3. 단일 객체가 정확히 일치하면 최종 2,758개를 create-only로 올리고 모든 객체를 GET해 SHA-256·총 바이트를 대조한다.
-4. 생성한 staging signing key를 사용해 보호된 smoke token과 서명 증거를 준비하고, Worker 부재 상태를 다시 확인한 뒤 deny-only staging Worker를 최초 생성한다.
-5. 확정된 Git SHA와 R2 감사 증거에 묶인 staging Worker version만 올리고 100%로 적용한 뒤 정적 페이지·349 redirect·media GET/HEAD/304/206/416을 `workers.dev`에서 검증한다.
-6. production 이름의 Cloudflare 자원·버전 작업이 필요하면 같은 안전 절차로 계속한다. 실제 `dwnc.me` 도메인·DNS는 연결하지 않는다.
+4. 새 자격증명의 작동을 확인한 뒤 2026-08-25의 사용 불가능한 Active token 두 개를 정확히 식별해 정리한다.
+5. 생성한 staging signing key를 사용해 보호된 smoke token과 서명 증거를 준비하고, Worker 부재 상태를 다시 확인한 뒤 deny-only staging Worker를 최초 생성한다.
+6. 확정된 Git SHA와 R2 감사 증거에 묶인 staging Worker version만 올리고 100%로 적용한 뒤 정적 페이지·349 redirect·media GET/HEAD/304/206/416을 `workers.dev`에서 검증한다.
+7. production 이름의 Cloudflare 자원·버전 작업이 필요하면 같은 안전 절차로 계속한다. 실제 `dwnc.me` 도메인·DNS는 연결하지 않는다.
 
 ### 최근 완료
 
 - R2 subscription을 올바른 Cloudflare account에서 활성화하고 private staging bucket을 만들었다.
-- exact staging bucket에만 접근하는 uploader와 read-only validator 자격증명을 분리해 만들었다.
+- exact staging bucket에만 접근하는 uploader와 read-only validator 자격증명을 TTL 2026-09-03으로 다시 만들었다. 노출 가능성이 생긴 실패 uploader는 즉시 revoked했고 정상 자격증명의 일반 출력·로그 비밀값 노출과 clipboard 사용은 0이다.
 - 후보 132개를 전수 재구성·시각 감사해 지도 99, 스티커 5, 빈 placeholder 27, 방송 GIF 1로 분류했다.
 - 지도 99개를 영향 글 5개의 장소 카드 16개로 대체하고 15개 원 장소 링크와 1개 검색 fallback을 구조·시각 검증했다. 스티커 5개 제거 뒤 최초 시각 QA에서 찾은 세로 공백도 exact-boundary collapse로 해소해 구조·build validation을 통과했고 SBS GIF 보존을 렌더에서 확인했다.
 - B 선택에 따라 placeholder 27개를 제외하면서 53개 재생 불가 안내·재생시간과 23개 캡션을 유지했고 13개 파생 cover를 `null`로 정리했다.
 - 최종 2,758개·2,346,220,246바이트 manifest와 로컬·source-only·build·Worker 회귀를 검증했다.
 - Cloudflare Builds의 raw deploy를 제거하고 version-only wrapper 설정을 인증된 Chrome에서 재확인했다.
-- Stage 3 release-source 준비를 commit `1f726f63381a903afdd04ec80c90407c742c82cd`·tree `46ec12f98c74a4fdbbc92e3749574bf085ad21ee`로 기록했으며 push하지 않았다.
+- Stage 3 signing identity를 commit `9da8e87525f3e8ff6bd593d7047bd10fb6d1d57d`·tree `60a245dea016761f274cb08d093b69f928a9f6f5`로 기록했으며 push하지 않았다.
 - staging media·release Ed25519 private key를 macOS Keychain에 보관하고 private export 없이 두 public fingerprint를 release policy에 고정했다.
 
 ### 이번 작업에서 하지 않는 것
@@ -79,7 +81,7 @@
 ## 요구사항 원장
 
 ### `DWNC-S3-007` — staging R2 단일 객체 시험
-- **Status:** `blocked`
+- **Status:** `in-progress`
 - **Updated-at:** `2026-08-27`
 - **Acceptance:**
   - 최종 manifest의 사용자 소유 객체 1개만 private staging bucket에 `If-None-Match: *`로 새로 만든다.
@@ -88,8 +90,9 @@
   - receipt는 저장소 밖 보호 경로에 덮어쓰기 없이 기록하고 자격증명은 출력하지 않는다.
 - **Evidence:**
   - [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 upload-once 계약.
-  - private staging bucket은 객체 0, `r2.dev` 꺼짐, custom domain 0으로 재확인했다.
-  - 예전 token 두 개는 활성 상태지만 비밀값이 남아 있지 않아 사용할 수 없고 새 자격증명은 아직 만들지 않았다.
+  - private staging bucket은 객체 0, public access 꺼짐, jurisdiction `default`, location `APAC`, storage class `Standard`로 재확인했다.
+  - exact bucket의 Active uploader(Object Read & Write)와 별도 Active validator(Object Read only)를 TTL 2026-09-03으로 만들었다. 실제 단일 객체 요청은 아직 0이다.
+  - validator 전용 mock inspection은 exact 0·missing 2,758·mismatch 0·orphan 0, PUT 0·DELETE 0을 확인했지만 실제 bucket 결과로 간주하지 않는다.
 
 ### `DWNC-S3-008` — staging R2 create-only bulk upload와 full audit
 - **Status:** `blocked`
@@ -136,6 +139,17 @@
 - **Evidence:**
   - 현재 production R2·자격증명·새 Worker version 변경은 0이고 `dwnc.me` 도메인과 DNS는 Cloudflare Worker에 미연결 상태다.
   - [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 two-phase production 안전 절차.
+
+### `DWNC-S3-012` — 사용 불가능한 기존 staging R2 token 정리
+- **Status:** `planned`
+- **Updated-at:** `2026-08-27`
+- **Acceptance:**
+  - 새 uploader·validator로 exact bucket의 단일 객체 쓰기·읽기 교차 검증을 먼저 통과한다.
+  - 2026-08-25에 만든 사용 불가능한 기존 uploader·validator token 두 개만 정확히 식별해 revoke한다.
+  - 새 자격증명, bucket, 객체, Worker, domain·DNS에는 다른 변경을 하지 않는다.
+- **Evidence:**
+  - 기존 두 token은 비밀값을 잃어 사용할 수 없지만 Cloudflare에서 아직 Active다.
+  - 새 uploader·validator는 별도 이름과 TTL 2026-09-03으로 분리돼 있으며 아직 단일 객체 검증 전이다.
 
 ### `DWNC-OPS-001` — 공유·스크랩 추정 10개 처리 결정
 - **Status:** `decision-needed`
@@ -207,17 +221,6 @@
   - 2026-08-25 로그인된 Chrome exact readback.
   - [`PROJECT_STATE.md`](../PROJECT_STATE.md)의 Builds guard checkpoint.
 
-### `DWNC-S3-003` — private staging R2와 최소 권한 자격증명 준비
-- **Status:** `done`
-- **Updated-at:** `2026-08-26`
-- **Acceptance:**
-  - 올바른 Cloudflare account fingerprint를 확인하고 R2 subscription을 활성화한다.
-  - exact private bucket `dwnc-me-public-media-staging`을 만들고 public access와 object를 0으로 유지한다.
-  - bucket 한정 uploader와 별도 read-only validator 자격증명을 만들고 비밀값을 repo·로그에 남기지 않는다.
-- **Evidence:**
-  - 2026-08-25~26 인증된 Chrome post-action readback: subscription active, exact private bucket, object 0.
-  - 자격증명 생성 결과는 scope와 존재만 확인했으며 값과 외부 저장 경로는 문서화하지 않았다.
-
 ### `DWNC-S3-004` — 플랫폼 후보 132개 provenance·시각 감사
 - **Status:** `done`
 - **Updated-at:** `2026-08-26`
@@ -227,6 +230,20 @@
 - **Evidence:**
   - exact candidate 132, unique SHA-256 65, manifest/disk mismatch 0.
   - 시각 분류: 지도 99, LINE 스티커 5, blank placeholder 27, SBS 수영 GIF 1.
+
+### `DWNC-S3-003` — private staging R2와 최소 권한 자격증명 준비
+- **Status:** `done`
+- **Updated-at:** `2026-08-27`
+- **Acceptance:**
+  - 올바른 Cloudflare account fingerprint를 확인하고 R2 subscription을 활성화한다.
+  - exact private bucket `dwnc-me-public-media-staging`을 만들고 public access와 object를 0으로 유지한다.
+  - bucket 한정 uploader와 별도 read-only validator 자격증명을 만들고 비밀값을 repo·로그에 남기지 않는다.
+- **Evidence:**
+  - bucket은 object 0, public access 꺼짐, jurisdiction `default`, location `APAC`, storage class `Standard`다.
+  - Active uploader `dwnc-me-public-media-staging-uploader-v3-20260827`은 exact bucket Object Read & Write, Active validator `dwnc-me-public-media-staging-validator-v2-20260827`은 exact bucket Object Read only이며 TTL은 모두 2026-09-03이다.
+  - uploader access-key ID SHA-256은 `6a6df74afbbc4a47fe050b11997b41b6e5e7ba9d02884eb69bb9ac88d82bb976`, metadata SHA-256은 `6d92f8e095050757c407bf31a02e8358c4064e7b9852f44c98037de7f331721e`다.
+  - validator access-key ID SHA-256은 `be4156f1e29c6282568d18e504d11888907e0df9c8f67a551318a839c735ee5a`, metadata SHA-256은 `03011557f3ae08f1128c10bd5df0508dc50e0bdbbc5652de08f63f05e142fe0c`다.
+  - 노출 가능성이 생긴 실패 uploader v2는 revoked했고 정상 두 자격증명의 일반 출력·로그 비밀값 노출과 clipboard 사용은 0이다. 비밀값 자체는 저장소·문서에 기록하지 않았다.
 
 ### `DWNC-S3-005` — 최종 공개 미디어 집합 확정
 - **Status:** `done`

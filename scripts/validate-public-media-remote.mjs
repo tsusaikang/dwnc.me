@@ -11,8 +11,7 @@ import {
   loadRemoteReceiptFiles,
 } from './lib/public-media-remote.mjs';
 import {
-  r2ClientFromEnvironment,
-  r2CredentialsFromEnvironment,
+  r2ClientContextFromEnvironment,
 } from './lib/r2-s3-client.mjs';
 import { installStructuredErrorHandler } from './lib/cloudflare-process.mjs';
 
@@ -25,7 +24,7 @@ const receiptFiles = await loadRemoteReceiptFiles({
   publicKeyPath: process.env.PUBLIC_MEDIA_REMOTE_PUBLIC_KEY_PATH,
 });
 validateRemoteReceipt(receiptFiles.receipt, manifest);
-const r2Credentials = r2CredentialsFromEnvironment(process.env);
+const { credentials: r2Credentials, client } = r2ClientContextFromEnvironment(process.env);
 const policy = await loadTrackedPublicMediaReleasePolicy(ROOT, { requireComplete: true });
 const wranglerConfig = JSON.parse(await readFile('wrangler.jsonc', 'utf8'));
 validateProductionReleaseTarget({
@@ -38,7 +37,6 @@ validateProductionReleaseTarget({
 });
 verifyRemoteReceiptSignature(receiptFiles.receipt, receiptFiles.signature, receiptFiles.publicKeyPem);
 
-const client = r2ClientFromEnvironment(process.env);
 const inspection = await inspectRemotePublicMedia(client, manifest, { concurrency: 8 });
 if (inspection.missing.length > 0 || inspection.mismatch.length > 0) throw new Error('MEDIA_E_REMOTE_VALIDATION');
 if (inspection.orphanCount !== receiptFiles.receipt.audit.orphanCount

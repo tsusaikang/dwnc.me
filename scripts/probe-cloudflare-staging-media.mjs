@@ -26,8 +26,7 @@ import {
 } from './lib/public-media-manifest.mjs';
 import { stagingSmokeAuthorizationHeader } from '../src/lib/staging-smoke-token.js';
 import {
-  r2ClientFromEnvironment,
-  r2CredentialsFromEnvironment,
+  r2ClientContextFromEnvironment,
 } from './lib/r2-s3-client.mjs';
 
 const ROOT = process.cwd();
@@ -45,7 +44,7 @@ const [manifest, policy, wranglerConfig] = await Promise.all([
   loadTrackedPublicMediaReleasePolicy(ROOT),
   readFile(path.join(ROOT, 'wrangler.jsonc'), 'utf8').then(JSON.parse),
 ]);
-const r2Credentials = r2CredentialsFromEnvironment(process.env);
+const { credentials: r2Credentials, client } = r2ClientContextFromEnvironment(process.env);
 const { receipt: artifact, artifactSha256 } = await validateStagingUploadArtifactDirectory(
   artifactDirectory, { policy, manifest },
 );
@@ -81,7 +80,6 @@ verifySignedPayload({
     now: new Date(),
   },
 });
-const client = r2ClientFromEnvironment(process.env);
 const fetcher = (input, init = {}) => {
   const headers = new Headers(init.headers);
   headers.set('authorization', stagingSmokeAuthorizationHeader(token));

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, rm, rmdir, symlink } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, rmdir, symlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -15,7 +15,10 @@ import {
   loadTrackedPublicMediaManifest,
   validatePublicMediaManifest,
 } from './lib/public-media-manifest.mjs';
-import { buildR2RunnerInvocation } from './lib/r2-command-runner.mjs';
+import {
+  assertR2RunnerCredentialEnvironment,
+  buildR2RunnerInvocation,
+} from './lib/r2-command-runner.mjs';
 
 const ROOT = process.cwd();
 let assertions = 0;
@@ -71,7 +74,29 @@ assert.equal(buildR2RunnerInvocation('staging-sync', ['--apply']).args
   .filter((value) => value === '--apply').length, 1);
 assert.deepEqual(buildR2RunnerInvocation('staging-audit-full', ['--concurrency=2']).args,
   ['--environment=staging', '--concurrency=2']);
-assertions += 4;
+const validatorInspection = buildR2RunnerInvocation('staging-inspect', [
+  '--concurrency=16', `--expected-manifest-sha256=${tracked.manifestSha256}`,
+  '--receipt-output=/approved/staging-r2-inspection.json',
+]);
+assert.deepEqual({
+  script: validatorInspection.script,
+  environment: validatorInspection.environment,
+  role: validatorInspection.role,
+  allowApply: validatorInspection.allowApply,
+  args: validatorInspection.args,
+}, {
+  script: 'scripts/inspect-public-media-r2.mjs',
+  environment: 'staging',
+  role: 'validator',
+  allowApply: false,
+  args: [
+    '--environment=staging', '--concurrency=16',
+    `--expected-manifest-sha256=${tracked.manifestSha256}`,
+    '--receipt-output=/approved/staging-r2-inspection.json',
+  ],
+});
+assert.equal(assertR2RunnerCredentialEnvironment({ PATH: '/safe/bin' }), true);
+assertions += 6;
 throwsCode(() => buildR2RunnerInvocation('staging-sync', ['--environment=production']),
   'MEDIA_E_R2_RUNNER_TARGET');
 throwsCode(() => buildR2RunnerInvocation('staging-sync', ['--environment=staging']),
@@ -80,6 +105,31 @@ throwsCode(() => buildR2RunnerInvocation('staging-sync', ['--apply', '--apply'])
   'MEDIA_E_R2_RUNNER_APPLY');
 throwsCode(() => buildR2RunnerInvocation('staging-audit-full', ['--apply']),
   'MEDIA_E_R2_RUNNER_APPLY');
+throwsCode(() => buildR2RunnerInvocation('staging-inspect', ['--apply']),
+  'MEDIA_E_R2_RUNNER_APPLY');
+throwsCode(() => buildR2RunnerInvocation('staging-inspect', ['--environment=production']),
+  'MEDIA_E_R2_RUNNER_TARGET');
+throwsCode(() => buildR2RunnerInvocation('staging-inspect', ['--role=uploader']),
+  'MEDIA_E_R2_RUNNER_ARGUMENT');
+throwsCode(() => buildR2RunnerInvocation('staging-inspect', [
+  '--credential-metadata=/tmp/uploader.json',
+]), 'MEDIA_E_R2_RUNNER_ARGUMENT');
+throwsCode(() => buildR2RunnerInvocation('staging-inspect', ['--delete']),
+  'MEDIA_E_R2_RUNNER_ARGUMENT');
+throwsCode(() => buildR2RunnerInvocation('staging-inspect', ['--overwrite']),
+  'MEDIA_E_R2_RUNNER_ARGUMENT');
+throwsCode(() => buildR2RunnerInvocation('staging-inspect', [
+  '--concurrency=4', '--concurrency=8',
+]), 'MEDIA_E_R2_RUNNER_ARGUMENT');
+throwsCode(() => assertR2RunnerCredentialEnvironment({ R2_CREDENTIALS_FD: '3' }),
+  'MEDIA_E_R2_RUNNER_CREDENTIAL_AMBIGUOUS');
+throwsCode(() => assertR2RunnerCredentialEnvironment({
+  R2_ACCOUNT_ID: 'a'.repeat(32),
+}), 'MEDIA_E_R2_RUNNER_CREDENTIAL_AMBIGUOUS');
+const packageJson = JSON.parse(await readFile(path.join(ROOT, 'package.json'), 'utf8'));
+assert.equal(packageJson.scripts['media:r2:staging:inspect:secure'],
+  'node scripts/run-with-r2-credentials.mjs --command=staging-inspect --');
+assertions += 1;
 const releasePolicy = await loadTrackedPublicMediaReleasePolicy(ROOT);
 assert.equal(releasePolicy.production.bucket, 'dwnc-me-public-media-production');
 assert.equal(releasePolicy.staging.bucket, 'dwnc-me-public-media-staging');
@@ -140,6 +190,13 @@ assertions += 1;
 }
 
 await spawnFailure('scripts/validate-public-media-remote.mjs', [], 'MEDIA_E_REMOTE_RECEIPT_REQUIRED');
+await spawnFailure('scripts/run-with-r2-credentials.mjs', [
+  '--command=staging-inspect', '--',
+  `--expected-manifest-sha256=${tracked.manifestSha256}`,
+  '--receipt-output=/tmp/dwnc-synthetic-inspection.json',
+], 'MEDIA_E_R2_RUNNER_CREDENTIAL_AMBIGUOUS', {
+  R2_ACCOUNT_ID: 'a'.repeat(32),
+});
 const validSyntheticR2Environment = {
   schemaVersion: 1,
   contract: 'dwnc-r2-s3-credentials-v1',

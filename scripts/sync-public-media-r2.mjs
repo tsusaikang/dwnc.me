@@ -12,8 +12,7 @@ import {
   mapWithConcurrency,
 } from './lib/public-media-remote.mjs';
 import {
-  r2ClientFromEnvironment,
-  r2CredentialsFromEnvironment,
+  r2ClientContextFromEnvironment,
 } from './lib/r2-s3-client.mjs';
 import { installStructuredErrorHandler } from './lib/cloudflare-process.mjs';
 
@@ -50,7 +49,7 @@ function parseArguments(argv) {
 }
 
 const options = parseArguments(process.argv.slice(2));
-const r2Credentials = r2CredentialsFromEnvironment(process.env);
+const { credentials: r2Credentials, client } = r2ClientContextFromEnvironment(process.env);
 const manifest = await loadTrackedPublicMediaManifest(ROOT);
 if (options.apply && options.expectedManifestSha256 !== manifest.manifestSha256) {
   throw new Error('MEDIA_E_EXPECTED_MANIFEST');
@@ -64,7 +63,6 @@ const policyTarget = validateConfiguredReleaseTarget({
   bucket: r2Credentials.bucket,
   wranglerConfig,
 });
-const client = r2ClientFromEnvironment(process.env);
 const target = {
   environment: options.environment,
   bucket: r2Credentials.bucket,

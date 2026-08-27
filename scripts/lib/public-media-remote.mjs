@@ -41,6 +41,45 @@ export async function inspectRemotePublicMedia(client, manifest, { concurrency =
   return { listedCount: listed.length, orphanCount, missing, mismatch, exact, heads };
 }
 
+export function createRemoteInspectionReceipt(manifest, inspection, {
+  target,
+  inspectedAt = new Date().toISOString(),
+} = {}) {
+  const categories = [inspection?.exact, inspection?.missing, inspection?.mismatch];
+  if (!manifest || !categories.every(Array.isArray)
+    || !Array.isArray(inspection?.heads)
+    || categories.reduce((sum, values) => sum + values.length, 0) !== manifest.objectCount
+    || inspection.heads.length !== manifest.objectCount
+    || !Number.isSafeInteger(inspection.listedCount) || inspection.listedCount < 0
+    || !Number.isSafeInteger(inspection.orphanCount) || inspection.orphanCount < 0
+    || inspection.orphanCount > inspection.listedCount
+    || !target || Object.keys(target).length !== 3
+    || target.environment !== 'staging'
+    || !/^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/u.test(target.bucket ?? '')
+    || !/^[a-f0-9]{64}$/u.test(target.accountIdSha256 ?? '')
+    || typeof inspectedAt !== 'string' || Number.isNaN(Date.parse(inspectedAt))) {
+    throw new Error('MEDIA_E_R2_INSPECTION_RECEIPT');
+  }
+  return {
+    schemaVersion: 1,
+    contract: 'dwnc-public-media-r2-inspection-v1',
+    environment: target.environment,
+    accountIdSha256: target.accountIdSha256,
+    bucket: target.bucket,
+    manifestSha256: manifest.manifestSha256,
+    desired: manifest.objectCount,
+    listed: inspection.listedCount,
+    exact: inspection.exact.length,
+    missing: inspection.missing.length,
+    mismatch: inspection.mismatch.length,
+    orphan: inspection.orphanCount,
+    verificationLevel: 'list-and-head',
+    overwrite: 0,
+    delete: 0,
+    inspectedAt,
+  };
+}
+
 export async function admitOneStagingPublicMediaObject(client, entry, loadBytes) {
   if (!client || typeof client.head !== 'function' || typeof client.putCreateOnly !== 'function'
     || typeof client.getFull !== 'function' || typeof loadBytes !== 'function') {

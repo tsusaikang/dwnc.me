@@ -13,8 +13,7 @@ import {
   inspectRemotePublicMedia,
 } from './lib/public-media-remote.mjs';
 import {
-  r2ClientFromEnvironment,
-  r2CredentialsFromEnvironment,
+  r2ClientContextFromEnvironment,
 } from './lib/r2-s3-client.mjs';
 import {
   remoteReceiptBucketExposure,
@@ -62,7 +61,7 @@ function parseArguments(argv) {
 }
 
 const options = parseArguments(process.argv.slice(2));
-const r2Credentials = r2CredentialsFromEnvironment(process.env);
+const { credentials: r2Credentials, client } = r2ClientContextFromEnvironment(process.env);
 const manifest = await loadTrackedPublicMediaManifest(ROOT);
 if (manifest.manifestSha256 !== options.expectedManifestSha256) throw new Error('MEDIA_E_EXPECTED_MANIFEST');
 const wranglerConfig = JSON.parse(await readFile(path.join(ROOT, 'wrangler.jsonc'), 'utf8'));
@@ -99,9 +98,8 @@ if (options.expectedOrphanCount !== targetPolicy.approvedOrphanCount) {
   throw new Error('MEDIA_E_ORPHAN_APPROVAL');
 }
 
-// No network-capable client is constructed until every immutable target field
-// above has been bound to the selected Wrangler environment and account hash.
-const client = r2ClientFromEnvironment(process.env);
+// No remote request is issued until every immutable target field above has
+// been bound to the selected Wrangler environment and account hash.
 const inspection = await inspectRemotePublicMedia(client, manifest, { concurrency: options.concurrency });
 if (inspection.missing.length || inspection.mismatch.length) throw new Error('MEDIA_E_REMOTE_VALIDATION');
 if (inspection.orphanCount !== options.expectedOrphanCount) throw new Error('MEDIA_E_ORPHAN_APPROVAL');

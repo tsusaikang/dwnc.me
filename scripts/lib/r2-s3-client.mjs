@@ -399,6 +399,11 @@ export class R2S3Client {
 
 export function r2ClientFromEnvironment(environment = process.env, options = {}) {
   const credentials = r2CredentialsFromEnvironment(environment);
+  return r2ClientFromCredentials(credentials, options);
+}
+
+export function r2ClientFromCredentials(credentials, options = {}) {
+  validateR2Credentials(credentials);
   return new R2S3Client({
     accountId: credentials.accountId,
     bucket: credentials.bucket,
@@ -406,4 +411,12 @@ export function r2ClientFromEnvironment(environment = process.env, options = {})
     secretAccessKey: credentials.secretAccessKey,
     ...options,
   });
+}
+
+export function r2ClientContextFromEnvironment(environment = process.env, options = {}) {
+  const credentials = r2CredentialsFromEnvironment(environment);
+  return {
+    credentials,
+    client: r2ClientFromCredentials(credentials, options),
+  };
 }

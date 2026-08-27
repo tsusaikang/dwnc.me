@@ -16,6 +16,7 @@ import {
 import {
   admitOneStagingPublicMediaObject,
   auditRemotePublicMediaFull,
+  createRemoteInspectionReceipt,
   createUnsignedRemoteReceipt,
   inspectRemotePublicMedia,
 } from './lib/public-media-remote.mjs';
@@ -221,6 +222,17 @@ function headFor(entry, overrides = {}) {
   equal(inspection.missing.length, 1);
   equal(inspection.mismatch.length, 0);
   equal(inspection.orphanCount, 1);
+  const inspectionReceipt = createRemoteInspectionReceipt(manifest, inspection, {
+    target: syntheticTarget,
+    inspectedAt: '2026-08-25T01:02:03.000Z',
+  });
+  equal(inspectionReceipt.verificationLevel, 'list-and-head');
+  equal(inspectionReceipt.exact, 1);
+  equal(inspectionReceipt.missing, 1);
+  equal(inspectionReceipt.orphan, 1);
+  await rejectsCode(() => Promise.resolve(createRemoteInspectionReceipt(manifest, inspection, {
+    target: { ...syntheticTarget, environment: 'production' },
+  })), 'MEDIA_E_R2_INSPECTION_RECEIPT');
 }
 
 {

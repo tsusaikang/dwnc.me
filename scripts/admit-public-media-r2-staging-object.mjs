@@ -12,8 +12,7 @@ import {
   loadLocalMediaBytes,
 } from './lib/public-media-remote.mjs';
 import {
-  r2ClientFromEnvironment,
-  r2CredentialsFromEnvironment,
+  r2ClientContextFromEnvironment,
 } from './lib/r2-s3-client.mjs';
 import { installStructuredErrorHandler } from './lib/cloudflare-process.mjs';
 
@@ -100,7 +99,7 @@ async function assertSecureOutputWritten(outputPath, expected) {
 
 const options = parseArguments(process.argv.slice(2));
 const initialOutputIdentity = await inspectSecureOutput(options.receiptOutput);
-const r2Credentials = r2CredentialsFromEnvironment(process.env);
+const { credentials: r2Credentials, client } = r2ClientContextFromEnvironment(process.env);
 const [manifest, policy, wranglerConfig] = await Promise.all([
   loadTrackedPublicMediaManifest(ROOT),
   loadTrackedPublicMediaReleasePolicy(ROOT),
@@ -119,7 +118,6 @@ const target = validateConfiguredReleaseTarget({
 const members = manifest.entries.filter((entry) => entry.key === options.key);
 if (members.length !== 1) throw new Error('MEDIA_E_STAGING_ADMISSION_MANIFEST_MEMBER');
 const entry = members[0];
-const client = r2ClientFromEnvironment(process.env);
 const admitted = await admitOneStagingPublicMediaObject(
   client,
   entry,

@@ -9,7 +9,10 @@ import {
 import { canonicalJson } from './lib/cloudflare-release.mjs';
 import { readSecureFile } from './lib/cloudflare-signing-key.mjs';
 import { loadR2Credential } from './lib/r2-credential-store.mjs';
-import { buildR2RunnerInvocation } from './lib/r2-command-runner.mjs';
+import {
+  assertR2RunnerCredentialEnvironment,
+  buildR2RunnerInvocation,
+} from './lib/r2-command-runner.mjs';
 
 installStructuredErrorHandler('r2-credential-runner');
 const ROOT = process.cwd();
@@ -20,6 +23,7 @@ const separator = process.argv[3];
 if (separator !== '--') throw new Error('MEDIA_E_R2_RUNNER_ARGUMENT');
 const forwarded = process.argv.slice(4);
 const selected = buildR2RunnerInvocation(command, forwarded);
+assertR2RunnerCredentialEnvironment(process.env);
 const metadataPath = process.env.R2_CREDENTIAL_METADATA_PATH;
 if (typeof metadataPath !== 'string' || !path.isAbsolute(metadataPath)) {
   throw new Error('MEDIA_E_R2_RUNNER_ARGUMENT');
