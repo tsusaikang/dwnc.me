@@ -31,15 +31,6 @@ const commands = Object.freeze({
       'CLOUDFLARE_R2_EXPOSURE_EXPECTED_GIT_TREE',
     ],
   },
-  'staging-workers-dev-status': {
-    script: 'scripts/fetch-cloudflare-staging-workers-dev-status.mjs',
-    args: [],
-    outputVariables: [
-      'CLOUDFLARE_STAGING_WORKERS_DEV_STATUS_CAPTURE_PATH',
-      'CLOUDFLARE_STAGING_WORKERS_DEV_STATUS_EVIDENCE_PATH',
-    ],
-    requiredVariables: [],
-  },
 });
 
 const LEGACY_CONTROL_PLANE_TOKEN_NAMES = Object.freeze([

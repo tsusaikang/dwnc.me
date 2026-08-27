@@ -1,7 +1,9 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { fstatSync, readSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { constants as fsConstants, fstatSync, readSync } from 'node:fs';
+import {
+  chmod, copyFile, lstat, mkdir, readFile, readdir, realpath, writeFile,
+} from 'node:fs/promises';
 import path from 'node:path';
 import { cloudflareAccountIdSha256 } from './public-media-manifest.mjs';
 import { readSecureFile, writeSecureCreateOnly } from './cloudflare-signing-key.mjs';
@@ -17,6 +19,60 @@ export const R2_VALIDATION_ENVIRONMENT_NAMES = Object.freeze([
   'PUBLIC_MEDIA_REMOTE_PUBLIC_KEY_PATH',
 ]);
 const SAFE_ERROR_CODE = /^[A-Z][A-Z0-9_]{2,80}$/u;
+export const PINNED_WRANGLER_VERSION = '4.125.0';
+export const PINNED_WRANGLER_CLI_SIZE = 20_524_522;
+export const PINNED_WRANGLER_CLI_SHA256
+  = '8642ffb286871a94617969aa64d351097a49783361834d8c4aec75adbddfa773';
+export const PINNED_WRANGLER_PACKAGE_JSON_SHA256
+  = '2acd581fd6f773f5d5e2aab1433bac9ff5b40d352d18786503dfdfa009823eb8';
+export const PINNED_WRANGLER_RUNTIME_FILE_COUNT = 660;
+export const PINNED_WRANGLER_RUNTIME_BYTES = 207_434_085;
+export const PINNED_WRANGLER_RUNTIME_SHA256
+  = 'a3c3dcd0bcecb7cb78994c96ac1711dd2fe985c7e698bfae1456e7610e0ae2eb';
+const SEALED_WRANGLER_RESOLUTION_GUARD = `'use strict';
+const fs = require('node:fs');
+const Module = require('node:module');
+const path = require('node:path');
+const allowedRoot = fs.realpathSync(__dirname) + path.sep;
+const originalResolveFilename = Module._resolveFilename;
+Module._resolveFilename = function sealedResolveFilename(request, parent, isMain, options) {
+  const resolved = originalResolveFilename.call(this, request, parent, isMain, options);
+  if (typeof resolved === 'string' && !resolved.startsWith('node:')
+      && !Module.builtinModules.includes(resolved)) {
+    let actual;
+    try { actual = fs.realpathSync(resolved); }
+    catch {
+      const error = new Error('sealed module resolution blocked');
+      error.code = 'MODULE_NOT_FOUND';
+      throw error;
+    }
+    if (!actual.startsWith(allowedRoot)) {
+      const error = new Error('sealed module resolution blocked');
+      error.code = 'MODULE_NOT_FOUND';
+      throw error;
+    }
+  }
+  return resolved;
+};
+`;
+export const SEALED_WRANGLER_RESOLUTION_GUARD_BYTES = 946;
+export const SEALED_WRANGLER_RESOLUTION_GUARD_SHA256
+  = '49eb9466fe48a6b9ce55414933fc9034181d54107ea43626888858b6f0303416';
+const PINNED_WRANGLER_PACKAGE_INTEGRITY
+  = 'sha512-yFpvggu+xk1Hdm/Uxwaqa19bb7GArME4CrCS3Vov68a2TZq2MPO+wLocKbbnIC9K0oLowcdau7/ycxbbNHKCEg==';
+const PINNED_WRANGLER_RESOLVED
+  = 'https://registry.npmjs.org/wrangler/-/wrangler-4.125.0.tgz';
+const PINNED_WRANGLER_RUNTIME_ROOTS = Object.freeze([
+  'node_modules/wrangler/wrangler-dist/cli.js',
+  'node_modules/wrangler/node_modules/esbuild',
+  'node_modules/miniflare',
+  'node_modules/undici',
+  'node_modules/workerd',
+  'node_modules/blake3-wasm',
+  'node_modules/ws',
+  'node_modules/@cloudflare/workerd-darwin-arm64',
+  'node_modules/@esbuild/darwin-arm64',
+]);
 const CONTROL_PLANE_TOKEN_DESCRIPTOR = 3;
 const CONTROL_PLANE_TOKEN_MAXIMUM_BYTES = 256;
 const CONTROL_PLANE_TOKEN_FRAME_MAGIC = Buffer.from('DWNCCT1\0', 'ascii');
@@ -27,6 +83,27 @@ const CONTROL_PLANE_TOKEN_FRAME_MAXIMUM_BYTES = CONTROL_PLANE_TOKEN_FRAME_HEADER
 const CONTROL_PLANE_LEGACY_TOKEN_NAMES = Object.freeze([
   'CLOUDFLARE_API_TOKEN', 'CF_API_TOKEN', 'CLOUDFLARE_API_KEY', 'CF_API_KEY',
 ]);
+export const CLOUDFLARE_STAGING_CONTROL_OPERATIONS = Object.freeze([
+  'staging-service-existence',
+  'staging-bootstrap',
+  'staging-version-upload',
+  'staging-version-detail',
+  'staging-deployment-status',
+  'staging-activate',
+  'staging-workers-dev-status',
+  'staging-workers-dev-enable',
+]);
+export const CLOUDFLARE_STAGING_WRANGLER_EXTRA_ALLOWLIST = Object.freeze([]);
+const CLOUDFLARE_STAGING_CONTROL_OPERATION_SET
+  = new Set(CLOUDFLARE_STAGING_CONTROL_OPERATIONS);
+const SHA256 = /^[a-f0-9]{64}$/u;
+const ACCOUNT_ID = /^[a-f0-9]{32}$/u;
+
+function isContainedPath(parent, candidate) {
+  const relative = path.relative(parent, candidate);
+  return relative === '' || relative !== '..' && !relative.startsWith(`..${path.sep}`)
+    && !path.isAbsolute(relative);
+}
 
 export function structuredErrorCode(error, fallback = 'CLOUDFLARE_E_UNEXPECTED') {
   const candidate = typeof error?.code === 'string'
@@ -81,6 +158,95 @@ export function cloudflareWranglerEnvironment(source = process.env, extra = {}) 
     ...(typeof source.CLOUDFLARE_COMPLIANCE_REGION === 'string'
       ? { CLOUDFLARE_COMPLIANCE_REGION: source.CLOUDFLARE_COMPLIANCE_REGION } : {}),
     ...extra,
+  });
+}
+
+export function assertStagingControlOperationEnvelope(source = process.env, expectedOperation) {
+  if (!CLOUDFLARE_STAGING_CONTROL_OPERATION_SET.has(expectedOperation)
+    || source.CLOUDFLARE_STAGING_CONTROL_VERIFIED !== 'v1'
+    || source.CLOUDFLARE_STAGING_CONTROL_OPERATION !== expectedOperation
+    || source.CLOUDFLARE_API_TOKEN_FD !== '3'
+    || !ACCOUNT_ID.test(source.CLOUDFLARE_ACCOUNT_ID ?? '')
+    || !SHA256.test(source.CLOUDFLARE_STAGING_CONTROL_METADATA_SHA256 ?? '')
+    || !SHA256.test(source.CLOUDFLARE_STAGING_CONTROL_PREFLIGHT_SHA256 ?? '')
+    || !SHA256.test(source.CLOUDFLARE_STAGING_CONTROL_ACCOUNT_SHA256 ?? '')
+    || !SHA256.test(source.CLOUDFLARE_STAGING_CONTROL_TOKEN_SHA256 ?? '')
+    || !SHA256.test(source.CLOUDFLARE_STAGING_CONTROL_PERMISSION_SHA256 ?? '')
+    || CONTROL_PLANE_LEGACY_TOKEN_NAMES
+      .some((name) => Object.hasOwn(source, name))) {
+    throw new Error('CLOUDFLARE_E_STAGING_CONTROL_ENVELOPE');
+  }
+  const authRoot = source.CLOUDFLARE_STAGING_CONTROL_AUTH_ROOT;
+  const isolatedHome = source.HOME;
+  const xdgConfig = source.XDG_CONFIG_HOME;
+  const xdgCache = source.XDG_CACHE_HOME;
+  const xdgData = source.XDG_DATA_HOME;
+  const temporary = source.TMPDIR;
+  const envFile = source.CLOUDFLARE_STAGING_CONTROL_ENV_FILE;
+  if (![authRoot, isolatedHome, xdgConfig, xdgCache, xdgData, temporary, envFile]
+    .every((value) => typeof value === 'string' && path.isAbsolute(value)
+      && path.resolve(value) === value)
+    || ![isolatedHome, xdgConfig, xdgCache, xdgData, temporary, envFile]
+      .every((value) => value !== authRoot && isContainedPath(authRoot, value))
+    || new Set([isolatedHome, xdgConfig, xdgCache, xdgData, temporary, envFile]).size !== 6
+    || source.TMP !== temporary || source.TEMP !== temporary
+    || source.CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV !== 'false'
+    || source.CLOUDFLARE_INCLUDE_PROCESS_ENV !== 'false'
+    || source.WRANGLER_SEND_METRICS !== 'false'
+    || source.WRANGLER_SEND_ERROR_REPORTS !== 'false'
+    || !['0', 'false'].includes(source.WRANGLER_WRITE_LOGS)
+    || source.CI !== '1') {
+    throw new Error('CLOUDFLARE_E_STAGING_CONTROL_ISOLATION');
+  }
+  return {
+    operation: expectedOperation,
+    accountId: source.CLOUDFLARE_ACCOUNT_ID,
+    metadataSha256: source.CLOUDFLARE_STAGING_CONTROL_METADATA_SHA256,
+    preflightSha256: source.CLOUDFLARE_STAGING_CONTROL_PREFLIGHT_SHA256,
+    accountIdSha256: source.CLOUDFLARE_STAGING_CONTROL_ACCOUNT_SHA256,
+    apiTokenSha256: source.CLOUDFLARE_STAGING_CONTROL_TOKEN_SHA256,
+    permissionContractSha256: source.CLOUDFLARE_STAGING_CONTROL_PERMISSION_SHA256,
+    authRoot,
+    envFile,
+  };
+}
+
+export function cloudflareStagingWranglerEnvironment(source, credentials, {
+  expectedOperation,
+  extra = {},
+} = {}) {
+  const envelope = assertStagingControlOperationEnvelope(source, expectedOperation);
+  if (!credentials || credentials.accountId !== envelope.accountId
+    || !ACCOUNT_ID.test(credentials.accountId ?? '')
+    || typeof credentials.apiToken !== 'string'
+    || !/^cfat_[A-Za-z0-9]{40}[a-f0-9]{8}$/u.test(credentials.apiToken)
+    || !extra || typeof extra !== 'object' || Array.isArray(extra)
+    || Object.keys(extra).some((name) => !CLOUDFLARE_STAGING_WRANGLER_EXTRA_ALLOWLIST
+      .includes(name))) {
+    throw new Error('CLOUDFLARE_E_STAGING_CONTROL_WRANGLER');
+  }
+  return sanitizedEnvironment(source, {
+    PATH: '/usr/bin:/bin',
+    HOME: source.HOME,
+    TMPDIR: source.TMPDIR,
+    TMP: source.TMP,
+    TEMP: source.TEMP,
+    XDG_CONFIG_HOME: source.XDG_CONFIG_HOME,
+    XDG_CACHE_HOME: source.XDG_CACHE_HOME,
+    XDG_DATA_HOME: source.XDG_DATA_HOME,
+    CLOUDFLARE_ACCOUNT_ID: credentials.accountId,
+    CLOUDFLARE_API_TOKEN: credentials.apiToken,
+    CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV: 'false',
+    CLOUDFLARE_INCLUDE_PROCESS_ENV: 'false',
+    WRANGLER_SEND_METRICS: 'false',
+    WRANGLER_SEND_ERROR_REPORTS: 'false',
+    WRANGLER_WRITE_LOGS: '0',
+    WRANGLER_LOG_SANITIZE: 'true',
+    WRANGLER_NO_SKILLS_UPDATE_PROMPTS: 'true',
+    WS_NO_BUFFER_UTIL: '1',
+    WS_NO_UTF_8_VALIDATE: '1',
+    CI: '1',
+    NO_COLOR: '1',
   });
 }
 
@@ -318,6 +484,138 @@ export function assertCloudflareAccountTarget(accountId, expectedSha256) {
   }
 }
 
+function stableFileIdentity(before, after) {
+  return before.dev === after.dev && before.ino === after.ino
+    && before.size === after.size && before.nlink === after.nlink
+    && before.mode === after.mode && before.mtimeMs === after.mtimeMs
+    && before.ctimeMs === after.ctimeMs;
+}
+
+function runtimeTreeDigest(entries) {
+  const canonical = entries.map((entry) => `${JSON.stringify(entry.relativePath)}\t${entry.mode}`
+    + `\t${entry.size}\t${entry.sha256}\n`).join('');
+  return createHash('sha256').update(canonical).digest('hex');
+}
+
+async function inspectPinnedWranglerRuntime(root, { sealed = false } = {}) {
+  if (process.platform !== 'darwin' || process.arch !== 'arm64') {
+    throw new Error('CLOUDFLARE_E_WRANGLER_REQUIRED');
+  }
+  const entries = [];
+  const walk = async (relativePath) => {
+    const absolutePath = path.join(root, relativePath);
+    const before = await lstat(absolutePath);
+    const resolved = await realpath(absolutePath);
+    if (resolved !== absolutePath || before.isSymbolicLink()
+      || (before.mode & 0o022) !== 0
+      || typeof process.getuid === 'function' && before.uid !== process.getuid()) {
+      throw new Error('CLOUDFLARE_E_WRANGLER_REQUIRED');
+    }
+    if (before.isDirectory()) {
+      if (sealed && (before.mode & 0o777) !== 0o700) {
+        throw new Error('CLOUDFLARE_E_WRANGLER_REQUIRED');
+      }
+      const names = await readdir(absolutePath);
+      names.sort();
+      for (const name of names) await walk(path.join(relativePath, name));
+      const after = await lstat(absolutePath);
+      if (!stableFileIdentity(before, after)) {
+        throw new Error('CLOUDFLARE_E_WRANGLER_REQUIRED');
+      }
+      return;
+    }
+    if (!before.isFile() || before.nlink !== 1 || before.size < 0) {
+      throw new Error('CLOUDFLARE_E_WRANGLER_REQUIRED');
+    }
+    let bytes;
+    try {
+      bytes = await readFile(absolutePath);
+      const after = await lstat(absolutePath);
+      if (!stableFileIdentity(before, after) || bytes.length !== before.size) {
+        throw new Error('CLOUDFLARE_E_WRANGLER_REQUIRED');
+      }
+      entries.push({
+        absolutePath,
+        relativePath: relativePath.split(path.sep).join('/'),
+        mode: before.mode & 0o111 ? 'x' : 'r',
+        size: bytes.length,
+        sha256: createHash('sha256').update(bytes).digest('hex'),
+      });
+    } finally { bytes?.fill(0); }
+  };
+  for (const relativePath of PINNED_WRANGLER_RUNTIME_ROOTS) await walk(relativePath);
+  entries.sort((left, right) => left.relativePath < right.relativePath
+    ? -1 : left.relativePath > right.relativePath ? 1 : 0);
+  const totalBytes = entries.reduce((total, entry) => total + entry.size, 0);
+  const runtimeSha256 = runtimeTreeDigest(entries);
+  if (entries.length !== PINNED_WRANGLER_RUNTIME_FILE_COUNT
+    || totalBytes !== PINNED_WRANGLER_RUNTIME_BYTES
+    || runtimeSha256 !== PINNED_WRANGLER_RUNTIME_SHA256) {
+    throw new Error('CLOUDFLARE_E_WRANGLER_VERSION');
+  }
+  const cli = entries.find((entry) => entry.relativePath
+    === 'node_modules/wrangler/wrangler-dist/cli.js');
+  if (!cli || cli.size !== PINNED_WRANGLER_CLI_SIZE
+    || cli.sha256 !== PINNED_WRANGLER_CLI_SHA256 || cli.mode !== 'r') {
+    throw new Error('CLOUDFLARE_E_WRANGLER_VERSION');
+  }
+  return { entries, totalBytes, runtimeSha256, cli };
+}
+
+export function assertPinnedWranglerDescriptor(descriptor, root = process.cwd()) {
+  const expectedCli = path.join(root, 'node_modules/wrangler/wrangler-dist/cli.js');
+  const keys = [
+    'version', 'cli', 'cliSize', 'cliSha256', 'runtimeFileCount', 'runtimeBytes',
+    'runtimeSha256', 'packageJsonSha256',
+  ];
+  if (typeof root !== 'string' || !path.isAbsolute(root) || path.resolve(root) !== root
+    || !descriptor || typeof descriptor !== 'object' || Array.isArray(descriptor)
+    || Object.keys(descriptor).length !== keys.length
+    || Object.keys(descriptor).some((key) => !keys.includes(key))
+    || descriptor.version !== PINNED_WRANGLER_VERSION
+    || descriptor.cli !== expectedCli || !path.isAbsolute(descriptor.cli)
+    || path.resolve(descriptor.cli) !== descriptor.cli
+    || descriptor.cliSize !== PINNED_WRANGLER_CLI_SIZE
+    || descriptor.cliSha256 !== PINNED_WRANGLER_CLI_SHA256
+    || descriptor.runtimeFileCount !== PINNED_WRANGLER_RUNTIME_FILE_COUNT
+    || descriptor.runtimeBytes !== PINNED_WRANGLER_RUNTIME_BYTES
+    || descriptor.runtimeSha256 !== PINNED_WRANGLER_RUNTIME_SHA256
+    || descriptor.packageJsonSha256 !== PINNED_WRANGLER_PACKAGE_JSON_SHA256) {
+    throw new Error('CLOUDFLARE_E_WRANGLER_VERSION');
+  }
+  return Object.freeze({ ...descriptor });
+}
+
+export function assertSealedWranglerDescriptor(descriptor, authRoot) {
+  const expectedCli = path.join(
+    authRoot, 'sealed-wrangler/node_modules/wrangler/wrangler-dist/cli.js',
+  );
+  const expectedGuard = path.join(authRoot, 'sealed-wrangler/resolution-guard.cjs');
+  const keys = [
+    'version', 'cli', 'cliSize', 'cliSha256', 'runtimeFileCount', 'runtimeBytes',
+    'runtimeSha256', 'guard', 'guardBytes', 'guardSha256',
+  ];
+  if (typeof authRoot !== 'string' || !path.isAbsolute(authRoot)
+    || path.resolve(authRoot) !== authRoot
+    || !descriptor || typeof descriptor !== 'object' || Array.isArray(descriptor)
+    || Object.keys(descriptor).length !== keys.length
+    || Object.keys(descriptor).some((key) => !keys.includes(key))
+    || descriptor.version !== PINNED_WRANGLER_VERSION || descriptor.cli !== expectedCli
+    || !path.isAbsolute(descriptor.cli) || path.resolve(descriptor.cli) !== descriptor.cli
+    || descriptor.guard !== expectedGuard || !path.isAbsolute(descriptor.guard)
+    || path.resolve(descriptor.guard) !== descriptor.guard
+    || descriptor.cliSize !== PINNED_WRANGLER_CLI_SIZE
+    || descriptor.cliSha256 !== PINNED_WRANGLER_CLI_SHA256
+    || descriptor.runtimeFileCount !== PINNED_WRANGLER_RUNTIME_FILE_COUNT
+    || descriptor.runtimeBytes !== PINNED_WRANGLER_RUNTIME_BYTES
+    || descriptor.runtimeSha256 !== PINNED_WRANGLER_RUNTIME_SHA256
+    || descriptor.guardBytes !== SEALED_WRANGLER_RESOLUTION_GUARD_BYTES
+    || descriptor.guardSha256 !== SEALED_WRANGLER_RESOLUTION_GUARD_SHA256) {
+    throw new Error('CLOUDFLARE_E_WRANGLER_VERSION');
+  }
+  return Object.freeze({ ...descriptor });
+}
+
 export async function assertPinnedWranglerInstalled(root = process.cwd()) {
   let packageVersion;
   let installedVersion;
@@ -327,10 +625,160 @@ export async function assertPinnedWranglerInstalled(root = process.cwd()) {
     installedVersion = JSON.parse(await readFile(
       path.join(root, 'node_modules/wrangler/package.json'), 'utf8')).version;
   } catch { throw new Error('CLOUDFLARE_E_WRANGLER_REQUIRED'); }
-  if (packageVersion !== '4.125.0' || installedVersion !== packageVersion) {
+  if (packageVersion !== PINNED_WRANGLER_VERSION || installedVersion !== packageVersion) {
     throw new Error('CLOUDFLARE_E_WRANGLER_VERSION');
   }
   return installedVersion;
+}
+
+export async function assertPinnedWranglerEntrypointInstalled(root = process.cwd()) {
+  if (typeof root !== 'string' || !path.isAbsolute(root) || path.resolve(root) !== root) {
+    throw new Error('CLOUDFLARE_E_WRANGLER_REQUIRED');
+  }
+  const packageRoot = path.join(root, 'node_modules/wrangler');
+  const packageJsonPath = path.join(packageRoot, 'package.json');
+  let projectPackageBytes;
+  let lockBytes;
+  let installedPackageBytes;
+  try {
+    const [packageRootStats, packageJsonStats,
+      resolvedPackageRoot, resolvedPackageJson] = await Promise.all([
+      lstat(packageRoot), lstat(packageJsonPath),
+      realpath(packageRoot), realpath(packageJsonPath),
+    ]);
+    if (!packageRootStats.isDirectory() || packageRootStats.isSymbolicLink()
+      || !packageJsonStats.isFile() || packageJsonStats.isSymbolicLink()
+      || packageJsonStats.nlink !== 1
+      || packageJsonStats.size < 1 || packageJsonStats.size > 64 * 1024
+      || resolvedPackageRoot !== packageRoot || resolvedPackageJson !== packageJsonPath
+      || (packageRootStats.mode & 0o022) !== 0 || (packageJsonStats.mode & 0o022) !== 0) {
+      throw new Error('CLOUDFLARE_E_WRANGLER_REQUIRED');
+    }
+    [projectPackageBytes, lockBytes, installedPackageBytes] = await Promise.all([
+      readFile(path.join(root, 'package.json')),
+      readFile(path.join(root, 'package-lock.json')),
+      readFile(packageJsonPath),
+    ]);
+    if (projectPackageBytes.length > 64 * 1024 || lockBytes.length > 16 * 1024 * 1024
+      || installedPackageBytes.length !== packageJsonStats.size) {
+      throw new Error('CLOUDFLARE_E_WRANGLER_REQUIRED');
+    }
+    const projectPackage = JSON.parse(projectPackageBytes.toString('utf8'));
+    const lock = JSON.parse(lockBytes.toString('utf8'));
+    const installedPackage = JSON.parse(installedPackageBytes.toString('utf8'));
+    const locked = lock.packages?.['node_modules/wrangler'];
+    if (projectPackage.config?.wranglerVersion !== PINNED_WRANGLER_VERSION
+      || projectPackage.devDependencies?.wrangler !== PINNED_WRANGLER_VERSION
+      || lock.packages?.['']?.devDependencies?.wrangler !== PINNED_WRANGLER_VERSION
+      || locked?.version !== PINNED_WRANGLER_VERSION
+      || locked?.resolved !== PINNED_WRANGLER_RESOLVED
+      || locked?.integrity !== PINNED_WRANGLER_PACKAGE_INTEGRITY
+      || installedPackage.version !== PINNED_WRANGLER_VERSION
+      || installedPackage.main !== 'wrangler-dist/cli.js'
+      || installedPackage.bin?.wrangler !== './bin/wrangler.js') {
+      throw new Error('CLOUDFLARE_E_WRANGLER_VERSION');
+    }
+    const runtime = await inspectPinnedWranglerRuntime(root);
+    return assertPinnedWranglerDescriptor({
+      version: installedPackage.version,
+      cli: runtime.cli.absolutePath,
+      cliSize: runtime.cli.size,
+      cliSha256: runtime.cli.sha256,
+      runtimeFileCount: runtime.entries.length,
+      runtimeBytes: runtime.totalBytes,
+      runtimeSha256: runtime.runtimeSha256,
+      packageJsonSha256: createHash('sha256').update(installedPackageBytes).digest('hex'),
+    }, root);
+  } catch (error) {
+    if (error?.message === 'CLOUDFLARE_E_WRANGLER_VERSION') throw error;
+    throw new Error('CLOUDFLARE_E_WRANGLER_REQUIRED');
+  }
+  finally {
+    projectPackageBytes?.fill(0);
+    lockBytes?.fill(0);
+    installedPackageBytes?.fill(0);
+  }
+}
+
+export async function sealPinnedWranglerRuntime(descriptor, authRoot,
+  root = process.cwd()) {
+  assertPinnedWranglerDescriptor(descriptor, root);
+  if (typeof authRoot !== 'string' || !path.isAbsolute(authRoot)
+    || path.resolve(authRoot) !== authRoot) {
+    throw new Error('CLOUDFLARE_E_WRANGLER_REQUIRED');
+  }
+  const authStats = await lstat(authRoot);
+  if (!authStats.isDirectory() || authStats.isSymbolicLink()
+    || (authStats.mode & 0o777) !== 0o700
+    || typeof process.getuid === 'function' && authStats.uid !== process.getuid()
+    || await realpath(authRoot) !== authRoot) {
+    throw new Error('CLOUDFLARE_E_WRANGLER_REQUIRED');
+  }
+  const runtimeRoot = path.join(authRoot, 'sealed-wrangler');
+  await mkdir(runtimeRoot, { mode: 0o700 });
+  const guard = path.join(runtimeRoot, 'resolution-guard.cjs');
+  let guardBytes;
+  let storedGuardBytes;
+  try {
+    guardBytes = Buffer.from(SEALED_WRANGLER_RESOLUTION_GUARD, 'utf8');
+    if (guardBytes.length !== SEALED_WRANGLER_RESOLUTION_GUARD_BYTES
+      || createHash('sha256').update(guardBytes).digest('hex')
+        !== SEALED_WRANGLER_RESOLUTION_GUARD_SHA256) {
+      throw new Error('CLOUDFLARE_E_WRANGLER_VERSION');
+    }
+    await writeFile(guard, guardBytes, { flag: 'wx', mode: 0o400 });
+    const before = await lstat(guard);
+    storedGuardBytes = await readFile(guard);
+    const after = await lstat(guard);
+    if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1
+      || (before.mode & 0o777) !== 0o400 || !stableFileIdentity(before, after)
+      || await realpath(guard) !== guard
+      || storedGuardBytes.length !== SEALED_WRANGLER_RESOLUTION_GUARD_BYTES
+      || createHash('sha256').update(storedGuardBytes).digest('hex')
+        !== SEALED_WRANGLER_RESOLUTION_GUARD_SHA256) {
+      throw new Error('CLOUDFLARE_E_WRANGLER_REQUIRED');
+    }
+  } finally {
+    guardBytes?.fill(0);
+    storedGuardBytes?.fill(0);
+  }
+  const source = await inspectPinnedWranglerRuntime(root);
+  const createdDirectories = new Set([runtimeRoot]);
+  for (const entry of source.entries) {
+    const destination = path.join(runtimeRoot, entry.relativePath);
+    const parent = path.dirname(destination);
+    if (!createdDirectories.has(parent)) {
+      await mkdir(parent, { recursive: true, mode: 0o700 });
+      createdDirectories.add(parent);
+    }
+    const before = await lstat(entry.absolutePath);
+    if (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1
+      || before.size !== entry.size || (before.mode & 0o022) !== 0
+      || (before.mode & 0o111 ? 'x' : 'r') !== entry.mode
+      || typeof process.getuid === 'function' && before.uid !== process.getuid()) {
+      throw new Error('CLOUDFLARE_E_WRANGLER_REQUIRED');
+    }
+    await copyFile(entry.absolutePath, destination,
+      fsConstants.COPYFILE_EXCL | fsConstants.COPYFILE_FICLONE);
+    const after = await lstat(entry.absolutePath);
+    if (!stableFileIdentity(before, after)) {
+      throw new Error('CLOUDFLARE_E_WRANGLER_REQUIRED');
+    }
+    await chmod(destination, entry.mode === 'x' ? 0o500 : 0o400);
+  }
+  const sealed = await inspectPinnedWranglerRuntime(runtimeRoot, { sealed: true });
+  return assertSealedWranglerDescriptor({
+    version: descriptor.version,
+    cli: sealed.cli.absolutePath,
+    cliSize: sealed.cli.size,
+    cliSha256: sealed.cli.sha256,
+    runtimeFileCount: sealed.entries.length,
+    runtimeBytes: sealed.totalBytes,
+    runtimeSha256: sealed.runtimeSha256,
+    guard,
+    guardBytes: SEALED_WRANGLER_RESOLUTION_GUARD_BYTES,
+    guardSha256: SEALED_WRANGLER_RESOLUTION_GUARD_SHA256,
+  }, authRoot);
 }
 
 export async function claimOneTimeAuthorization({
@@ -409,12 +857,18 @@ export async function writeAnonymousInheritedInput(stream, value, {
   const byteLength = bytes.length;
   try {
     await new Promise((resolve, reject) => {
-      const onError = () => reject(new Error('CLOUDFLARE_E_SEALED_INPUT'));
-      stream.once('error', onError);
-      stream.end(bytes, () => {
+      let settled = false;
+      const finish = (error = null) => {
+        if (settled) return;
+        settled = true;
         stream.off('error', onError);
-        resolve();
-      });
+        if (error !== null && error !== undefined) {
+          reject(new Error('CLOUDFLARE_E_SEALED_INPUT'));
+        } else resolve();
+      };
+      const onError = (error) => finish(error ?? new Error('sealed input error'));
+      stream.once('error', onError);
+      stream.end(bytes, (error) => finish(error));
     });
     return { descriptor, path: `/dev/fd/${descriptor}`, sha256, bytes: byteLength };
   } finally { bytes.fill(0); }

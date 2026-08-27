@@ -20,9 +20,12 @@ import {
 } from './lib/cloudflare-release.mjs';
 import { executeBootstrapMutationProduction } from './lib/cloudflare-bootstrap-execution.mjs';
 import {
+  assertStagingControlOperationEnvelope,
   cloudflareControlPlaneCredentials,
   installStructuredErrorHandler,
 } from './lib/cloudflare-process.mjs';
+import { readCloudflareStagingControlOperation }
+  from './lib/cloudflare-staging-control-operation.mjs';
 import { loadTrackedPublicMediaReleasePolicy } from './lib/public-media-manifest.mjs';
 
 const ROOT = process.cwd();
@@ -30,6 +33,11 @@ installStructuredErrorHandler('cloudflare-deny-bootstrap');
 const environment = process.argv.find((value) => value.startsWith('--environment='))?.split('=')[1];
 if (!['production', 'staging'].includes(environment)) {
   throw new Error('CLOUDFLARE_E_BOOTSTRAP_ENVIRONMENT');
+}
+if (environment === 'staging') {
+  // This validates the verified runner receipt without reading FD 3. The token remains
+  // unread until the separate status-only recovery stop below has been implemented.
+  assertStagingControlOperationEnvelope(process.env, 'staging-bootstrap');
 }
 const absolute = (value) => {
   if (typeof value !== 'string' || !path.isAbsolute(value) || path.resolve(value) !== value) {
@@ -126,7 +134,9 @@ const statusOnlyRecoveryImplemented = () => false;
 if (!statusOnlyRecoveryImplemented()) {
   throw new Error('CLOUDFLARE_E_BOOTSTRAP_STATUS_RECOVERY_REQUIRED');
 }
-const controlPlane = cloudflareControlPlaneCredentials(process.env);
+const controlPlane = environment === 'staging'
+  ? readCloudflareStagingControlOperation(process.env, 'staging-bootstrap')
+  : cloudflareControlPlaneCredentials(process.env);
 const execution = await executeBootstrapMutationProduction({
   repositoryRoot: ROOT,
   environment,

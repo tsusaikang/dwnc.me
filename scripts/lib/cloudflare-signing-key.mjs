@@ -36,7 +36,9 @@ const ROLE_CONTRACTS = Object.freeze({
   ]),
 });
 const SAFE_KEYCHAIN_NAME = /^[a-z0-9:._-]{3,160}$/u;
-const BASE64URL = /^[A-Za-z0-9_-]{40,512}$/u;
+const SIGNING_KEY_BASE64URL = /^[A-Za-z0-9_-]{40,512}$/u;
+export const MACOS_KEYCHAIN_SECRET_MAXIMUM_CHARACTERS = 1024;
+const KEYCHAIN_SECRET_BASE64URL = /^[A-Za-z0-9_-]{40,1024}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const OPENAT_HELPER = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)), '../libexec/secure_openat.py',
@@ -48,6 +50,13 @@ function exactKeys(value, keys) {
   return value && typeof value === 'object' && !Array.isArray(value)
     && Object.keys(value).length === keys.length
     && Object.keys(value).every((key) => keys.includes(key));
+}
+
+export function assertMacOSKeychainSecret(value) {
+  if (typeof value !== 'string' || !KEYCHAIN_SECRET_BASE64URL.test(value)) {
+    fail('CLOUDFLARE_E_KEYCHAIN');
+  }
+  return value;
 }
 
 export function assertSigningKeyRole(environment, role, contract = null) {
@@ -443,8 +452,7 @@ export class MacOSKeychainStore {
         'find-generic-password', '-s', service, '-a', account, '-w',
       ], { encoding: 'utf8', maxBuffer: 16 * 1024, timeout: 15000 });
       const value = stdout.trim();
-      if (!BASE64URL.test(value)) fail('CLOUDFLARE_E_KEYCHAIN');
-      return value;
+      return assertMacOSKeychainSecret(value);
     } catch (error) {
       if (error?.code === 44) return null;
       fail('CLOUDFLARE_E_KEYCHAIN');
@@ -452,8 +460,10 @@ export class MacOSKeychainStore {
   }
 
   async putCreateOnly(service, account, value) {
-    if (!SAFE_KEYCHAIN_NAME.test(service) || !SAFE_KEYCHAIN_NAME.test(account)
-      || !BASE64URL.test(value)) fail('CLOUDFLARE_E_KEYCHAIN');
+    if (!SAFE_KEYCHAIN_NAME.test(service) || !SAFE_KEYCHAIN_NAME.test(account)) {
+      fail('CLOUDFLARE_E_KEYCHAIN');
+    }
+    assertMacOSKeychainSecret(value);
     if (await this.get(service, account) !== null) fail('CLOUDFLARE_E_SIGNING_KEY_EXISTS');
     await runSecurityInteractive(`add-generic-password -s ${service} -a ${account} -w ${value}`);
     if (await this.get(service, account) !== value) fail('CLOUDFLARE_E_KEYCHAIN');
@@ -478,7 +488,7 @@ export async function initializeSigningKey({
   const existingSecret = await store.get(identity.service, identity.account);
   let material;
   if (existingSecret !== null) {
-    if (recoveryPublicKeySpkiSha256 === null || !BASE64URL.test(existingSecret)) {
+    if (recoveryPublicKeySpkiSha256 === null || !SIGNING_KEY_BASE64URL.test(existingSecret)) {
       fail('CLOUDFLARE_E_SIGNING_KEY_EXISTS');
     }
     const privateKeyDer = Buffer.from(existingSecret, 'base64url');
@@ -527,7 +537,9 @@ export async function loadSigningKey({ environment, role, metadataPath, store = 
   }
   validateSigningKeyMetadata(metadata, { environment, role });
   const secret = await store.get(metadata.keychainService, metadata.keychainAccount);
-  if (typeof secret !== 'string' || !BASE64URL.test(secret)) fail('CLOUDFLARE_E_SIGNING_KEY');
+  if (typeof secret !== 'string' || !SIGNING_KEY_BASE64URL.test(secret)) {
+    fail('CLOUDFLARE_E_SIGNING_KEY');
+  }
   const privateKeyDer = Buffer.from(secret, 'base64url');
   try {
     if (privateKeyDer.toString('base64url') !== secret) fail('CLOUDFLARE_E_SIGNING_KEY');
