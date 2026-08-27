@@ -16,9 +16,12 @@ import {
 import {
   admitOneStagingPublicMediaObject,
   auditRemotePublicMediaFull,
+  createBulkSyncReceipt,
   createRemoteInspectionReceipt,
   createUnsignedRemoteReceipt,
   inspectRemotePublicMedia,
+  validateBulkSyncReceipt,
+  validateRemoteInspectionReceipt,
 } from './lib/public-media-remote.mjs';
 import {
   parseR2Head,
@@ -89,6 +92,17 @@ const syntheticTarget = {
   bucket: credentials.bucket,
   accountIdSha256: cloudflareAccountIdSha256(credentials.accountId),
 };
+const syntheticSource = Object.freeze({
+  gitCommit: 'a'.repeat(40), gitTree: 'b'.repeat(40), clean: true, gitCheckCount: 3,
+});
+const fullAuditEvidence = Object.freeze({
+  requestCounts: Object.freeze({ LIST: 1, HEAD: 2, GET: 2, PUT: 0, DELETE: 0 }),
+  sourceCommit: syntheticSource.gitCommit,
+  sourceTree: syntheticSource.gitTree,
+  gitCheckCount: 3,
+  startedAt: '2026-08-24T23:59:00.000Z',
+  exposureCaptureSha256: 'f'.repeat(64),
+});
 
 function headFor(entry, overrides = {}) {
   return {
@@ -312,15 +326,54 @@ function headFor(entry, overrides = {}) {
   equal(inspection.orphanCount, 1);
   const inspectionReceipt = createRemoteInspectionReceipt(manifest, inspection, {
     target: syntheticTarget,
+    source: syntheticSource,
+    expected: { exact: 1, missing: 1, mismatch: 0, orphan: 1 },
+    requestCounts: { LIST: 1, HEAD: 2, GET: 0, PUT: 0, DELETE: 0 },
+    startedAt: '2026-08-25T01:02:02.000Z',
     inspectedAt: '2026-08-25T01:02:03.000Z',
   });
-  equal(inspectionReceipt.verificationLevel, 'list-and-head');
-  equal(inspectionReceipt.exact, 1);
-  equal(inspectionReceipt.missing, 1);
-  equal(inspectionReceipt.orphan, 1);
+  validateRemoteInspectionReceipt(inspectionReceipt, manifest);
+  equal(inspectionReceipt.verificationLevel, 'list-and-head-strict');
+  equal(inspectionReceipt.observed.exact, 1);
+  equal(inspectionReceipt.observed.missing, 1);
+  equal(inspectionReceipt.observed.orphan, 1);
   await rejectsCode(() => Promise.resolve(createRemoteInspectionReceipt(manifest, inspection, {
     target: { ...syntheticTarget, environment: 'production' },
+    source: syntheticSource,
+    expected: { exact: 1, missing: 1, mismatch: 0, orphan: 1 },
+    requestCounts: { LIST: 1, HEAD: 2, GET: 0, PUT: 0, DELETE: 0 },
+    startedAt: '2026-08-25T01:02:02.000Z',
   })), 'MEDIA_E_R2_INSPECTION_RECEIPT');
+
+  const exactInspection = {
+    listedCount: 2,
+    exact: manifest.entries.map((entry) => ({ entry, remote: headFor(entry) })),
+    missing: [], mismatch: [], orphanCount: 0,
+    heads: manifest.entries.map((entry) => headFor(entry)),
+  };
+  const bulkReceipt = createBulkSyncReceipt(manifest, {
+    target: syntheticTarget,
+    source: syntheticSource,
+    expectedOrphanCount: 0,
+    preInspection: { ...inspection, listedCount: 1, orphanCount: 0 },
+    postInspection: exactInspection,
+    writes: {
+      initialMissing: 1,
+      exactSkipped: 1,
+      conditionalCreateOperations: 1,
+      conditionalIfNoneMatchRequests: 1,
+      actualCreated: 1,
+      preconditionRecovered: 0,
+      overwrite: 0,
+      delete: 0,
+    },
+    requestCounts: { LIST: 2, HEAD: 4, GET: 0, PUT: 1, DELETE: 0 },
+    startedAt: '2026-08-25T01:02:02.000Z',
+    completedAt: '2026-08-25T01:02:03.000Z',
+  });
+  validateBulkSyncReceipt(bulkReceipt, manifest);
+  equal(bulkReceipt.writes.actualCreated, 1);
+  equal(bulkReceipt.writes.exactSkipped, 1);
 }
 
 {
@@ -372,6 +425,7 @@ function headFor(entry, overrides = {}) {
       verifiedAt: '2026-08-25T00:00:00.000Z',
       evidenceSha256: 'e'.repeat(64),
     },
+    fullAuditEvidence,
   });
   const policy = {
     schemaVersion: 1,
@@ -540,6 +594,11 @@ function headFor(entry, overrides = {}) {
   const created = await client.putCreateOnly(uploadEntry, bytes);
   equal(created.created, true);
   equal(calls.some((call) => call.url.searchParams.get('continuation-token') === 'page-two'), true);
+  equal(client.requestOperationCounts().LIST, 3);
+  equal(client.requestOperationCounts().HEAD, 1);
+  equal(client.requestOperationCounts().PUT, 1);
+  equal(client.requestOperationCounts().GET, 0);
+  equal(client.conditionalIfNoneMatchPutRequestCount(), 1);
 }
 
 {
@@ -558,9 +617,11 @@ function headFor(entry, overrides = {}) {
   equal(audit.objectCount, 2);
   equal(audit.totalBytes, 7);
   const fullReceipt = createUnsignedRemoteReceipt(manifest, audit.objects, {
+    verifiedAt: '2026-08-25T00:00:00.000Z',
     target: syntheticTarget,
     verificationLevel: 'full-get-sha256',
     orphanCount: 0,
+    fullAuditEvidence,
   });
   equal(fullReceipt.audit.fullGetObjects, 2);
   equal(fullReceipt.audit.fullGetBytes, 7);

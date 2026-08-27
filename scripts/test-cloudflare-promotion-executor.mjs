@@ -45,6 +45,7 @@ import {
 import {
   canonicalRemoteReceiptPayload,
   cloudflareAccountIdSha256,
+  publicMediaFullGetObjectSetSha256,
   publicKeySpkiSha256,
 } from './lib/public-media-manifest.mjs';
 import { writeAnonymousInheritedInput } from './lib/cloudflare-process.mjs';
@@ -256,6 +257,8 @@ process.exit(24);
   const { stdout: sourceShaRaw } = await exec('git', ['rev-parse', 'HEAD'], { cwd: root });
   const sourceGitSha = sourceShaRaw.trim();
 
+  const mediaVerifiedAt = new Date().toISOString();
+  const mediaStartedAt = new Date(Date.parse(mediaVerifiedAt) - 1_000).toISOString();
   const mediaReceipt = {
     schemaVersion: 1,
     contract: 'dwnc-public-media-r2-receipt-v1',
@@ -268,10 +271,23 @@ process.exit(24);
       verification: 'cloudflare-control-plane', jurisdiction: 'default', location: 'ENAM',
       storageClass: 'Standard', bucketPropertiesSha256: sha256Hex('bucket-properties'),
       r2DevEnabled: false, customDomainCount: 0,
-      verifiedAt: new Date().toISOString(), evidenceSha256: sha256Hex('private-bucket'),
+      verifiedAt: mediaVerifiedAt, evidenceSha256: sha256Hex('private-bucket'),
     },
-    verifiedAt: new Date().toISOString(),
-    audit: { headObjects: 0, fullGetObjects: 0, fullGetBytes: 0, orphanCount: 0 },
+    verifiedAt: mediaVerifiedAt,
+    audit: {
+      headObjects: 0,
+      fullGetObjects: 0,
+      fullGetBytes: 0,
+      fullGetContract: 'all-manifest-objects-streamed-sha256-v1',
+      fullObjectSetSha256: publicMediaFullGetObjectSetSha256([]),
+      orphanCount: 0,
+      requestCounts: { LIST: 1, HEAD: 0, GET: 0, PUT: 0, DELETE: 0 },
+      sourceCommit: sourceGitSha,
+      sourceTree: '2'.repeat(40),
+      gitCheckCount: 3,
+      startedAt: mediaStartedAt,
+      exposureCaptureSha256: 'f'.repeat(64),
+    },
     objects: [],
   };
   const mediaSignaturePath = path.join(secrets, 'media.sig');

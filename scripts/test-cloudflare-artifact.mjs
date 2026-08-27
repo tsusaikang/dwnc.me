@@ -13,6 +13,7 @@ import {
 import {
   canonicalRemoteReceiptPayload,
   loadTrackedPublicMediaReleasePolicy,
+  publicMediaFullGetObjectSetSha256,
   publicKeySpkiSha256,
 } from './lib/public-media-manifest.mjs';
 
@@ -53,7 +54,21 @@ try {
       customDomainCount: 0, verifiedAt: '2026-08-25T00:00:00.000Z', evidenceSha256: 'c'.repeat(64),
     },
     verifiedAt: '2026-08-25T00:00:00.000Z',
-    audit: { headObjects: 0, fullGetObjects: 0, fullGetBytes: 0, orphanCount: 0 }, objects: [],
+    audit: {
+      headObjects: 0,
+      fullGetObjects: 0,
+      fullGetBytes: 0,
+      fullGetContract: 'all-manifest-objects-streamed-sha256-v1',
+      fullObjectSetSha256: publicMediaFullGetObjectSetSha256([]),
+      orphanCount: 0,
+      requestCounts: { LIST: 1, HEAD: 0, GET: 0, PUT: 0, DELETE: 0 },
+      sourceCommit: '1'.repeat(40),
+      sourceTree: '2'.repeat(40),
+      gitCheckCount: 3,
+      startedAt: '2026-08-24T23:59:00.000Z',
+      exposureCaptureSha256: 'f'.repeat(64),
+    },
+    objects: [],
   };
   const signature = sign(null, Buffer.from(canonicalRemoteReceiptPayload(remoteReceipt)), privateKey);
   const signaturePath = path.join(temporary, 'remote.sig');

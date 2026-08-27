@@ -264,6 +264,16 @@ try {
     expectedPublicKeySpkiSha256: mediaMetadata.publicKeySpkiSha256,
   });
   equal(verify(null, Buffer.from(mediaPayload), mediaMetadata.publicKeyPem, mediaSigned.signature), true);
+  const bulkOperationalPayload = canonicalJson({
+    schemaVersion: 1,
+    contract: 'dwnc-public-media-r2-bulk-sync-v1',
+    target: { environment: 'staging' },
+  });
+  await rejects(() => signCanonicalEvidence({
+    environment: 'staging', role: 'media-receipt', metadataPath: mediaMetadataPath,
+    canonicalBytes: Buffer.from(`${bulkOperationalPayload}\n`), store,
+    expectedPublicKeySpkiSha256: mediaMetadata.publicKeySpkiSha256,
+  }), 'CLOUDFLARE_E_SIGNING_ROLE');
 
   const rsaMetadata = path.join(directory, 'rsa.json');
   await rejects(() => initializeSigningKey({

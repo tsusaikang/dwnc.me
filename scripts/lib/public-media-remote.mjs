@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
+  publicMediaFullGetObjectSetSha256,
   publicMediaEntryManifestSha256,
   validateRemoteReceipt,
 } from './public-media-manifest.mjs';
@@ -9,6 +10,71 @@ import {
   remoteObjectMatches,
 } from './r2-s3-client.mjs';
 import { readSecureBytes } from './global-sequence.mjs';
+
+const GIT_OID = /^[a-f0-9]{40}$/u;
+const SHA256 = /^[a-f0-9]{64}$/u;
+const BUCKET = /^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/u;
+const R2_OPERATION_KEYS = Object.freeze(['LIST', 'HEAD', 'GET', 'PUT', 'DELETE']);
+const INSPECTION_KEYS = Object.freeze(['listed', 'exact', 'missing', 'mismatch', 'orphan']);
+
+function exactKeys(value, keys) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    && Object.keys(value).length === keys.length
+    && Object.keys(value).every((key) => keys.includes(key));
+}
+
+function validTimestamp(value) {
+  return typeof value === 'string' && !Number.isNaN(Date.parse(value))
+    && new Date(value).toISOString() === value;
+}
+
+export function validateR2OperationCounts(counts, {
+  allowGet = true, allowPut = true,
+} = {}) {
+  if (!exactKeys(counts, R2_OPERATION_KEYS)
+    || R2_OPERATION_KEYS.some((key) => !Number.isSafeInteger(counts[key]) || counts[key] < 0)
+    || !allowGet && counts.GET !== 0 || !allowPut && counts.PUT !== 0
+    || counts.DELETE !== 0) throw new Error('MEDIA_E_R2_OPERATION_COUNTS');
+  return counts;
+}
+
+export function r2OperationDelta(before, after) {
+  validateR2OperationCounts(before);
+  validateR2OperationCounts(after);
+  const delta = Object.fromEntries(R2_OPERATION_KEYS.map((key) => [key, after[key] - before[key]]));
+  if (R2_OPERATION_KEYS.some((key) => delta[key] < 0)) {
+    throw new Error('MEDIA_E_R2_OPERATION_COUNTS');
+  }
+  return delta;
+}
+
+export function remoteInspectionCounts(inspection) {
+  if (!inspection || !Array.isArray(inspection.exact) || !Array.isArray(inspection.missing)
+    || !Array.isArray(inspection.mismatch) || !Array.isArray(inspection.heads)
+    || !Number.isSafeInteger(inspection.listedCount) || inspection.listedCount < 0
+    || !Number.isSafeInteger(inspection.orphanCount) || inspection.orphanCount < 0) {
+    throw new Error('MEDIA_E_R2_INSPECTION_COUNTS');
+  }
+  return {
+    listed: inspection.listedCount,
+    exact: inspection.exact.length,
+    missing: inspection.missing.length,
+    mismatch: inspection.mismatch.length,
+    orphan: inspection.orphanCount,
+  };
+}
+
+export function validateRemoteInspectionCounts(counts, manifest, expected = null) {
+  if (!exactKeys(counts, INSPECTION_KEYS)
+    || INSPECTION_KEYS.some((key) => !Number.isSafeInteger(counts[key]) || counts[key] < 0)
+    || counts.exact + counts.missing + counts.mismatch !== manifest.objectCount
+    || counts.listed !== counts.exact + counts.mismatch + counts.orphan
+    || expected !== null && (!exactKeys(expected, ['exact', 'missing', 'mismatch', 'orphan'])
+      || ['exact', 'missing', 'mismatch', 'orphan'].some((key) => counts[key] !== expected[key]))) {
+    throw new Error('MEDIA_E_R2_INSPECTION_COUNTS');
+  }
+  return counts;
+}
 
 export async function mapWithConcurrency(values, concurrency, mapper) {
   if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 32) {
@@ -44,43 +110,136 @@ export async function inspectRemotePublicMedia(client, manifest, { concurrency =
   return { listedCount: listed.length, orphanCount, missing, mismatch, exact, heads };
 }
 
-export function createRemoteInspectionReceipt(manifest, inspection, {
-  target,
-  inspectedAt = new Date().toISOString(),
-} = {}) {
-  const categories = [inspection?.exact, inspection?.missing, inspection?.mismatch];
-  if (!manifest || !categories.every(Array.isArray)
-    || !Array.isArray(inspection?.heads)
-    || categories.reduce((sum, values) => sum + values.length, 0) !== manifest.objectCount
-    || inspection.heads.length !== manifest.objectCount
-    || !Number.isSafeInteger(inspection.listedCount) || inspection.listedCount < 0
-    || !Number.isSafeInteger(inspection.orphanCount) || inspection.orphanCount < 0
-    || inspection.orphanCount > inspection.listedCount
-    || !target || Object.keys(target).length !== 3
-    || target.environment !== 'staging'
-    || !/^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/u.test(target.bucket ?? '')
-    || !/^[a-f0-9]{64}$/u.test(target.accountIdSha256 ?? '')
-    || typeof inspectedAt !== 'string' || Number.isNaN(Date.parse(inspectedAt))) {
+export function validateRemoteInspectionReceipt(receipt, manifest) {
+  const topKeys = ['schemaVersion', 'contract', 'target', 'source', 'manifestSha256',
+    'desired', 'expected', 'observed', 'requestCounts', 'verificationLevel',
+    'overwrite', 'delete', 'startedAt', 'inspectedAt'];
+  if (!exactKeys(receipt, topKeys) || receipt.schemaVersion !== 2
+    || receipt.contract !== 'dwnc-public-media-r2-inspection-v2'
+    || !exactKeys(receipt.target, ['environment', 'accountIdSha256', 'bucket'])
+    || receipt.target.environment !== 'staging' || !BUCKET.test(receipt.target.bucket ?? '')
+    || !SHA256.test(receipt.target.accountIdSha256 ?? '')
+    || !exactKeys(receipt.source, ['gitCommit', 'gitTree', 'clean', 'gitCheckCount'])
+    || !GIT_OID.test(receipt.source.gitCommit ?? '') || !GIT_OID.test(receipt.source.gitTree ?? '')
+    || receipt.source.clean !== true || receipt.source.gitCheckCount !== 3
+    || receipt.manifestSha256 !== manifest.manifestSha256
+    || receipt.desired !== manifest.objectCount
+    || !exactKeys(receipt.expected, ['exact', 'missing', 'mismatch', 'orphan'])
+    || receipt.verificationLevel !== 'list-and-head-strict'
+    || receipt.overwrite !== 0 || receipt.delete !== 0
+    || !validTimestamp(receipt.startedAt) || !validTimestamp(receipt.inspectedAt)
+    || Date.parse(receipt.inspectedAt) < Date.parse(receipt.startedAt)) {
     throw new Error('MEDIA_E_R2_INSPECTION_RECEIPT');
   }
-  return {
-    schemaVersion: 1,
-    contract: 'dwnc-public-media-r2-inspection-v1',
-    environment: target.environment,
-    accountIdSha256: target.accountIdSha256,
-    bucket: target.bucket,
+  validateRemoteInspectionCounts(receipt.observed, manifest, receipt.expected);
+  validateR2OperationCounts(receipt.requestCounts, { allowGet: false, allowPut: false });
+  if (receipt.requestCounts.LIST < 1 || receipt.requestCounts.HEAD < manifest.objectCount) {
+    throw new Error('MEDIA_E_R2_INSPECTION_RECEIPT');
+  }
+  return receipt;
+}
+
+export function createRemoteInspectionReceipt(manifest, inspection, {
+  target, source, expected, requestCounts,
+  startedAt, inspectedAt = new Date().toISOString(),
+} = {}) {
+  const receipt = {
+    schemaVersion: 2,
+    contract: 'dwnc-public-media-r2-inspection-v2',
+    target,
+    source,
     manifestSha256: manifest.manifestSha256,
     desired: manifest.objectCount,
-    listed: inspection.listedCount,
-    exact: inspection.exact.length,
-    missing: inspection.missing.length,
-    mismatch: inspection.mismatch.length,
-    orphan: inspection.orphanCount,
-    verificationLevel: 'list-and-head',
+    expected,
+    observed: remoteInspectionCounts(inspection),
+    requestCounts,
+    verificationLevel: 'list-and-head-strict',
     overwrite: 0,
     delete: 0,
+    startedAt,
     inspectedAt,
   };
+  return validateRemoteInspectionReceipt(receipt, manifest);
+}
+
+export function validateBulkSyncReceipt(receipt, manifest) {
+  const topKeys = ['schemaVersion', 'contract', 'target', 'source', 'manifestSha256',
+    'objectCount', 'totalBytes', 'expectedOrphanCount', 'preInspection',
+    'postInspection', 'writes', 'requestCounts', 'verificationLevel', 'startedAt',
+    'completedAt'];
+  if (!exactKeys(receipt, topKeys) || receipt.schemaVersion !== 1
+    || receipt.contract !== 'dwnc-public-media-r2-bulk-sync-v1'
+    || !exactKeys(receipt.target, ['environment', 'accountIdSha256', 'bucket'])
+    || !['staging', 'production'].includes(receipt.target.environment)
+    || !BUCKET.test(receipt.target.bucket ?? '')
+    || !SHA256.test(receipt.target.accountIdSha256 ?? '')
+    || !exactKeys(receipt.source, ['gitCommit', 'gitTree', 'clean', 'gitCheckCount'])
+    || !GIT_OID.test(receipt.source.gitCommit ?? '') || !GIT_OID.test(receipt.source.gitTree ?? '')
+    || receipt.source.clean !== true || receipt.source.gitCheckCount !== 3
+    || receipt.manifestSha256 !== manifest.manifestSha256
+    || receipt.objectCount !== manifest.objectCount || receipt.totalBytes !== manifest.totalBytes
+    || !Number.isSafeInteger(receipt.expectedOrphanCount) || receipt.expectedOrphanCount < 0
+    || receipt.verificationLevel !== 'post-list-and-head-exact'
+    || !validTimestamp(receipt.startedAt) || !validTimestamp(receipt.completedAt)
+    || Date.parse(receipt.completedAt) < Date.parse(receipt.startedAt)) {
+    throw new Error('MEDIA_E_R2_BULK_RECEIPT');
+  }
+  validateRemoteInspectionCounts(receipt.preInspection, manifest);
+  validateRemoteInspectionCounts(receipt.postInspection, manifest, {
+    exact: manifest.objectCount, missing: 0, mismatch: 0, orphan: receipt.expectedOrphanCount,
+  });
+  const writeKeys = ['initialMissing', 'exactSkipped', 'conditionalCreateOperations',
+    'conditionalIfNoneMatchRequests', 'actualCreated', 'preconditionRecovered',
+    'overwrite', 'delete'];
+  const writes = receipt.writes;
+  if (!exactKeys(writes, writeKeys)
+    || writeKeys.some((key) => !Number.isSafeInteger(writes[key]) || writes[key] < 0)
+    || receipt.preInspection.mismatch !== 0
+    || receipt.preInspection.orphan !== receipt.expectedOrphanCount
+    || writes.initialMissing !== receipt.preInspection.missing
+    || writes.exactSkipped !== receipt.preInspection.exact
+    || writes.conditionalCreateOperations !== writes.initialMissing
+    || writes.actualCreated + writes.preconditionRecovered !== writes.conditionalCreateOperations
+    || writes.overwrite !== 0 || writes.delete !== 0) {
+    throw new Error('MEDIA_E_R2_BULK_RECEIPT');
+  }
+  validateR2OperationCounts(receipt.requestCounts, { allowGet: false, allowPut: true });
+  if (receipt.requestCounts.LIST < 2
+    || receipt.requestCounts.HEAD < (2 * manifest.objectCount) + writes.preconditionRecovered
+    || receipt.requestCounts.PUT < writes.conditionalCreateOperations
+    || writes.conditionalIfNoneMatchRequests !== receipt.requestCounts.PUT) {
+    throw new Error('MEDIA_E_R2_BULK_RECEIPT');
+  }
+  return receipt;
+}
+
+export function createBulkSyncReceipt(manifest, {
+  target, source, expectedOrphanCount, preInspection, postInspection,
+  writes, requestCounts, startedAt, completedAt = new Date().toISOString(),
+} = {}) {
+  const receipt = {
+    schemaVersion: 1,
+    contract: 'dwnc-public-media-r2-bulk-sync-v1',
+    target,
+    source,
+    manifestSha256: manifest.manifestSha256,
+    objectCount: manifest.objectCount,
+    totalBytes: manifest.totalBytes,
+    expectedOrphanCount,
+    preInspection: remoteInspectionCounts(preInspection),
+    postInspection: remoteInspectionCounts(postInspection),
+    writes,
+    requestCounts,
+    verificationLevel: 'post-list-and-head-exact',
+    startedAt,
+    completedAt,
+  };
+  return validateBulkSyncReceipt(receipt, manifest);
+}
+
+export function fullGetObjectSetSha256(objects) {
+  try { return publicMediaFullGetObjectSetSha256(objects); }
+  catch { throw new Error('MEDIA_E_REMOTE_FULL_AUDIT'); }
 }
 
 function validVersion(value) {
@@ -254,6 +413,7 @@ export function createUnsignedRemoteReceipt(manifest, heads, {
     bucketPropertiesSha256: null, r2DevEnabled: null, customDomainCount: null,
     verifiedAt: null, evidenceSha256: null,
   },
+  fullAuditEvidence = null,
 } = {}) {
   if (!Array.isArray(heads) || heads.length !== manifest.entries.length) throw new Error('MEDIA_E_REMOTE_RECEIPT');
   if (!Number.isSafeInteger(orphanCount) || orphanCount < 0) throw new Error('MEDIA_E_REMOTE_RECEIPT');
@@ -276,6 +436,25 @@ export function createUnsignedRemoteReceipt(manifest, heads, {
       lastModified: remote.lastModified,
     };
   });
+  const audit = verificationLevel === 'full-get-sha256' ? {
+    headObjects: manifest.objectCount,
+    fullGetObjects: manifest.objectCount,
+    fullGetBytes: manifest.totalBytes,
+    fullGetContract: 'all-manifest-objects-streamed-sha256-v1',
+    fullObjectSetSha256: fullGetObjectSetSha256(heads),
+    orphanCount,
+    requestCounts: fullAuditEvidence?.requestCounts,
+    sourceCommit: fullAuditEvidence?.sourceCommit,
+    sourceTree: fullAuditEvidence?.sourceTree,
+    gitCheckCount: fullAuditEvidence?.gitCheckCount,
+    startedAt: fullAuditEvidence?.startedAt,
+    exposureCaptureSha256: fullAuditEvidence?.exposureCaptureSha256,
+  } : {
+    headObjects: manifest.objectCount,
+    fullGetObjects: 0,
+    fullGetBytes: 0,
+    orphanCount,
+  };
   const receipt = {
     schemaVersion: 1,
     contract: 'dwnc-public-media-r2-receipt-v1',
@@ -286,12 +465,7 @@ export function createUnsignedRemoteReceipt(manifest, heads, {
     verificationLevel,
     bucketExposure,
     verifiedAt,
-    audit: {
-      headObjects: manifest.objectCount,
-      fullGetObjects: verificationLevel === 'full-get-sha256' ? manifest.objectCount : 0,
-      fullGetBytes: verificationLevel === 'full-get-sha256' ? manifest.totalBytes : 0,
-      orphanCount,
-    },
+    audit,
     objects,
   };
   validateRemoteReceipt(receipt, manifest);

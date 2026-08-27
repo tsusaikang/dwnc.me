@@ -76,6 +76,9 @@ assert.deepEqual(buildR2RunnerInvocation('staging-audit-full', ['--concurrency=2
   ['--environment=staging', '--concurrency=2']);
 const validatorInspection = buildR2RunnerInvocation('staging-inspect', [
   '--concurrency=16', `--expected-manifest-sha256=${tracked.manifestSha256}`,
+  `--expected-git-commit=${'a'.repeat(40)}`, `--expected-git-tree=${'b'.repeat(40)}`,
+  '--expected-exact=2758', '--expected-missing=0', '--expected-mismatch=0',
+  '--expected-orphan-count=0',
   '--receipt-output=/approved/staging-r2-inspection.json',
 ]);
 assert.deepEqual({
@@ -92,6 +95,9 @@ assert.deepEqual({
   args: [
     '--environment=staging', '--concurrency=16',
     `--expected-manifest-sha256=${tracked.manifestSha256}`,
+    `--expected-git-commit=${'a'.repeat(40)}`, `--expected-git-tree=${'b'.repeat(40)}`,
+    '--expected-exact=2758', '--expected-missing=0', '--expected-mismatch=0',
+    '--expected-orphan-count=0',
     '--receipt-output=/approved/staging-r2-inspection.json',
   ],
 });
@@ -248,17 +254,25 @@ const validSyntheticR2Environment = {
   secretAccessKey: 'c'.repeat(64),
 };
 await spawnFailure('scripts/sync-public-media-r2.mjs', ['--environment=staging'],
-  'MEDIA_E_RELEASE_TARGET', {}, validSyntheticR2Environment);
+  'MEDIA_E_RELEASE_TARGET', {
+    R2_RUNNER_ENVIRONMENT: 'staging', R2_RUNNER_ROLE: 'uploader',
+  }, validSyntheticR2Environment);
 await spawnFailure('scripts/sync-public-media-r2.mjs', ['--environment=production'],
-  'MEDIA_E_RELEASE_POLICY_INCOMPLETE', {}, {
+  'MEDIA_E_RELEASE_POLICY_INCOMPLETE', {
+    R2_RUNNER_ENVIRONMENT: 'production', R2_RUNNER_ROLE: 'uploader',
+  }, {
     ...validSyntheticR2Environment, bucket: 'dwnc-me-public-media-production',
   });
 await spawnFailure('scripts/sync-public-media-r2.mjs', [
   '--apply', '--environment=staging', `--expected-manifest-sha256=${'0'.repeat(64)}`,
   '--expected-orphan-count=0', '--receipt-output=/tmp/dwnc-synthetic-apply-receipt.json',
-], 'MEDIA_E_EXPECTED_MANIFEST', {}, validSyntheticR2Environment);
+], 'MEDIA_E_APPLY_EVIDENCE_REQUIRED', {
+  R2_RUNNER_ENVIRONMENT: 'staging', R2_RUNNER_ROLE: 'uploader',
+}, validSyntheticR2Environment);
 await spawnFailure('scripts/sync-public-media-r2.mjs', ['--environment=staging'],
-  'MEDIA_E_RELEASE_TARGET', {}, {
+  'MEDIA_E_RELEASE_TARGET', {
+    R2_RUNNER_ENVIRONMENT: 'staging', R2_RUNNER_ROLE: 'uploader',
+  }, {
     ...validSyntheticR2Environment,
     bucket: 'dwnc-me-public-media-production',
     accessKeyId: 'd'.repeat(32),

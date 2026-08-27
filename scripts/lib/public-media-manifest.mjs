@@ -285,6 +285,23 @@ export function canonicalRemoteReceiptPayload(receipt) {
   });
 }
 
+export function publicMediaFullGetObjectSetSha256(objects) {
+  if (!Array.isArray(objects)) fail('MEDIA_E_REMOTE_RECEIPT');
+  const projected = objects.map((object) => {
+    if (!object || typeof object.key !== 'string'
+      || !Number.isSafeInteger(object.bodyBytes ?? object.size)
+      || !SHA256_PATTERN.test(object.bodySha256 ?? object.sha256 ?? '')) {
+      fail('MEDIA_E_REMOTE_RECEIPT');
+    }
+    return {
+      key: object.key,
+      bodyBytes: object.bodyBytes ?? object.size,
+      bodySha256: object.bodySha256 ?? object.sha256,
+    };
+  });
+  return sha256(canonicalJson(projected));
+}
+
 export function validateRemoteReceipt(receipt, manifest) {
   const keys = [
     'schemaVersion', 'contract', 'manifestSha256', 'objectCount', 'totalBytes',
@@ -307,7 +324,11 @@ export function validateRemoteReceipt(receipt, manifest) {
     ])
     || typeof receipt.verifiedAt !== 'string'
     || Number.isNaN(Date.parse(receipt.verifiedAt))
-    || !exactKeys(receipt.audit, ['headObjects', 'fullGetObjects', 'fullGetBytes', 'orphanCount'])
+    || !exactKeys(receipt.audit, receipt.verificationLevel === 'full-get-sha256'
+      ? ['headObjects', 'fullGetObjects', 'fullGetBytes', 'fullGetContract',
+        'fullObjectSetSha256', 'orphanCount', 'requestCounts', 'sourceCommit',
+        'sourceTree', 'gitCheckCount', 'startedAt', 'exposureCaptureSha256']
+      : ['headObjects', 'fullGetObjects', 'fullGetBytes', 'orphanCount'])
     || receipt.audit.headObjects !== manifest.objectCount
     || !Number.isSafeInteger(receipt.audit.fullGetObjects)
     || !Number.isSafeInteger(receipt.audit.fullGetBytes)
@@ -317,7 +338,25 @@ export function validateRemoteReceipt(receipt, manifest) {
       && (receipt.audit.fullGetObjects !== 0 || receipt.audit.fullGetBytes !== 0))
     || (receipt.verificationLevel === 'full-get-sha256'
       && (receipt.audit.fullGetObjects !== manifest.objectCount
-        || receipt.audit.fullGetBytes !== manifest.totalBytes))
+        || receipt.audit.fullGetBytes !== manifest.totalBytes
+        || receipt.audit.fullGetContract !== 'all-manifest-objects-streamed-sha256-v1'
+        || !SHA256_PATTERN.test(receipt.audit.fullObjectSetSha256 ?? '')
+        || !exactKeys(receipt.audit.requestCounts, ['LIST', 'HEAD', 'GET', 'PUT', 'DELETE'])
+        || ['LIST', 'HEAD', 'GET', 'PUT', 'DELETE'].some((key) =>
+          !Number.isSafeInteger(receipt.audit.requestCounts[key])
+          || receipt.audit.requestCounts[key] < 0)
+        || receipt.audit.requestCounts.LIST < 1
+        || receipt.audit.requestCounts.HEAD < manifest.objectCount
+        || receipt.audit.requestCounts.GET < manifest.objectCount
+        || receipt.audit.requestCounts.PUT !== 0 || receipt.audit.requestCounts.DELETE !== 0
+        || !/^[a-f0-9]{40}$/u.test(receipt.audit.sourceCommit ?? '')
+        || !/^[a-f0-9]{40}$/u.test(receipt.audit.sourceTree ?? '')
+        || receipt.audit.gitCheckCount !== 3
+        || typeof receipt.audit.startedAt !== 'string'
+        || Number.isNaN(Date.parse(receipt.audit.startedAt))
+        || new Date(receipt.audit.startedAt).toISOString() !== receipt.audit.startedAt
+        || Date.parse(receipt.verifiedAt) < Date.parse(receipt.audit.startedAt)
+        || !SHA256_PATTERN.test(receipt.audit.exposureCaptureSha256 ?? '')))
     || !Array.isArray(receipt.objects)
     || receipt.objects.length !== manifest.entries.length) fail('MEDIA_E_REMOTE_RECEIPT');
   const exposure = receipt.bucketExposure;
@@ -370,6 +409,10 @@ export function validateRemoteReceipt(receipt, manifest) {
       || object.manifestEntrySha256 !== publicMediaEntryManifestSha256(expected)
       || object.platformChecksumSha256 !== expected.sha256) fail('MEDIA_E_REMOTE_RECEIPT');
     previous = object.key;
+  }
+  if (receipt.verificationLevel === 'full-get-sha256'
+    && receipt.audit.fullObjectSetSha256 !== publicMediaFullGetObjectSetSha256(receipt.objects)) {
+    fail('MEDIA_E_REMOTE_RECEIPT');
   }
   return receipt;
 }

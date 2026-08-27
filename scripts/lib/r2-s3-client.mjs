@@ -319,6 +319,8 @@ export class R2S3Client {
     this.maxAttempts = maxAttempts;
     this.timeoutMilliseconds = timeoutMilliseconds;
     this.requestCounts = new Map();
+    this.operationCounts = new Map();
+    this.conditionalIfNoneMatchPutRequests = 0;
     signR2S3Request({ ...this.config, method: 'HEAD', now: this.now() });
   }
 
@@ -331,8 +333,27 @@ export class R2S3Client {
     });
   }
 
+  requestOperationCounts() {
+    return Object.freeze({
+      LIST: this.operationCounts.get('LIST') ?? 0,
+      HEAD: this.operationCounts.get('HEAD') ?? 0,
+      GET: this.operationCounts.get('GET') ?? 0,
+      PUT: this.operationCounts.get('PUT') ?? 0,
+      DELETE: this.operationCounts.get('DELETE') ?? 0,
+    });
+  }
+
+  conditionalIfNoneMatchPutRequestCount() {
+    return this.conditionalIfNoneMatchPutRequests;
+  }
+
   async request({ method, key = '', query = [], headers = {}, body = undefined, payloadSha256 = sha256Hex('') }) {
     let lastError;
+    const operation = method === 'GET' && key === ''
+      && query.some(([name, value]) => name === 'list-type' && value === '2') ? 'LIST' : method;
+    const conditionalCreatePut = method === 'PUT'
+      && Object.entries(headers).some(([name, value]) => name.toLowerCase() === 'if-none-match'
+        && value === '*');
     for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
       const signed = signR2S3Request({
         ...this.config, method, key, query, headers, payloadSha256, now: this.now(),
@@ -341,6 +362,8 @@ export class R2S3Client {
       const timeout = setTimeout(() => controller.abort('MEDIA_E_R2_TIMEOUT'), this.timeoutMilliseconds);
       try {
         this.requestCounts.set(method, (this.requestCounts.get(method) ?? 0) + 1);
+        this.operationCounts.set(operation, (this.operationCounts.get(operation) ?? 0) + 1);
+        if (conditionalCreatePut) this.conditionalIfNoneMatchPutRequests += 1;
         const response = await this.fetchImpl(signed.url, {
           method,
           headers: signed.headers,

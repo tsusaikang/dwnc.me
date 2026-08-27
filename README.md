@@ -11,8 +11,8 @@
 - 전역 순번 canonical 공개 글 349개와 legacy alias 349개 로컬 빌드·검증 완료
 - 최종 공개 미디어 2,758개·2,346,220,246바이트·manifest SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532` 전수 검증 완료
 - 공개 요청 1,410경로·SHA-256 `1666d8dd85ac05c2274513cfbe438f24ead06a190f873af3b67f7e3aa373307c`, 정적 페이지 1,404개, 308 redirect 349개 검증 완료
-- Cloudflare 관련 20개 test suite·1,299개 assertion과 사진형 148·장문형 201 분류 통과
-- 현재 기준 HEAD는 단일 객체 validator source commit `df3c678456f6af3471d846a32e28faa5751b9a2e`·tree `bbe8306cbf6577cd556533079593872020ddc8b5`이며 push는 0이다. private-exposure read-only 수집 코드·정책·테스트·문서는 다음 로컬 commit 전 working-tree 변경이다.
+- Cloudflare 관련 21개 test suite·1,452개 assertion과 사진형 148·장문형 201 분류 통과
+- 현재 기준 HEAD는 private-exposure read-only 수집 commit `9d0b3c80b896f14bfce8182fd4f3fec927286a57`·tree `cf9f8756f3b78b26d26dc7de3f0de3fac3d54394`이며 저장된 `origin/main`보다 8 commits 앞서고 push는 0이다. bulk upload·strict inspection·full audit 안전장치와 테스트·문서는 다음 로컬 commit 전 working-tree 변경이다.
 - staging R2 private bucket의 대표 객체 1개는 HEAD+full GET/SHA-256 exact이고, 후속 inspection은 exact 1·missing 2,757·mismatch 0·orphan 0이다. validation receipt SHA-256은 `fa72b1849496a9b6e4697721cfef9d4fcd17b8f463b41dcacd714c5f9bb2352a`, post-one inspection receipt SHA-256은 `f00f3c13c9ae99f8a36599db85d7a180e31d8779776653bca72c2aee596d380e`다. dashboard에서는 `r2.dev` 꺼짐·custom domain 0·jurisdiction `default`·location `APAC`·storage class `Standard`를 관측했고, canonical API evidence는 아직 수집 전이다.
 
 B 선택에 따라 지도 99개, LINE 스티커 5개, 1×1 placeholder 27개를 최종 R2 집합에서 제외했다. 지도는 영향 글 5개의 장소 카드 16개로 바꿔 15개 원 장소 네이버지도 링크와 1개 검색 링크를 제공한다. placeholder video poster를 빼도 재생 불가 안내·재생시간 53개와 작성자 캡션 23개는 남고, placeholder cover 13개의 파생 cover는 `null`이다. 사용자가 직접 제작한 SBS GIF 1개는 본문·cover에서 정확히 유지한다.
@@ -40,9 +40,13 @@ npm run sequence:validate
 npm run build
 npm run build:validate
 npm run build:validate:public
+npm run media:manifest:check
+npm run media:validate:source
 npm run media:validate:local
+npm run media:r2:hardening:test
 npm run requirements:validate
 npm run requirements:test
+npm run cloudflare:test
 npm run cloudflare:build:source
 npm run cloudflare:wrangler:types:check
 npm run cloudflare:wrangler:startup:check
@@ -53,6 +57,8 @@ npm run cloudflare:wrangler:bundle:check
 
 `migration/raw/`, 전체 `public/media/`, 네이버 비공개 메타데이터는 Git에 포함되지 않는다. 새 컴퓨터로 옮기기 전에는 이 로컬 자산을 별도로 백업해야 한다.
 
-공개 미디어와 글·alias·집계 경로의 forward-deny Worker, create-only R2 sync, two-phase release, 원격 receipt, 철회·rollback 및 안전 절차는 `docs/MEDIA_SERVING_CONTRACT.md`를 기준으로 한다. core artifact에는 version ID가 없고, signed upload authorization 뒤 version-only upload와 별도 attestation을 거쳐야 한다. version 적용은 Git trigger 밖에서 해당 version만 권위 store의 fresh status CAS·1회 실행·사후 100% 확인을 거쳐 반영하며, 불명확한 결과는 자동 재시도하지 않는다. 현재 기준 HEAD는 `df3c678456f6af3471d846a32e28faa5751b9a2e`이고 local `main`은 저장된 `origin/main`보다 7 commits 앞서며 push는 0이다. private staging R2 대표 객체 1개의 full GET/SHA-256은 완료됐고, canonical control-plane evidence·missing 2,757개 upload·staging Worker는 아직 없다.
+공개 미디어와 글·alias·집계 경로의 forward-deny Worker, create-only R2 sync, two-phase release, 원격 receipt, 철회·rollback 및 안전 절차는 `docs/MEDIA_SERVING_CONTRACT.md`를 기준으로 한다. core artifact에는 version ID가 없고, signed upload authorization 뒤 version-only upload와 별도 attestation을 거쳐야 한다. version 적용은 Git trigger 밖에서 해당 version만 권위 store의 fresh status CAS·1회 실행·사후 100% 확인을 거쳐 반영하며, 불명확한 결과는 자동 재시도하지 않는다. 현재 기준 HEAD는 `9d0b3c80b896f14bfce8182fd4f3fec927286a57`·tree `cf9f8756f3b78b26d26dc7de3f0de3fac3d54394`이고 local `main`은 저장된 `origin/main`보다 8 commits 앞서며 push는 0이다. private staging R2 대표 객체 1개의 full GET/SHA-256은 완료됐고, canonical control-plane evidence·missing 2,757개 upload·staging Worker는 아직 없다. bulk 명령은 기존 exact 객체를 PUT하지 않고 missing만 `If-None-Match:*`로 만든다. bulk receipt는 업로드 운영 기록일 뿐 서명하거나 release 입력으로 쓰지 않으며, staging 전체 GET/SHA-256 감사 receipt만 staging용으로 별도 서명한다. 향후 production은 별도의 production 전수 감사 receipt와 서명 신뢰값이 필요하다.
+
+업로드 전 bucket 설정 확인용 capture는 full audit 증거와 별개다. bulk와 exact post-inspection을 끝낸 뒤 새 900초 capture를 수집하고 즉시 full audit를 시작해야 하며, 감사 시작과 receipt 후보 생성이 모두 `expiresAt` 전이어야 한다. 만료되면 새 capture와 아직 쓰지 않은 새 receipt 경로로 2,758개 감사를 처음부터 다시 실행한다. 전체 감사 전에 보호된 영수증 경로와 exact Git commit/tree/clean 상태도 먼저 확인한다.
 
 control-plane capture만 생성되고 canonical evidence 기록이 실패한 경우에는 `cloudflare:r2:exposure:recover`가 새 token이나 API 호출 없이 secure capture·Git·policy·freshness를 다시 검증하고 누락 evidence만 create-only로 생성한다.

@@ -1,6 +1,6 @@
 # dwnc.me 공개 미디어 전달 계약 v1
 
-상태: **현재 기준 HEAD `df3c678456f6af3471d846a32e28faa5751b9a2e`·tree `bbe8306cbf6577cd556533079593872020ddc8b5`·push 0 / 대표 객체 1개 HEAD+full GET/SHA-256 검증 완료·exact 1·missing 2,757·mismatch 0·orphan 0 / private-exposure control-plane read-only 수집 경로는 commit 전 로컬 검증 완료·실제 API capture 대기 / bulk upload·smoke token·Worker·version·activation 없음 / 실제 도메인·DNS 미연결**
+상태: **현재 기준 HEAD `9d0b3c80b896f14bfce8182fd4f3fec927286a57`·tree `cf9f8756f3b78b26d26dc7de3f0de3fac3d54394`·push 0 / 대표 객체 1개 HEAD+full GET/SHA-256 검증 완료·exact 1·missing 2,757·mismatch 0·orphan 0 / private-exposure read-only 수집 경로는 commit 완료·실제 API capture 대기 / bulk upload·strict inspection·full audit 안전장치는 다음 로컬 commit 전 / bulk upload·smoke token·Worker·version·activation 없음 / 실제 도메인·DNS 미연결**
 
 이 문서는 공개 글이 참조하는 대용량 미디어를 동일 출처 `https://dwnc.me/media/*`로 제공하기 위한 계약이다. 기존 URL, 로컬 원본, SHA-256 증거를 바꾸지 않고 private R2 bucket을 전달용 복제본으로 사용한다.
 
@@ -82,12 +82,18 @@ credential 값은 저장소·manifest·receipt·로그에 기록하지 않는다
 생성 실패 과정에서 비밀값 노출 가능성이 생긴 uploader v2는 즉시 revoked했다. 정상 생성된 두 자격증명은 일반 출력·로그 비밀값 노출 0, clipboard 사용 0이다. 2026-08-25에 만든 기존 staging token 두 개는 비밀값을 잃어 사용할 수 없지만 Cloudflare에서 아직 Active이므로 새 자격증명 검증 뒤 별도로 정리한다.
 
 ```sh
-# validator 읽기 전용 분류: exact / missing / mismatch / orphan
+# 업로드 직전 validator 읽기 전용 분류. 현재 원격 기대값을 네 수치 모두 고정한다.
 # receipt parent는 저장소 밖의 본인 소유 mode 700 디렉터리여야 한다.
 R2_CREDENTIAL_METADATA_PATH=/approved/local/path/staging-validator-metadata.json \
   npm run media:r2:staging:inspect:secure -- \
   --expected-manifest-sha256=<approved-final-manifest-sha256> \
-  --receipt-output=/approved/local/path/staging-r2-inspection-v1.json
+  --expected-git-commit=<approved-clean-full-git-commit> \
+  --expected-git-tree=<approved-clean-git-tree> \
+  --expected-exact=1 \
+  --expected-missing=2757 \
+  --expected-mismatch=0 \
+  --expected-orphan-count=0 \
+  --receipt-output=/approved/local/path/staging-r2-inspection-pre-bulk-v2.json
 
 # 이미 존재하고 HEAD exact인 대표 객체 하나를 PUT 없이 full GET/SHA-256 검증한다.
 R2_CREDENTIAL_METADATA_PATH=/approved/local/path/staging-validator-metadata.json \
@@ -97,15 +103,44 @@ R2_CREDENTIAL_METADATA_PATH=/approved/local/path/staging-validator-metadata.json
   --expected-git-sha=<clean-exact-full-git-sha> \
   --receipt-output=/approved/local/path/staging-r2-one-object-validation-v1.json
 
-# 직전 account·bucket·manifest 일치와 자격증명 보호 조건이 통과한 뒤에만 실행한다.
+# 직전 account·bucket·manifest·Git·원격 네 수치가 모두 맞을 때만 missing을 만든다.
 R2_CREDENTIAL_METADATA_PATH=/approved/local/path/staging-uploader-metadata.json \
-  npm run media:r2:apply -- \
+  npm run media:r2:staging:sync:secure -- --apply \
   --expected-manifest-sha256=<approved-final-manifest-sha256> \
   --expected-orphan-count=0 \
-  --receipt-output=/approved/local/path/public-media-r2-receipt-v1.json
+  --expected-git-commit=<approved-clean-full-git-commit> \
+  --expected-git-tree=<approved-clean-git-tree> \
+  --receipt-output=/approved/local/path/staging-r2-bulk-sync-v1.json
+
+# 업로드 뒤 validator가 exact 2,758·나머지 0을 다시 강제한다.
+R2_CREDENTIAL_METADATA_PATH=/approved/local/path/staging-validator-metadata.json \
+  npm run media:r2:staging:inspect:secure -- \
+  --expected-manifest-sha256=<approved-final-manifest-sha256> \
+  --expected-git-commit=<approved-clean-full-git-commit> \
+  --expected-git-tree=<approved-clean-git-tree> \
+  --expected-exact=2758 \
+  --expected-missing=0 \
+  --expected-mismatch=0 \
+  --expected-orphan-count=0 \
+  --receipt-output=/approved/local/path/staging-r2-inspection-post-bulk-v2.json
+
+# bulk와 post-inspection이 끝난 뒤 새로 수집한 fresh capture를 사용해,
+# 같은 validator로 전체 2,758개를 GET/SHA-256 감사한다.
+R2_CREDENTIAL_METADATA_PATH=/approved/local/path/staging-validator-metadata.json \
+  npm run media:r2:staging:audit:full:secure -- \
+  --expected-manifest-sha256=<approved-final-manifest-sha256> \
+  --expected-orphan-count=0 \
+  --expected-git-commit=<approved-clean-full-git-commit> \
+  --expected-git-tree=<approved-clean-git-tree> \
+  --bucket-exposure-capture=/approved/local/path/staging-r2-exposure-capture-after-bulk.json \
+  --receipt-output=/approved/local/path/staging-r2-full-audit-v1.json
 ```
 
-검사 명령은 staging·validator 역할에 고정되어 `--apply`, production 환경 주입, uploader metadata, overwrite·delete 인자를 받지 않는다. 원격 요청은 bucket 목록 조회 `GET`과 객체별 `HEAD`뿐이며 PUT·DELETE 코드 경로가 없다. 결과 파일은 exact·missing·mismatch·orphan 개수와 manifest·account fingerprint·bucket을 묶은 읽기 전용 검사 기록이고, release용 `full-get-sha256` receipt를 대신하지 않는다. 저장소 밖의 mode 700 디렉터리에 create-only·mode 600으로 기록한다.
+검사 명령은 staging·validator 역할에 고정되어 `--apply`, production 환경 주입, uploader metadata, overwrite·delete 인자를 받지 않는다. 원격 요청은 bucket 목록 조회 `GET`과 객체별 `HEAD`뿐이며 PUT·DELETE 코드 경로가 없다. 호출자가 exact·missing·mismatch·orphan 기대값 네 개를 빠짐없이 지정해야 하며 하나라도 실제 수치와 다르면 성공으로 기록하지 않는다. v2 검사 기록은 기대값과 실제값, manifest·account fingerprint·bucket·Git commit/tree와 실제 `LIST/HEAD/GET/PUT/DELETE` 요청 수를 담고 저장소 밖의 mode 700 디렉터리에 create-only·mode 600으로 기록한다. 이 기록은 release용 `full-get-sha256` receipt를 대신하지 않는다.
+
+bulk apply와 full audit는 어떤 `LIST`·`HEAD`·`PUT` 또는 대용량 `GET`보다 먼저 receipt 목적지를 완전히 검사한다. 부모 디렉터리는 현재 사용자 소유 mode 700이어야 하고, 대상이 이미 있거나 symlink·hardlink·안전하지 않은 상위 경로·쓰기 불가 상태이면 원격 요청 0·receipt 0으로 중단한다. 최종 기록도 같은 canonical create-only writer만 사용한다. 두 명령은 명시한 Git commit/tree와 clean 상태를 `HEAD→status→HEAD` 순서로 원격 요청 전, 원격 검사 뒤, receipt 기록 직전에 총 세 번 확인한다. tracked drift나 HEAD/tree 이동이 있으면 receipt를 만들지 않는다.
+
+업로드 전 bucket 설정 확인용 capture와 full audit에 결속하는 capture는 서로 다른 증거다. 설정 확인 capture를 만든 뒤 bulk upload를 먼저 수행하고 그 파일을 감사에 재사용하지 않는다. bulk upload와 exact 2,758·missing/mismatch/orphan 0 post-inspection을 마친 뒤 새 900초 capture를 수집하고 곧바로 full audit를 시작한다. 감사 `startedAt`과 receipt 후보의 `verifiedAt`은 모두 그 capture의 `expiresAt` 전이어야 한다. 도중에 만료되면 receipt를 만들지 않으며, 새 capture와 아직 쓰지 않은 새 receipt 경로를 준비해 2,758개 전체 GET/SHA-256 감사를 처음부터 다시 실행한다.
 
 단일 객체 검증 명령도 staging·validator 역할에 고정한다. clean HEAD와 명시한 full Git SHA, tracked manifest의 exact key, account fingerprint와 private bucket을 첫 요청 전에 결속한다. `HEAD→status→HEAD`를 순서대로 읽는 Git 검사를 원격 요청 전, HEAD+GET 후, create-only receipt 기록 직전에 반복해 tracked file이나 HEAD가 중간에 바뀌면 기록을 만들지 않는다. R2 client의 `maxAttempts=1`로 자동 재시도를 끄고 HEAD와 status 200의 전체 GET을 각각 정확히 한 번만 허용하며, receipt 요청 수도 HEAD 1·GET 1·PUT 0·DELETE 0이어야 한다. body는 메모리에 전부 쌓지 않고 streaming SHA-256으로 확인한다. `206`, `Content-Range`, 짧거나 긴 body, metadata/checksum/ETag/Last-Modified drift, HEAD↔GET 세대 차이와 한쪽에만 있는 version ID를 거부한다. 기록은 Git SHA·manifest/entry SHA·key·bytes/SHA·MIME/cache·platform checksum·ETag·Last-Modified·nullable version을 담는다.
 
@@ -127,10 +162,15 @@ Cloudflare의 현재 [공식 S3 호환표](https://developers.cloudflare.com/r2/
 - mismatch는 중단하며 overwrite하지 않음
 - orphan은 개수만 보고하고 삭제하지 않음
 - resume은 재실행 HEAD 결과를 기준으로 하며 로컬 journal을 권위 자료로 삼지 않음
-- apply 완료 뒤 unsigned receipt 후보를 만들 수 있지만, production receipt로 인정하려면 별도 보호 환경에서 Ed25519 서명해야 함
-- uploader가 만드는 후보의 검증 수준은 `head-exact`로 고정한다. production 정책의 `full-get-sha256` receipt는 단일 객체 admission이 exact인 최종 집합을 전수 GET·SHA-256 감사한 뒤에만 발급·서명한다.
+- apply 완료 뒤 만드는 `dwnc-public-media-r2-bulk-sync-v1` receipt는 업로드·재시도·post-HEAD 결과를 남기는 운영 증거일 뿐이다. release artifact나 `media-receipt` signer 입력으로 사용하지 않으며, signer도 이 contract를 거부한다.
+- 서명 가능한 미디어 receipt contract는 `dwnc-public-media-r2-receipt-v1`뿐이다. 단일 객체 admission이 exact인 최종 집합을 전수 GET·SHA-256 감사해 `full-get-sha256` 검증 수준을 얻은 뒤 별도 보호 환경에서만 서명한다.
+- apply는 첫 inspection의 exact 객체를 건너뛰고 missing 객체만 조건부 PUT한다. 중간 실패 뒤 재실행하면 이미 exact가 된 객체는 다시 PUT하지 않는다.
+- bulk receipt는 `initialMissing`, `exactSkipped`, `conditionalCreateOperations`, 실제 `If-None-Match:*` 요청 수, `actualCreated`, exact 객체로 확인해 복구한 412 수, 전후 exact·missing·mismatch·orphan, 실제 `LIST/HEAD/GET/PUT/DELETE` 수를 구분한다. `DELETE=0`과 overwrite 0이 아니면 유효하지 않다.
+- post-inspection은 exact 2,758·missing 0·mismatch 0·승인 orphan 0을 모두 강제한다. 하나라도 다르면 `apply-complete`를 출력하거나 receipt를 만들지 않는다.
 
 ## 4. 원격 receipt와 production gate
+
+staging bulk receipt와 staging full-audit receipt, 향후 production full-audit receipt를 구분한다. staging의 `dwnc-public-media-r2-bulk-sync-v1`은 운영 기록이며 서명하지 않는다. staging 전체 감사가 만드는 `dwnc-public-media-r2-receipt-v1`만 staging `media-receipt` key로 별도 서명할 수 있고, 그 서명은 staging artifact에만 유효하다. 향후 production은 production account·bucket을 대상으로 새 exposure capture와 전수 GET/SHA-256 감사를 수행해 별도의 production receipt를 만들고 production 전용 `media-receipt` 신뢰값으로 서명해야 한다. staging receipt나 서명을 production으로 승격하거나 재사용하지 않는다.
 
 production receipt는 manifest digest, 객체 수·총 bytes, 검증시각과 key별 size·SHA-256·MIME·ETag·canonical Last-Modified·nullable S3 version ID뿐 아니라 target environment·bucket·Cloudflare account fingerprint와 검증 수준을 canonical ordering으로 담는다. 집합 단위 manifest 결속은 이 receipt에서 수행하고, detached Ed25519 signature와 public key trust anchor를 함께 검증한다.
 
@@ -150,7 +190,7 @@ npm run cloudflare:verify:production
 
 exact Wrangler `4.125.0`은 로컬 dependency와 lock에 설치·고정됐지만, 현재 실제 production receipt·signature·credential·trust fingerprint가 없으므로 위 production gate는 의도적으로 fail closed한다. 합성 Ed25519 fixture만 저장소 안에서 target 결속과 signature를 검증하며 실제 서명을 만들어 내지 않는다.
 
-서명 receipt만으로 이후 원격 삭제를 증명할 수 없으므로 production gate는 봉인된 최종 manifest 전체의 HEAD를 매번 수행한다. 최초 upload 뒤에는 `media:r2:audit:full`로 최종 manifest 전체 원격 GET·SHA-256·총 바이트를 감사하고 그 결과만 `full-get-sha256` receipt 후보로 발급한다. 역사 기준선 2,889개를 최종으로 간주하지 않으며, 실제 서명과 control-plane private exposure 증거는 보호 환경에서 별도로 결속한다.
+서명 receipt만으로 이후 원격 삭제를 증명할 수 없으므로 production gate는 봉인된 최종 manifest 전체의 HEAD를 매번 수행한다. 최초 upload 뒤에는 validator 역할에 고정된 `media:r2:staging:audit:full:secure`로 최종 manifest 전체 원격 GET·SHA-256·총 바이트를 감사하고 그 결과만 `full-get-sha256` receipt 후보로 발급한다. 감사 전에 secure receipt 목적지와 exact Git commit/tree/clean 상태를 검사한다. bulk와 post-inspection 뒤 새로 수집한 900초 canonical private-exposure capture를 exact SHA-256으로 결속하고, 감사 시작과 receipt 후보 생성 시각을 모두 capture 만료 전으로 강제한다. 만료되면 새 capture·새 receipt 경로로 전수 감사를 처음부터 다시 한다. receipt는 실제 `LIST/HEAD/GET/PUT/DELETE` 수, 전체 object/byte 수, key·size·SHA를 정렬해 계산한 full object-set SHA-256, 감사 `startedAt`, Git commit/tree와 세 번의 Git 검사, exposure capture SHA-256을 담는다. 역사 기준선 2,889개를 최종으로 간주하지 않으며, 실제 서명은 보호 환경에서 별도로 수행한다.
 
 ## 5. 빌드 모드
 
@@ -224,12 +264,14 @@ Cloudflare Cache API는 저장 시 쓴 내부 cache key를 사용하므로 공�
 
 단일 객체 validator-only HEAD+streaming full-GET 명령은 source commit `df3c678456f6af3471d846a32e28faa5751b9a2e`·tree `bbe8306cbf6577cd556533079593872020ddc8b5`에 포함됐고 push는 0이다. 같은 source에서 대표 객체를 PUT 없이 검증해 request HEAD 1·GET 1·PUT 0·DELETE 0, ETag `"d3ded31a7b52f467702909afbc7d5340"`, Last-Modified `2026-08-27T00:24:12.000Z`, version `null`을 확인했다. 검증 시각은 `2026-08-27T05:07:48.418Z`, validation receipt SHA-256은 `fa72b1849496a9b6e4697721cfef9d4fcd17b8f463b41dcacd714c5f9bb2352a`다. 이어 `2026-08-27T05:09:09.996Z`에 inspection을 다시 수행해 exact 1·missing 2,757·mismatch 0·orphan 0을 확인했고 post-one inspection receipt SHA-256은 `f00f3c13c9ae99f8a36599db85d7a180e31d8779776653bca72c2aee596d380e`다.
 
-현재 최종 manifest는 2,758개·2,346,220,246바이트·SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`이고 로컬·source-only·build·Worker 회귀를 통과했다. 최초 빈-bucket 검사 기록 SHA-256은 `d058fce27c6a9114751fcbf5f2ba67f2dda9b8f385ad1d733c2864c847e4e263`이고, 단일 객체 검증 뒤 현재 권위 있는 inspection receipt는 위 `f00f3c...` 전체 digest다. 첫 uploader 실행의 PUT은 최대 1회였고 재시도·overwrite·DELETE는 0이다. 정리 전 2,889개는 역사 기준선일 뿐 현재 원격 작업 기준이 아니다. 현재 working-tree의 private-exposure control-plane 수집 코드·정책·mock은 commit 전이며 실제 Chrome·Cloudflare API·Keychain 접근과 원격 변경은 모두 0이다.
+현재 최종 manifest는 2,758개·2,346,220,246바이트·SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`이고 로컬·source-only·build·Worker 회귀를 통과했다. 최초 빈-bucket 검사 기록 SHA-256은 `d058fce27c6a9114751fcbf5f2ba67f2dda9b8f385ad1d733c2864c847e4e263`이고, 단일 객체 검증 뒤 현재 권위 있는 inspection receipt는 위 `f00f3c...` 전체 digest다. 첫 uploader 실행의 PUT은 최대 1회였고 재시도·overwrite·DELETE는 0이다. 정리 전 2,889개는 역사 기준선일 뿐 현재 원격 작업 기준이 아니다. private-exposure read-only 수집 경로는 commit `9d0b3c80b896f14bfce8182fd4f3fec927286a57`·tree `cf9f8756f3b78b26d26dc7de3f0de3fac3d54394`에 기록했고 push는 0이다. 현재 working tree의 bulk upload·strict inspection·full audit 안전장치는 Cloudflare 관련 21 suites·1,452 assertions를 통과했지만 아직 commit하지 않았고, 이 변경을 검증하는 동안 실제 Chrome·Cloudflare API·Keychain·R2 접근과 원격 변경은 모두 0이다.
 
 다음은 현재 수행하지 않았다.
 
-- private-exposure read-only 수집 변경을 로컬 commit한 뒤 짧은 수명의 최소 권한 token으로 canonical bucket·managed-domain·custom-domains GET 3회 증거를 남기고 즉시 token 폐기
-- final manifest의 missing 2,757개 create-only upload·2,758개 원격 full GET/SHA-256 검증
+- 현재 bulk upload·strict inspection·full audit 안전장치 변경을 로컬 commit하고 exact commit/tree를 기록
+- 필요하면 업로드 전에 짧은 수명의 최소 권한 token으로 bucket 설정 확인용 GET 3회 증거를 남기고 즉시 token 폐기. 이 capture는 full audit에 재사용하지 않음
+- final manifest의 missing 2,757개 create-only upload와 strict post-inspection
+- bulk 완료 뒤 새 900초 capture를 수집해 즉시 2,758개 원격 full GET/SHA-256 검증. 만료되면 새 capture·새 receipt 경로로 전수 감사 재실행
 - 새 자격증명 작동 확인 뒤 2026-08-25의 사용 불가능한 Active token 두 개 정리
 - production receipt의 보호 환경 full-GET/SHA 감사·서명과 account/public-key fingerprint 확정
 - staging·production bucket의 `r2.dev` 비활성·custom domain 0 canonical control-plane 감사 증거 확정. staging dashboard 관측은 완료됐지만 API 원본·canonical receipt는 아직 없음

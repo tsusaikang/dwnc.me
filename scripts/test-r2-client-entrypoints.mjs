@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import {
   chmod,
   copyFile,
@@ -15,6 +15,7 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
 import { canonicalJson } from './lib/cloudflare-release.mjs';
 import { writeAnonymousInheritedInput } from './lib/cloudflare-process.mjs';
 import {
@@ -27,6 +28,7 @@ import {
 import { createUnsignedRemoteReceipt } from './lib/public-media-remote.mjs';
 
 const ROOT = process.cwd();
+const execFileAsync = promisify(execFile);
 const MANIFEST_SHA256 = '61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532';
 const credentials = Object.freeze({
   schemaVersion: 1,
@@ -132,6 +134,19 @@ try {
       },
     },
   }, null, 2)}\n`);
+  await execFileAsync('git', ['init', '-q'], { cwd: fixtureRoot });
+  await execFileAsync('git', ['config', 'user.name', 'dwnc fixture'], { cwd: fixtureRoot });
+  await execFileAsync('git', ['config', 'user.email', 'fixture@invalid.example'], {
+    cwd: fixtureRoot,
+  });
+  await execFileAsync('git', ['add', '.'], { cwd: fixtureRoot });
+  await execFileAsync('git', ['commit', '-qm', 'fixture'], { cwd: fixtureRoot });
+  const fixtureGitCommit = (await execFileAsync('git', ['rev-parse', 'HEAD'], {
+    cwd: fixtureRoot,
+  })).stdout.trim();
+  const fixtureGitTree = (await execFileAsync('git', ['rev-parse', 'HEAD^{tree}'], {
+    cwd: fixtureRoot,
+  })).stdout.trim();
 
   const methodsPath = path.join(evidenceDirectory, 'methods.json');
   const preloadPath = path.join(evidenceDirectory, 'empty-r2-preload.mjs');
@@ -156,10 +171,18 @@ try {
     script: 'scripts/inspect-public-media-r2.mjs',
     cwd: fixtureRoot,
     preload: preloadPath,
-    environment: { R2_TEST_METHODS_PATH: methodsPath },
+    environment: {
+      R2_TEST_METHODS_PATH: methodsPath,
+      R2_RUNNER_ENVIRONMENT: 'staging',
+      R2_RUNNER_ROLE: 'validator',
+    },
     args: [
       '--environment=staging', '--concurrency=16',
       `--expected-manifest-sha256=${manifest.manifestSha256}`,
+      `--expected-git-commit=${fixtureGitCommit}`,
+      `--expected-git-tree=${fixtureGitTree}`,
+      '--expected-exact=0', '--expected-missing=2758', '--expected-mismatch=0',
+      '--expected-orphan-count=0',
       `--receipt-output=${inspectionOutput}`,
     ],
   });
@@ -178,15 +201,20 @@ try {
     overwrite: 0, delete: 0,
   });
   const receipt = JSON.parse(await readFile(inspectionOutput, 'utf8'));
-  equal(receipt.contract, 'dwnc-public-media-r2-inspection-v1');
-  equal(receipt.verificationLevel, 'list-and-head');
+  equal(receipt.contract, 'dwnc-public-media-r2-inspection-v2');
+  equal(receipt.verificationLevel, 'list-and-head-strict');
   equal({
     desired: receipt.desired,
-    exact: receipt.exact,
-    missing: receipt.missing,
-    mismatch: receipt.mismatch,
-    orphan: receipt.orphan,
+    exact: receipt.observed.exact,
+    missing: receipt.observed.missing,
+    mismatch: receipt.observed.mismatch,
+    orphan: receipt.observed.orphan,
   }, { desired: 2_758, exact: 0, missing: 2_758, mismatch: 0, orphan: 0 });
+  equal(receipt.expected, { exact: 0, missing: 2_758, mismatch: 0, orphan: 0 });
+  equal(receipt.source, {
+    gitCommit: fixtureGitCommit, gitTree: fixtureGitTree, clean: true, gitCheckCount: 3,
+  });
+  equal(receipt.requestCounts, { LIST: 1, HEAD: 2_758, GET: 0, PUT: 0, DELETE: 0 });
   const receiptStats = await lstat(inspectionOutput);
   equal(receiptStats.mode & 0o777, 0o600);
   equal(receiptStats.nlink, 1);
@@ -204,7 +232,7 @@ try {
       name: 'sync',
       script: 'scripts/sync-public-media-r2.mjs',
       args: ['--environment=staging'],
-      expected: 'MEDIA_E_RELEASE_TARGET',
+      expected: 'MEDIA_E_R2_SYNC_ROLE',
     },
     {
       name: 'admission',
@@ -225,7 +253,7 @@ try {
         `--receipt-output=${path.join(negativeDirectory, 'full-audit.json')}`,
         `--bucket-exposure-capture=${path.join(negativeDirectory, 'not-read-exposure.json')}`,
       ],
-      expected: 'MEDIA_E_RELEASE_TARGET',
+      expected: 'MEDIA_E_FULL_AUDIT_EVIDENCE_REQUIRED',
     },
   ];
   for (const fixture of singleReadCases) {

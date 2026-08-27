@@ -12,6 +12,10 @@ const COMMANDS = Object.freeze({
     role: 'uploader',
     injectEnvironment: true,
     allowApply: true,
+    allowedForwardedNames: Object.freeze([
+      '--apply', '--concurrency', '--expected-manifest-sha256', '--expected-orphan-count',
+      '--expected-git-commit', '--expected-git-tree', '--receipt-output',
+    ]),
   }),
   'staging-inspect': Object.freeze({
     script: 'scripts/inspect-public-media-r2.mjs',
@@ -20,7 +24,9 @@ const COMMANDS = Object.freeze({
     injectEnvironment: true,
     allowApply: false,
     allowedForwardedNames: Object.freeze([
-      '--concurrency', '--expected-manifest-sha256', '--receipt-output',
+      '--concurrency', '--expected-manifest-sha256', '--expected-git-commit',
+      '--expected-git-tree', '--expected-exact', '--expected-missing',
+      '--expected-mismatch', '--expected-orphan-count', '--receipt-output',
     ]),
   }),
   'staging-validate-one': Object.freeze({
@@ -39,6 +45,11 @@ const COMMANDS = Object.freeze({
     role: 'validator',
     injectEnvironment: true,
     allowApply: false,
+    allowedForwardedNames: Object.freeze([
+      '--concurrency', '--expected-manifest-sha256', '--expected-orphan-count',
+      '--expected-git-commit', '--expected-git-tree', '--bucket-exposure-capture',
+      '--receipt-output',
+    ]),
   }),
   'staging-media-probe': Object.freeze({
     script: 'scripts/probe-cloudflare-staging-media.mjs',
@@ -54,6 +65,10 @@ const COMMANDS = Object.freeze({
     role: 'uploader',
     injectEnvironment: true,
     allowApply: true,
+    allowedForwardedNames: Object.freeze([
+      '--apply', '--concurrency', '--expected-manifest-sha256', '--expected-orphan-count',
+      '--expected-git-commit', '--expected-git-tree', '--receipt-output',
+    ]),
   }),
   'production-audit-full': Object.freeze({
     script: 'scripts/audit-public-media-r2-full.mjs',
@@ -61,6 +76,11 @@ const COMMANDS = Object.freeze({
     role: 'validator',
     injectEnvironment: true,
     allowApply: false,
+    allowedForwardedNames: Object.freeze([
+      '--concurrency', '--expected-manifest-sha256', '--expected-orphan-count',
+      '--expected-git-commit', '--expected-git-tree', '--bucket-exposure-capture',
+      '--receipt-output',
+    ]),
   }),
 });
 
@@ -94,7 +114,9 @@ export function buildR2RunnerInvocation(command, forwarded = []) {
     for (const value of forwarded) {
       const separator = value.indexOf('=');
       const name = separator > 0 ? value.slice(0, separator) : value;
-      if (separator < 1 || !selected.allowedForwardedNames.includes(name) || seen.has(name)) {
+      const validBareApply = value === '--apply' && selected.allowApply;
+      if ((!validBareApply && separator < 1) || !selected.allowedForwardedNames.includes(name)
+        || seen.has(name)) {
         throw new Error('MEDIA_E_R2_RUNNER_ARGUMENT');
       }
       seen.add(name);
