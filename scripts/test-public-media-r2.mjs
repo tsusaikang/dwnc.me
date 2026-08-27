@@ -21,8 +21,10 @@ import {
   inspectRemotePublicMedia,
 } from './lib/public-media-remote.mjs';
 import {
+  parseR2Head,
   parseR2ListObjectsV2,
   R2S3Client,
+  remoteObjectGenerationMatches,
   r2ClientFromEnvironment,
   signR2S3Request,
 } from './lib/r2-s3-client.mjs';
@@ -98,10 +100,52 @@ function headFor(entry, overrides = {}) {
     contract: 'dwnc-public-media-r2-v1',
     manifestEntrySha256: publicMediaEntryManifestSha256(entry),
     platformChecksumSha256: entry.sha256,
-    version: `version-${entry.sha256.slice(0, 12)}`,
+    version: null,
     httpEtag: `"${entry.sha256.slice(0, 12)}"`,
+    lastModified: '2026-08-27T00:00:00.000Z',
     ...overrides,
   };
+}
+
+{
+  const entry = manifest.entries[0];
+  const headers = {
+    'content-length': String(entry.size),
+    'content-type': `${entry.contentType}; charset=binary`,
+    'cache-control': entry.cacheControl,
+    etag: '"live-r2-etag"',
+    'last-modified': 'Thu, 27 Aug 2026 00:00:00 GMT',
+    'x-amz-meta-sha256': entry.sha256,
+    'x-amz-meta-contract': 'dwnc-public-media-r2-v1',
+    'x-amz-meta-manifest-entry-sha256': publicMediaEntryManifestSha256(entry),
+    'x-amz-checksum-sha256': Buffer.from(entry.sha256, 'hex').toString('base64'),
+  };
+  const parsed = parseR2Head(new Response(null, { status: 200, headers }), entry.key);
+  equal(parsed.version, null);
+  equal(parsed.lastModified, '2026-08-27T00:00:00.000Z');
+  equal(parsed.contentType, entry.contentType);
+  const parsedWithVersion = parseR2Head(new Response(null, {
+    status: 200, headers: { ...headers, 'x-amz-version-id': 'present-version' },
+  }), entry.key);
+  equal(parsedWithVersion.version, 'present-version');
+  equal(remoteObjectGenerationMatches(parsed, { ...parsed }), true);
+  equal(remoteObjectGenerationMatches(parsed, { ...parsed, version: 'present-version' }), false);
+  equal(remoteObjectGenerationMatches(
+    { ...parsed, version: 'version-one' },
+    { ...parsed, version: 'version-two' },
+  ), false);
+  await rejectsCode(() => Promise.resolve(parseR2Head(new Response(null, {
+    status: 200, headers: { ...headers, 'content-length': '' },
+  }), entry.key)), 'MEDIA_E_R2_HEAD');
+  await rejectsCode(() => Promise.resolve(parseR2Head(new Response(null, {
+    status: 200, headers: { ...headers, etag: 'unquoted' },
+  }), entry.key)), 'MEDIA_E_R2_HEAD');
+  await rejectsCode(() => Promise.resolve(parseR2Head(new Response(null, {
+    status: 200, headers: { ...headers, 'last-modified': 'not-a-date' },
+  }), entry.key)), 'MEDIA_E_R2_HEAD');
+  await rejectsCode(() => Promise.resolve(parseR2Head(new Response(null, {
+    status: 200, headers: { ...headers, 'x-amz-version-id': '' },
+  }), entry.key)), 'MEDIA_E_R2_HEAD');
 }
 
 {
@@ -122,7 +166,7 @@ function headFor(entry, overrides = {}) {
       'x-amz-meta-contract': 'dwnc-public-media-r2-v1',
       'x-amz-meta-manifest-entry-sha256': publicMediaEntryManifestSha256(entry),
       'x-amz-checksum-sha256': Buffer.from(entry.sha256, 'hex').toString('base64'),
-      'x-amz-version-id': 'admission-version',
+      'last-modified': 'Thu, 27 Aug 2026 00:00:00 GMT',
       ...overrides,
     },
   });
@@ -202,6 +246,50 @@ function headFor(entry, overrides = {}) {
       return { ...headFor(entry), bodyBytes: entry.size, bodySha256: 'f'.repeat(64) };
     },
   }, entry, async () => body), 'MEDIA_E_STAGING_ADMISSION_FULL_GET_MISMATCH');
+
+  const generationCases = [
+    { httpEtag: '"changed-etag"' },
+    { sha256: 'f'.repeat(64) },
+    { size: entry.size + 1 },
+    { contentType: 'application/octet-stream' },
+    { cacheControl: null },
+    { manifestEntrySha256: 'f'.repeat(64) },
+    { platformChecksumSha256: null },
+    { version: 'unexpected-present-version' },
+    { lastModified: '2026-08-27T00:00:01.000Z' },
+  ];
+  for (const override of generationCases) {
+    await rejectsCode(() => admitOneStagingPublicMediaObject({
+      async head() { return headFor(entry); },
+      async putCreateOnly() { throw new Error('put must not run'); },
+      async getFull() {
+        return {
+          ...headFor(entry), ...override, bodyBytes: entry.size, bodySha256: entry.sha256,
+        };
+      },
+    }, entry, async () => body), 'MEDIA_E_STAGING_ADMISSION_FULL_GET_MISMATCH');
+  }
+
+  const presentGeneration = headFor(entry, { version: 'present-version' });
+  const presentExact = await admitOneStagingPublicMediaObject({
+    async head() { return presentGeneration; },
+    async putCreateOnly() { throw new Error('put must not run'); },
+    async getFull() {
+      return { ...presentGeneration, bodyBytes: entry.size, bodySha256: entry.sha256 };
+    },
+  }, entry, async () => body);
+  equal(presentExact.outcome, 'already-exact');
+  await rejectsCode(() => admitOneStagingPublicMediaObject({
+    async head() { return headFor(entry, { version: 'version-one' }); },
+    async putCreateOnly() { throw new Error('put must not run'); },
+    async getFull() {
+      return {
+        ...headFor(entry, { version: 'version-two' }),
+        bodyBytes: entry.size,
+        bodySha256: entry.sha256,
+      };
+    },
+  }, entry, async () => body), 'MEDIA_E_STAGING_ADMISSION_FULL_GET_MISMATCH');
 }
 
 {
@@ -241,6 +329,23 @@ function headFor(entry, overrides = {}) {
     verifiedAt: '2026-08-25T00:00:00.000Z', target: syntheticTarget,
   });
   validateRemoteReceipt(receipt, manifest);
+  equal(receipt.objects.every((object) => object.version === null), true);
+  equal(receipt.objects.every((object) => object.lastModified === '2026-08-27T00:00:00.000Z'), true);
+  for (const objectMutation of [
+    { version: '' },
+    { httpEtag: 'unquoted' },
+    { sha256: 'f'.repeat(64) },
+    { size: manifest.entries[0].size + 1 },
+    { contentType: 'application/octet-stream' },
+    { lastModified: 'not-a-date' },
+  ]) {
+    const invalid = structuredClone(receipt);
+    Object.assign(invalid.objects[0], objectMutation);
+    await rejectsCode(
+      () => Promise.resolve(validateRemoteReceipt(invalid, manifest)),
+      'MEDIA_E_REMOTE_RECEIPT',
+    );
+  }
   const { privateKey, publicKey } = generateKeyPairSync('ed25519');
   const signature = sign(null, Buffer.from(canonicalRemoteReceiptPayload(receipt)), privateKey);
   const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
@@ -404,7 +509,7 @@ function headFor(entry, overrides = {}) {
         'x-amz-meta-contract': 'dwnc-public-media-r2-v1',
         'x-amz-meta-manifest-entry-sha256': publicMediaEntryManifestSha256(manifest.entries[0]),
         'x-amz-checksum-sha256': Buffer.from('1'.repeat(64), 'hex').toString('base64'),
-        'x-amz-version-id': 'version-one',
+        'last-modified': 'Thu, 27 Aug 2026 00:00:00 GMT',
       } });
     }
     if (init.method === 'PUT') {
@@ -425,6 +530,7 @@ function headFor(entry, overrides = {}) {
   const head = await client.head('media/a.jpg');
   equal(head.size, 3);
   equal(head.platformChecksumSha256, '1'.repeat(64));
+  equal(head.version, null);
   const uploadEntry = { ...manifest.entries[0], size: 3, sha256: '1'.repeat(64) };
   const result = await client.putCreateOnly(uploadEntry, Buffer.from('synthetic fixture').subarray(0, 3))
     .catch((error) => error);
@@ -445,7 +551,10 @@ function headFor(entry, overrides = {}) {
       } : null;
     },
   };
-  const audit = await auditRemotePublicMediaFull(fullClient, manifest, { concurrency: 2 });
+  const expectedHeads = manifest.entries.map((entry) => headFor(entry));
+  const audit = await auditRemotePublicMediaFull(fullClient, manifest, {
+    concurrency: 2, expectedHeads,
+  });
   equal(audit.objectCount, 2);
   equal(audit.totalBytes, 7);
   const fullReceipt = createUnsignedRemoteReceipt(manifest, audit.objects, {
@@ -461,6 +570,16 @@ function headFor(entry, overrides = {}) {
       return { ...headFor(entry), bodyBytes: entry.size, bodySha256: 'f'.repeat(64) };
     },
   }, manifest, { concurrency: 1 }), 'MEDIA_E_REMOTE_FULL_AUDIT');
+  await rejectsCode(() => auditRemotePublicMediaFull({
+    async getFull(key) {
+      const entry = manifest.entries.find((candidate) => candidate.key === key);
+      return {
+        ...headFor(entry, { version: 'unexpected-present-version' }),
+        bodyBytes: entry.size,
+        bodySha256: entry.sha256,
+      };
+    },
+  }, manifest, { concurrency: 1, expectedHeads }), 'MEDIA_E_REMOTE_FULL_AUDIT');
 }
 
 {

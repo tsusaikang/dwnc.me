@@ -14,6 +14,7 @@ const bytes = Buffer.from('fixture-media');
 const entry = {
   publicPath: '/media/native/fixture.bin', key: 'media/native/fixture.bin', size: bytes.length,
   sha256: createHash('sha256').update(bytes).digest('hex'), contentType: 'application/octet-stream',
+  cacheControl: 'public, max-age=31536000, immutable',
 };
 const redirects = Array.from({ length: 349 }, (_, index) => ({
   from: `/legacy-${index}`, to: `/posts/${index + 1}`,
@@ -84,13 +85,13 @@ const client = new R2S3Client({
     return new Response(null, { status: 200, headers: {
       'content-length': String(entry.size),
       'content-type': entry.contentType,
-      'cache-control': 'public, max-age=31536000, immutable',
+      'cache-control': entry.cacheControl,
       etag: '"fixture-etag"',
       'x-amz-meta-sha256': entry.sha256,
       'x-amz-meta-contract': 'dwnc-public-media-r2-v1',
       'x-amz-meta-manifest-entry-sha256': publicMediaEntryManifestSha256(entry),
       'x-amz-checksum-sha256': Buffer.from(entry.sha256, 'hex').toString('base64'),
-      'x-amz-version-id': 'fixture-version',
+      'last-modified': 'Thu, 27 Aug 2026 00:00:00 GMT',
     } });
   },
   delay: async () => undefined,

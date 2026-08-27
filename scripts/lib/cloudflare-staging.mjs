@@ -1,9 +1,14 @@
 import { createHash } from 'node:crypto';
+import { remoteObjectMatches } from './r2-s3-client.mjs';
 
 const fail = (code) => { throw new Error(code); };
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const SHA256 = /^[a-f0-9]{64}$/u;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
+
+function r2S3VersionEvidence(value) {
+  return value === null ? 'r2-s3-version-id-v1\0absent' : `r2-s3-version-id-v1\0present\0${value}`;
+}
 
 function canonicalJson(value) {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
@@ -267,9 +272,7 @@ export async function probeStagingMediaObject({ client, fetcher, origin, entry, 
     fail('CLOUDFLARE_E_STAGING_PROBE_INPUT');
   }
   const remote = await client.head(entry.key);
-  if (!remote || remote.key !== entry.key || remote.size !== entry.size
-    || remote.sha256 !== entry.sha256 || remote.platformChecksumSha256 !== entry.sha256
-    || typeof remote.version !== 'string' || typeof remote.httpEtag !== 'string') {
+  if (!remoteObjectMatches(entry, remote)) {
     fail('CLOUDFLARE_E_STAGING_PROBE_S3');
   }
   const url = new URL(entry.publicPath, origin).href;
@@ -291,7 +294,7 @@ export async function probeStagingMediaObject({ client, fetcher, origin, entry, 
   }
   return {
     keySha256: sha256(entry.key),
-    versionSha256: sha256(remote.version),
+    versionSha256: sha256(r2S3VersionEvidence(remote.version)),
     httpEtagSha256: sha256(remote.httpEtag),
     s3HeadVerified: true,
     workerBindingVerified: true,

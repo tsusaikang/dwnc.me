@@ -4,7 +4,10 @@ import {
   publicMediaEntryManifestSha256,
   validateRemoteReceipt,
 } from './public-media-manifest.mjs';
-import { remoteObjectMatches } from './r2-s3-client.mjs';
+import {
+  remoteObjectGenerationMatches,
+  remoteObjectMatches,
+} from './r2-s3-client.mjs';
 import { readSecureBytes } from './global-sequence.mjs';
 
 export async function mapWithConcurrency(values, concurrency, mapper) {
@@ -90,6 +93,7 @@ export async function admitOneStagingPublicMediaObject(client, entry, loadBytes)
     throw new Error('MEDIA_E_STAGING_ADMISSION_PRE_HEAD_MISMATCH');
   }
 
+  let generationAnchor = preHead;
   let putAttempted = false;
   let created = false;
   let preconditionRaced = false;
@@ -103,16 +107,19 @@ export async function admitOneStagingPublicMediaObject(client, entry, loadBytes)
       if (!remoteObjectMatches(entry, raced)) {
         throw new Error('MEDIA_E_STAGING_ADMISSION_RACE_MISMATCH');
       }
+      generationAnchor = raced;
     } else if (put?.created === true && put?.preconditionFailed === false) created = true;
     else throw new Error('MEDIA_E_STAGING_ADMISSION_PUT_RESULT');
   }
 
   const postHead = await client.head(entry.key);
-  if (!remoteObjectMatches(entry, postHead)) {
+  if (!remoteObjectMatches(entry, postHead)
+    || (generationAnchor && !remoteObjectGenerationMatches(generationAnchor, postHead))) {
     throw new Error('MEDIA_E_STAGING_ADMISSION_POST_HEAD_MISMATCH');
   }
   const full = await client.getFull(entry.key);
   if (!remoteObjectMatches(entry, full)
+    || !remoteObjectGenerationMatches(postHead, full)
     || full.bodyBytes !== entry.size || full.bodySha256 !== entry.sha256) {
     throw new Error('MEDIA_E_STAGING_ADMISSION_FULL_GET_MISMATCH');
   }
@@ -127,7 +134,14 @@ export async function admitOneStagingPublicMediaObject(client, entry, loadBytes)
   };
 }
 
-export async function auditRemotePublicMediaFull(client, manifest, { concurrency = 2 } = {}) {
+export async function auditRemotePublicMediaFull(client, manifest, {
+  concurrency = 2,
+  expectedHeads = null,
+} = {}) {
+  if (expectedHeads !== null
+    && (!Array.isArray(expectedHeads) || expectedHeads.length !== manifest.entries.length)) {
+    throw new Error('MEDIA_E_REMOTE_FULL_AUDIT');
+  }
   const objects = await mapWithConcurrency(
     manifest.entries,
     concurrency,
@@ -138,6 +152,8 @@ export async function auditRemotePublicMediaFull(client, manifest, { concurrency
     const entry = manifest.entries[index];
     const object = objects[index];
     if (!remoteObjectMatches(entry, object)
+      || (expectedHeads !== null
+        && !remoteObjectGenerationMatches(expectedHeads[index], object))
       || object.bodyBytes !== entry.size
       || object.bodySha256 !== entry.sha256) throw new Error('MEDIA_E_REMOTE_FULL_AUDIT');
     totalBytes += object.bodyBytes;
@@ -176,6 +192,7 @@ export function createUnsignedRemoteReceipt(manifest, heads, {
       platformChecksumSha256: remote.platformChecksumSha256,
       version: remote.version,
       httpEtag: remote.httpEtag,
+      lastModified: remote.lastModified,
     };
   });
   const receipt = {

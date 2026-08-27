@@ -264,8 +264,9 @@ try {
     contract: 'dwnc-public-media-r2-v1',
     manifestEntrySha256: publicMediaEntryManifestSha256(entry),
     platformChecksumSha256: entry.sha256,
-    version: `fixture-${entry.sha256.slice(0, 16)}`,
+    version: null,
     httpEtag: `"fixture-${entry.sha256.slice(0, 16)}"`,
+    lastModified: '2026-08-27T00:00:00.000Z',
   }));
   const remoteReceipt = createUnsignedRemoteReceipt(manifest, heads, {
     target: {

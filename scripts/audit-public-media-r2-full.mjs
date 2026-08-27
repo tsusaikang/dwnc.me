@@ -103,7 +103,10 @@ if (options.expectedOrphanCount !== targetPolicy.approvedOrphanCount) {
 const inspection = await inspectRemotePublicMedia(client, manifest, { concurrency: options.concurrency });
 if (inspection.missing.length || inspection.mismatch.length) throw new Error('MEDIA_E_REMOTE_VALIDATION');
 if (inspection.orphanCount !== options.expectedOrphanCount) throw new Error('MEDIA_E_ORPHAN_APPROVAL');
-const fullAudit = await auditRemotePublicMediaFull(client, manifest, { concurrency: options.concurrency });
+const fullAudit = await auditRemotePublicMediaFull(client, manifest, {
+  concurrency: options.concurrency,
+  expectedHeads: inspection.heads,
+});
 const receipt = createUnsignedRemoteReceipt(manifest, fullAudit.objects, {
   target: {
     environment: options.environment,

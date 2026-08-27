@@ -12,16 +12,16 @@
 
 ### 현재 목표
 
-현재 HEAD는 signing identity commit `9da8e87525f3e8ff6bd593d7047bd10fb6d1d57d`·tree `60a245dea016761f274cb08d093b69f928a9f6f5`이고 push는 0이다. staging media·release Ed25519 key와 exact private bucket에 한정된 uploader·read-only validator 자격증명 준비를 마쳤다. 현재 validator 전용 read-only inspection과 FD 자격증명 단일 읽기 보강은 다음 로컬 commit 전이며, 이후 단일 객체→전체 업로드·전수 대조→staging Worker 검증을 순서대로 진행한다. 실제 `dwnc.me` 도메인과 DNS는 Cloudflare에 연결되지 않았다.
+현재 HEAD는 validator inspection 안전장치 commit `7d09f11ad5f0339be1563cc515192ed8da6726db`·tree `3e6c020e3201f83f4614a16d0f285643707334ee`이고 push는 0이다. 실제 read-only inspection은 exact 0·missing 2,758·mismatch 0·orphan 0으로 통과했다. 이어 대표 객체 create-only PUT을 최대 1회 수행했지만 post-HEAD parser가 R2의 정상적인 `x-amz-version-id` 부재를 거부했다. 객체가 생성됐을 수 있어 재시도하지 않았으며, 호환 수정 뒤 PUT 없는 validator inspection부터 재개한다. 실제 `dwnc.me` 도메인과 DNS는 Cloudflare에 연결되지 않았다.
 
 ### 전체 상태
 
 | 영역 | 상태 | 현재 증거 |
 |---|---|---|
 | 콘텐츠 보존·새 사이트 | 완료 | 티스토리 공개 164개, 네이버 공개 185개, 비공개 로컬 247개와 canonical/alias 349개가 로컬 전수 검증을 통과했다. |
-| Stage 3 로컬 안전장치 | signing identity commit 완료·inspection 보강 커밋 전 | Cloudflare 관련 19개 test suite·922개 assertion, 정적 페이지 1,404개, 308 redirect 349개, 사진형 148·장문형 201 분류가 통과했다. 현재 HEAD는 `9da8e87525f3e8ff6bd593d7047bd10fb6d1d57d`, tree는 `60a245dea016761f274cb08d093b69f928a9f6f5`이고 push는 0이다. |
+| Stage 3 로컬 안전장치 | S3 HEAD 호환 보강 검증 완료·commit 전 | 현재 HEAD는 `7d09f11ad5f0339be1563cc515192ed8da6726db`, tree는 `3e6c020e3201f83f4614a16d0f285643707334ee`이고 push는 0이다. nullable S3 version ID와 ETag·Last-Modified 기반 HEAD↔GET 세대 결속을 포함한 Cloudflare 19 suites·954 assertions가 통과했다. |
 | Cloudflare Builds | 설정 재확인 완료 | account fingerprint가 정책과 일치했고 `SKIP_DEPENDENCY_INSTALL=1`, Build `npm ci && npm run cloudflare:prepare:production`, Deploy `npm run cloudflare:upload:production-version`, Version `npx wrangler versions upload`를 확인했다. 보호 절차 없이 직접 실행하는 `wrangler deploy`는 없었다. |
-| staging R2 저장소 | 자격증명까지 준비 완료·객체 0 | private bucket `dwnc-me-public-media-staging`은 객체 0, public access 꺼짐, jurisdiction `default`, location `APAC`, storage class `Standard`다. exact bucket Object Read & Write uploader와 별도 Object Read validator가 Active이고 TTL은 2026-09-03이다. 2026-08-25의 사용 불가능한 두 token은 아직 Active라 후속 정리가 필요하다. |
+| staging R2 저장소 | 첫 PUT 뒤 상태 재확인 대기 | 작업 직전 private bucket `dwnc-me-public-media-staging`은 객체 0이었고 실제 inspection도 exact 0·missing 2,758·mismatch 0·orphan 0이었다. 첫 create-only PUT 뒤 post-HEAD parser에서 중단돼 현재는 객체 0 또는 대표 객체 1개일 수 있다. overwrite·DELETE·재시도는 0이다. |
 | 최종 공개 미디어 | 완료 | 2,758개·2,346,220,246바이트, manifest SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`를 로컬·source-only 전수 검증했다. |
 | 공개 요청 경로 | 완료 | 1,410경로, SHA-256 `1666d8dd85ac05c2274513cfbe438f24ead06a190f873af3b67f7e3aa373307c`로 확정했다. |
 | staging Worker | signing key 완료·Worker 미실행 | media public fingerprint는 `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`, release public fingerprint는 `2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2`다. private key는 macOS Keychain에만 보관했고 export하지 않았다. Worker·smoke token·version·activation은 아직 없다. |
@@ -42,16 +42,16 @@
 
 ### 아직 결정할 일과 진행을 막는 조건
 
-1. 새 uploader·validator 자격증명은 준비됐지만 단일 객체 PUT→HEAD→GET과 실제 validator inspection은 아직 실행하지 않았다. 현재 inspector·FD 단일 읽기 보강을 먼저 로컬 commit해야 한다.
+1. 실제 validator inspection은 통과했다. 첫 create-only PUT은 post-HEAD의 S3 version-id 호환 오류로 완료되지 않았고 객체가 이미 만들어졌을 수 있다. parser 보강을 commit한 뒤 PUT 없이 validator-only inspection으로 존재와 metadata를 먼저 확인해야 한다.
 2. 2026-08-25에 만든 사용 불가능한 R2 token 두 개는 아직 Active다. 새 자격증명의 정상 작동을 확인한 뒤 대상 두 개만 안전하게 정리한다.
 3. staging media·release Ed25519 key는 생성·정책 고정을 마쳤지만 smoke token은 아직 생성하지 않았다. smoke token 규칙은 암호학적 난수 32바이트를 padding 없는 base64url 43문자로 표현하는 것으로 확정했다.
-4. staging Worker `dwnc-me-staging`은 아직 없으며 R2 객체·receipt·Worker version·activation도 0이다.
+4. staging Worker `dwnc-me-staging`은 아직 없으며 R2 admission receipt·Worker version·activation은 0이다. R2 객체 수는 첫 PUT 뒤 재확인 대기다.
 5. 공유·스크랩 추정 10개, 새 글 편집 방식, 과거 댓글, 비공개 자료의 암호화 백업 정책은 Stage 3와 무관한 사용자 결정으로 남아 있다.
 
 ### 바로 다음 단계
 
-1. 현재 validator inspection·FD 단일 읽기·문서 변경을 검증한 뒤 로컬 Git에 commit하고 exact full SHA를 기록한다. push는 하지 않는다.
-2. Active uploader로 대표 객체 1개만 create-only PUT→HEAD→GET/SHA-256 시험하고, 별도 validator로 읽기 결과를 교차 확인한다.
+1. S3 HEAD/GET version-id 호환 보강과 회귀를 검증해 로컬 Git에 commit하고 exact full SHA를 기록한다. push는 하지 않는다.
+2. PUT 없이 read-only validator inspection을 먼저 실행해 대표 객체가 생성됐는지와 metadata가 exact인지 확인한다. 없을 때만 Active uploader로 같은 객체의 create-only PUT→HEAD→GET/SHA-256 시험을 이어간다.
 3. 단일 객체가 정확히 일치하면 최종 2,758개를 create-only로 올리고 모든 객체를 GET해 SHA-256·총 바이트를 대조한다.
 4. 새 자격증명의 작동을 확인한 뒤 2026-08-25의 사용 불가능한 Active token 두 개를 정확히 식별해 정리한다.
 5. 생성한 staging signing key를 사용해 보호된 smoke token과 서명 증거를 준비하고, Worker 부재 상태를 다시 확인한 뒤 deny-only staging Worker를 최초 생성한다.
@@ -69,6 +69,7 @@
 - Cloudflare Builds의 raw deploy를 제거하고 version-only wrapper 설정을 인증된 Chrome에서 재확인했다.
 - Stage 3 signing identity를 commit `9da8e87525f3e8ff6bd593d7047bd10fb6d1d57d`·tree `60a245dea016761f274cb08d093b69f928a9f6f5`로 기록했으며 push하지 않았다.
 - staging media·release Ed25519 private key를 macOS Keychain에 보관하고 private export 없이 두 public fingerprint를 release policy에 고정했다.
+- 실제 staging validator inspection에서 exact 0·missing 2,758·mismatch 0·orphan 0을 확인했다. 첫 uploader 실행은 PUT 최대 1회 뒤 post-HEAD parser 오류로 중단했고 자동 재시도·overwrite·DELETE는 0이었다.
 
 ### 이번 작업에서 하지 않는 것
 
@@ -90,9 +91,9 @@
   - receipt는 저장소 밖 보호 경로에 덮어쓰기 없이 기록하고 자격증명은 출력하지 않는다.
 - **Evidence:**
   - [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 upload-once 계약.
-  - private staging bucket은 객체 0, public access 꺼짐, jurisdiction `default`, location `APAC`, storage class `Standard`로 재확인했다.
-  - exact bucket의 Active uploader(Object Read & Write)와 별도 Active validator(Object Read only)를 TTL 2026-09-03으로 만들었다. 실제 단일 객체 요청은 아직 0이다.
-  - validator 전용 mock inspection은 exact 0·missing 2,758·mismatch 0·orphan 0, PUT 0·DELETE 0을 확인했지만 실제 bucket 결과로 간주하지 않는다.
+  - 실제 staging validator inspection은 exact 0·missing 2,758·mismatch 0·orphan 0으로 통과했고 기록 SHA-256은 `d058fce27c6a9114751fcbf5f2ba67f2dda9b8f385ad1d733c2864c847e4e263`이다.
+  - 첫 key `media/naver/220404726308/001-d5ada694e87e.png`에 create-only PUT을 최대 1회 수행했으나 post-HEAD parser가 없는 `x-amz-version-id`를 필수로 보아 중단했다. admission receipt는 없고 PUT 재시도·overwrite·DELETE는 0이다.
+  - 객체가 생성됐을 수 있으므로 현재 원격 상태는 확인 대기다. parser 보강 뒤 PUT 없는 validator inspection을 먼저 수행한다.
 
 ### `DWNC-S3-008` — staging R2 create-only bulk upload와 full audit
 - **Status:** `blocked`

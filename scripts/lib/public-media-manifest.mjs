@@ -346,7 +346,7 @@ export function validateRemoteReceipt(receipt, manifest) {
   for (const object of receipt.objects) {
     const objectKeys = [
       'key', 'size', 'sha256', 'contentType', 'manifestEntrySha256',
-      'platformChecksumSha256', 'version', 'httpEtag',
+      'platformChecksumSha256', 'version', 'httpEtag', 'lastModified',
     ];
     if (!exactKeys(object, objectKeys)
       || typeof object.key !== 'string'
@@ -355,10 +355,14 @@ export function validateRemoteReceipt(receipt, manifest) {
       || !SHA256_PATTERN.test(object.manifestEntrySha256 ?? '')
       || !SHA256_PATTERN.test(object.platformChecksumSha256 ?? '')
       || typeof object.contentType !== 'string'
-      || typeof object.version !== 'string'
-      || object.version.length < 1 || object.version.length > 256 || /[\u0000-\u001f\u007f]/u.test(object.version)
+      || (object.version !== null && (typeof object.version !== 'string'
+        || object.version.length < 1 || object.version.length > 256
+        || /[\u0000-\u001f\u007f]/u.test(object.version)))
       || typeof object.httpEtag !== 'string'
       || !/^"[^"\r\n]+"$/u.test(object.httpEtag)
+      || typeof object.lastModified !== 'string'
+      || Number.isNaN(Date.parse(object.lastModified))
+      || new Date(object.lastModified).toISOString() !== object.lastModified
       || (previous !== null && byteCompare(previous, object.key) >= 0)) fail('MEDIA_E_REMOTE_RECEIPT');
     const expected = expectedByKey.get(object.key);
     if (!expected || expected.size !== object.size || expected.sha256 !== object.sha256

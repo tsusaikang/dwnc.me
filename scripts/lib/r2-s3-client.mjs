@@ -224,8 +224,21 @@ function safeHeader(headers, name) {
   return value === null ? null : value;
 }
 
+function validR2VersionId(value) {
+  return value === null || (typeof value === 'string'
+    && value.length >= 1 && value.length <= 256
+    && !/[\u0000-\u001f\u007f]/u.test(value));
+}
+
+function normalizedLastModified(value) {
+  if (typeof value !== 'string') return null;
+  const timestamp = Date.parse(value);
+  return Number.isNaN(timestamp) ? null : new Date(timestamp).toISOString();
+}
+
 export function parseR2Head(response, key) {
-  const size = Number(response.headers.get('content-length'));
+  const rawSize = safeHeader(response.headers, 'content-length');
+  const size = /^(?:0|[1-9][0-9]*)$/u.test(rawSize ?? '') ? Number(rawSize) : Number.NaN;
   const contentType = safeHeader(response.headers, 'content-type')?.split(';', 1)[0]?.trim().toLowerCase() ?? null;
   const cacheControl = safeHeader(response.headers, 'cache-control');
   const sha256 = safeHeader(response.headers, 'x-amz-meta-sha256');
@@ -233,6 +246,7 @@ export function parseR2Head(response, key) {
   const manifestEntrySha256 = safeHeader(response.headers, 'x-amz-meta-manifest-entry-sha256');
   const httpEtag = safeHeader(response.headers, 'etag');
   const version = safeHeader(response.headers, 'x-amz-version-id');
+  const lastModified = normalizedLastModified(safeHeader(response.headers, 'last-modified'));
   const checksumHeader = safeHeader(response.headers, 'x-amz-checksum-sha256');
   let platformChecksumSha256 = null;
   if (typeof checksumHeader === 'string' && /^[A-Za-z0-9+/]{43}=$/u.test(checksumHeader)) {
@@ -243,11 +257,10 @@ export function parseR2Head(response, key) {
   }
   if (!Number.isSafeInteger(size) || size < 0 || !contentType
     || !/^"[^"\r\n]+"$/u.test(httpEtag ?? '')
-    || typeof version !== 'string' || version.length < 1 || version.length > 256
-    || /[\u0000-\u001f\u007f]/u.test(version)) fail('MEDIA_E_R2_HEAD');
+    || !validR2VersionId(version) || lastModified === null) fail('MEDIA_E_R2_HEAD');
   return {
     key, size, contentType, cacheControl, sha256, contract, manifestEntrySha256,
-    platformChecksumSha256, version, httpEtag,
+    platformChecksumSha256, version, httpEtag, lastModified,
   };
 }
 
@@ -261,9 +274,26 @@ export function remoteObjectMatches(entry, remote) {
     && remote.contract === 'dwnc-public-media-r2-v1'
     && remote.manifestEntrySha256 === publicMediaEntryManifestSha256(entry)
     && remote.platformChecksumSha256 === entry.sha256
-    && typeof remote.version === 'string'
-    && remote.version.length > 0
-    && /^"[^"\r\n]+"$/u.test(remote.httpEtag ?? '');
+    && validR2VersionId(remote.version)
+    && /^"[^"\r\n]+"$/u.test(remote.httpEtag ?? '')
+    && normalizedLastModified(remote.lastModified) === remote.lastModified;
+}
+
+export function remoteObjectGenerationMatches(left, right) {
+  if (!left || !right || !validR2VersionId(left.version) || !validR2VersionId(right.version)) {
+    return false;
+  }
+  return left.key === right.key
+    && left.size === right.size
+    && left.contentType === right.contentType
+    && left.cacheControl === right.cacheControl
+    && left.sha256 === right.sha256
+    && left.contract === right.contract
+    && left.manifestEntrySha256 === right.manifestEntrySha256
+    && left.platformChecksumSha256 === right.platformChecksumSha256
+    && left.httpEtag === right.httpEtag
+    && left.lastModified === right.lastModified
+    && left.version === right.version;
 }
 
 export class R2S3Client {

@@ -49,6 +49,7 @@ for (const remote of inspection.heads) {
   if (!receipt
     || receipt.httpEtag !== remote.httpEtag
     || receipt.version !== remote.version
+    || receipt.lastModified !== remote.lastModified
     || receipt.platformChecksumSha256 !== remote.platformChecksumSha256
     || receipt.manifestEntrySha256 !== remote.manifestEntrySha256) {
     throw new Error('MEDIA_E_REMOTE_RECEIPT_DRIFT');

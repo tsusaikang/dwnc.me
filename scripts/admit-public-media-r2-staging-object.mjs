@@ -147,6 +147,7 @@ const receipt = {
   platformChecksumSha256: admitted.full.platformChecksumSha256,
   version: admitted.full.version,
   httpEtag: admitted.full.httpEtag,
+  lastModified: admitted.full.lastModified,
   verifiedAt: new Date().toISOString(),
 };
 const prewriteOutputIdentity = await inspectSecureOutput(
