@@ -12,16 +12,16 @@
 
 ### 현재 목표
 
-현재 기준 HEAD는 S3 version-id 호환 commit `159550239419ecdb7fad22910d1da3bba4518e38`·tree `8857f6dd50843afd37d681b5314d6e41080f11df`이고 push는 0이다. 호환 commit 뒤 PUT 없이 다시 검사해 대표 객체 1개가 HEAD exact이고 missing 2,757·mismatch 0·orphan 0임을 확인했다. 읽기 전용 검사 기록 SHA-256은 `27bf50a94fb6166a01201f3fb3a4a2dfc954b3d983e29a47f53ea38cbab31cd3`이다. 해당 객체 full GET/SHA-256을 수행하는 validator 전용 명령은 commit 전 working-tree 변경이며 실제 R2 요청은 아직 하지 않았다. 실제 `dwnc.me` 도메인과 DNS는 Cloudflare에 연결되지 않았다.
+현재 기준 HEAD는 단일 객체 validator commit `df3c678456f6af3471d846a32e28faa5751b9a2e`·tree `bbe8306cbf6577cd556533079593872020ddc8b5`이고 push는 0이다. 이 exact source에서 대표 객체를 PUT 없이 HEAD 1회·full GET 1회로 검증했으며 PUT 0·DELETE 0, ETag `"d3ded31a7b52f467702909afbc7d5340"`, Last-Modified `2026-08-27T00:24:12.000Z`, version `null`이 HEAD와 GET에서 일치했다. create-only validation receipt SHA-256은 `fa72b1849496a9b6e4697721cfef9d4fcd17b8f463b41dcacd714c5f9bb2352a`다. 이어 PUT 없이 전수 HEAD inspection을 다시 수행해 exact 1·missing 2,757·mismatch 0·orphan 0을 확인했고 receipt SHA-256은 `f00f3c13c9ae99f8a36599db85d7a180e31d8779776653bca72c2aee596d380e`다. 현재 working tree에는 실제 API 호출 전 control-plane 읽기 전용 수집 경로 보강만 있으며 실제 `dwnc.me` 도메인과 DNS는 Cloudflare에 연결되지 않았다.
 
 ### 전체 상태
 
 | 영역 | 상태 | 현재 증거 |
 |---|---|---|
 | 콘텐츠 보존·새 사이트 | 완료 | 티스토리 공개 164개, 네이버 공개 185개, 비공개 로컬 247개와 canonical/alias 349개가 로컬 전수 검증을 통과했다. |
-| Stage 3 로컬 안전장치 | validator 단일 객체 full-GET 명령 검증 완료·commit 전 | 현재 기준 HEAD는 `159550239419ecdb7fad22910d1da3bba4518e38`, tree는 `8857f6dd50843afd37d681b5314d6e41080f11df`이고 push는 0이다. Cloudflare 20 suites·1,144 assertions가 통과했으며 전용 child fixture 178 assertions는 재시도 없는 HEAD 1·GET 1·PUT 0·DELETE 0과 Git 상태 경합 검사를 포함한다. |
+| Stage 3 로컬 안전장치 | 단일 객체 validator commit·실제 검증 완료 / control-plane 보강 commit 전 | 기준 HEAD `df3c678456f6af3471d846a32e28faa5751b9a2e`·tree `bbe8306cbf6577cd556533079593872020ddc8b5`·push 0에서 실제 HEAD 1·GET 1·PUT 0·DELETE 0을 통과했다. control-plane fixture는 credential decoder 1회·FD EOF까지 bounded read, GET 3·그 밖의 메서드 0, 1MiB streaming cap·fatal UTF-8, Git drift·재시도·경로 공격 거부를 검증한다. capture만 남은 partial output은 credential/API 0 recovery로 누락 evidence만 create-only 생성한다. |
 | Cloudflare Builds | 설정 재확인 완료 | account fingerprint가 정책과 일치했고 `SKIP_DEPENDENCY_INSTALL=1`, Build `npm ci && npm run cloudflare:prepare:production`, Deploy `npm run cloudflare:upload:production-version`, Version `npx wrangler versions upload`를 확인했다. 보호 절차 없이 직접 실행하는 `wrangler deploy`는 없었다. |
-| staging R2 저장소 | 대표 객체 HEAD exact·full GET 대기 | private bucket `dwnc-me-public-media-staging`은 대표 객체 1개 exact·missing 2,757·mismatch 0·orphan 0이다. 두 번째 읽기 전용 검사 기록 SHA-256은 `27bf50a94fb6166a01201f3fb3a4a2dfc954b3d983e29a47f53ea38cbab31cd3`이고 overwrite·DELETE·PUT 재시도는 0이다. |
+| staging R2 저장소 | 대표 객체 full GET 완료·bulk upload 대기 | private bucket `dwnc-me-public-media-staging`의 대표 객체는 validation receipt `fa72b1849496a9b6e4697721cfef9d4fcd17b8f463b41dcacd714c5f9bb2352a`로 full SHA-256과 같은 세대임을 확인했다. 후속 inspection은 exact 1·missing 2,757·mismatch 0·orphan 0, receipt `f00f3c13c9ae99f8a36599db85d7a180e31d8779776653bca72c2aee596d380e`이며 추가 PUT·overwrite·DELETE는 0이다. |
 | 최종 공개 미디어 | 완료 | 2,758개·2,346,220,246바이트, manifest SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`를 로컬·source-only 전수 검증했다. |
 | 공개 요청 경로 | 완료 | 1,410경로, SHA-256 `1666d8dd85ac05c2274513cfbe438f24ead06a190f873af3b67f7e3aa373307c`로 확정했다. |
 | staging Worker | signing key 완료·Worker 미실행 | media public fingerprint는 `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`, release public fingerprint는 `2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2`다. private key는 macOS Keychain에만 보관했고 export하지 않았다. Worker·smoke token·version·activation은 아직 없다. |
@@ -42,18 +42,19 @@
 
 ### 아직 결정할 일과 진행을 막는 조건
 
-1. 대표 객체는 PUT 없이 validator-only inspection에서 HEAD exact로 확인했다. 새 validator 전용 HEAD+streaming full-GET 명령을 commit한 뒤 같은 객체의 전체 body SHA-256과 HEAD↔GET 세대를 검증해야 한다.
+1. bucket 속성·`r2.dev`·custom domain을 Cloudflare REST API의 읽기 전용 GET 3회로 다시 수집하는 canonical evidence는 아직 없다. 대상 account 하나의 `Workers R2 Storage: Read`만 가진 15분 이내 token을 clipboard→익명 FD로 한 번만 전달하고, exact account fingerprint·bucket·Git commit/tree에 묶어 수집한 직후 revoke해야 한다. Cloudflare token 자체는 account 범위이므로 로컬 명령이 exact bucket·GET-only를 추가로 강제한다.
 2. 2026-08-25에 만든 사용 불가능한 R2 token 두 개는 아직 Active다. 새 자격증명의 정상 작동을 확인한 뒤 대상 두 개만 안전하게 정리한다.
 3. staging media·release Ed25519 key는 생성·정책 고정을 마쳤지만 smoke token은 아직 생성하지 않았다. smoke token 규칙은 암호학적 난수 32바이트를 padding 없는 base64url 43문자로 표현하는 것으로 확정했다.
-4. staging Worker `dwnc-me-staging`은 아직 없으며 R2 단일 객체 validation receipt·Worker version·activation은 0이다. R2에는 HEAD exact 대표 객체 1개만 있다.
+4. staging Worker `dwnc-me-staging`은 아직 없으며 Worker version·activation은 0이다. R2에는 full GET까지 검증된 대표 객체 1개만 있다.
 5. 공유·스크랩 추정 10개, 새 글 편집 방식, 과거 댓글, 비공개 자료의 암호화 백업 정책은 Stage 3와 무관한 사용자 결정으로 남아 있다.
 
 ### 바로 다음 단계
 
-1. validator 전용 단일 객체 HEAD+streaming full-GET 명령과 회귀를 로컬 Git에 commit하고 exact full SHA를 기록한다. push는 하지 않는다.
-2. HEAD exact인 대표 객체를 PUT 없이 새 validator 명령으로 full GET/SHA-256 검증하고 외부 보호 경로에 create-only receipt를 남긴다.
-3. 단일 객체가 정확히 일치하면 최종 2,758개를 create-only로 올리고 모든 객체를 GET해 SHA-256·총 바이트를 대조한다.
-4. 새 자격증명의 작동을 확인한 뒤 2026-08-25의 사용 불가능한 Active token 두 개를 정확히 식별해 정리한다.
+1. control-plane read-only 수집 경로의 diff·테스트를 검토한 뒤 로컬 Git에 commit하고 exact SHA/tree를 기록한다. push는 하지 않는다.
+2. 짧은 수명의 최소 권한 Cloudflare API token으로 exact bucket 속성, managed domain, custom domains를 GET 3회만 수집하고 canonical evidence를 확인한 즉시 token을 폐기한다.
+   - capture가 생성됐지만 evidence 기록이 실패하면 token/API를 다시 쓰지 않고 `cloudflare:r2:exposure:recover`로 secure capture를 재검증해 누락 evidence만 생성한다.
+3. 최종 2,758개 중 missing 2,757개를 create-only로 올리고 모든 2,758개를 GET해 SHA-256·총 바이트를 대조한다.
+4. 새 자격증명의 작동이 확인됐으므로 2026-08-25의 사용 불가능한 Active token 두 개를 정확히 식별해 정리한다.
 5. 생성한 staging signing key를 사용해 보호된 smoke token과 서명 증거를 준비하고, Worker 부재 상태를 다시 확인한 뒤 deny-only staging Worker를 최초 생성한다.
 6. 확정된 Git SHA와 R2 감사 증거에 묶인 staging Worker version만 올리고 100%로 적용한 뒤 정적 페이지·349 redirect·media GET/HEAD/304/206/416을 `workers.dev`에서 검증한다.
 7. production 이름의 Cloudflare 자원·버전 작업이 필요하면 같은 안전 절차로 계속한다. 실제 `dwnc.me` 도메인·DNS는 연결하지 않는다.
@@ -70,6 +71,7 @@
 - Stage 3 signing identity를 commit `9da8e87525f3e8ff6bd593d7047bd10fb6d1d57d`·tree `60a245dea016761f274cb08d093b69f928a9f6f5`로 기록했으며 push하지 않았다.
 - staging media·release Ed25519 private key를 macOS Keychain에 보관하고 private export 없이 두 public fingerprint를 release policy에 고정했다.
 - 실제 staging validator 재검사에서 대표 객체 1개 exact·missing 2,757·mismatch 0·orphan 0을 확인했다. 기록 SHA-256은 `27bf50a94fb6166a01201f3fb3a4a2dfc954b3d983e29a47f53ea38cbab31cd3`이고 첫 uploader 실행 뒤 추가 PUT·overwrite·DELETE는 0이었다.
+- validator commit `df3c678456f6af3471d846a32e28faa5751b9a2e`에서 대표 객체를 PUT 없이 HEAD 1·full GET 1로 검증했다. validation receipt SHA-256은 `fa72b1849496a9b6e4697721cfef9d4fcd17b8f463b41dcacd714c5f9bb2352a`, 후속 exact 1·missing 2,757 inspection receipt SHA-256은 `f00f3c13c9ae99f8a36599db85d7a180e31d8779776653bca72c2aee596d380e`다.
 
 ### 이번 작업에서 하지 않는 것
 
@@ -81,31 +83,16 @@
 
 ## 요구사항 원장
 
-### `DWNC-S3-007` — staging R2 단일 객체 시험
-- **Status:** `in-progress`
-- **Updated-at:** `2026-08-27`
-- **Acceptance:**
-  - 최종 manifest의 사용자 소유 객체 1개만 private staging bucket에 `If-None-Match: *`로 새로 만든다.
-  - PUT 전후 HEAD와 full GET의 SHA-256·size·MIME·cache metadata가 정확히 일치하는지 검증한다.
-  - 불일치하면 덮어쓰지 않고 orphan이나 기존 객체를 삭제하지 않는다.
-  - receipt는 저장소 밖 보호 경로에 덮어쓰기 없이 기록하고 자격증명은 출력하지 않는다.
-- **Evidence:**
-  - [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 upload-once 계약.
-  - 최초 staging validator inspection은 exact 0·missing 2,758·mismatch 0·orphan 0으로 통과했고 기록 SHA-256은 `d058fce27c6a9114751fcbf5f2ba67f2dda9b8f385ad1d733c2864c847e4e263`이다.
-  - 첫 key `media/naver/220404726308/001-d5ada694e87e.png`에 create-only PUT을 최대 1회 수행했으나 post-HEAD parser가 없는 `x-amz-version-id`를 필수로 보아 중단했다. admission receipt는 없고 PUT 재시도·overwrite·DELETE는 0이다.
-  - 호환 commit 뒤 PUT 없는 validator 재검사에서 해당 객체 1개가 HEAD exact이고 missing 2,757·mismatch 0·orphan 0임을 확인했다. 기록 SHA-256은 `27bf50a94fb6166a01201f3fb3a4a2dfc954b3d983e29a47f53ea38cbab31cd3`이다.
-  - validator 전용 단일 객체 명령은 clean Git SHA·manifest entry·account/bucket을 결속하고 자동 재시도 없이 HEAD 1회 뒤 status 200 full GET 1회를 streaming SHA-256으로 검증한다. `HEAD→status→HEAD` Git 검사를 요청 전·요청 후·receipt 기록 직전에 반복한다. 로컬 anonymous-FD child fixture는 HEAD/GET 첫 500·network 오류의 재시도 0, tracked-file/HEAD 이동 경합 거부와 안전 복구를 포함한 178 assertions를 통과했으며 실제 full GET receipt는 아직 없다.
-
 ### `DWNC-S3-008` — staging R2 create-only bulk upload와 full audit
-- **Status:** `blocked`
+- **Status:** `in-progress`
 - **Updated-at:** `2026-08-27`
 - **Acceptance:**
   - 단일 객체 admission이 exact인 final manifest만 create-only로 업로드한다.
   - overwrite·delete 없이 manifest 전체를 GET해 개별 SHA-256과 총 bytes를 전수 검증한다.
   - missing, mismatch, orphan을 각각 0 또는 명시적으로 보고하고 signed receipt 입력 후보를 만든다.
 - **Evidence:**
-  - 선행 요구사항 `DWNC-S3-007`이 아직 완료되지 않았다.
-  - [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 full-get-sha256 gate.
+  - 선행 요구사항 `DWNC-S3-007`은 validation receipt `fa72b1849496a9b6e4697721cfef9d4fcd17b8f463b41dcacd714c5f9bb2352a`와 후속 inspection receipt `f00f3c13c9ae99f8a36599db85d7a180e31d8779776653bca72c2aee596d380e`로 완료됐다.
+  - 현재 exact 1·missing 2,757·mismatch 0·orphan 0이며 [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 full-get-sha256 gate를 다음에 수행한다.
 
 ### `DWNC-S3-009` — deny-only staging Worker 최초 생성과 신뢰 정책
 - **Status:** `in-progress`
@@ -151,7 +138,7 @@
   - 새 자격증명, bucket, 객체, Worker, domain·DNS에는 다른 변경을 하지 않는다.
 - **Evidence:**
   - 기존 두 token은 비밀값을 잃어 사용할 수 없지만 Cloudflare에서 아직 Active다.
-  - 새 validator로 대표 객체 HEAD exact를 확인했지만 full GET/SHA-256 교차 검증은 전용 명령 commit 뒤 수행한다.
+  - 새 validator는 대표 객체를 HEAD 1·full GET 1·PUT 0·DELETE 0으로 검증했고 receipt SHA-256은 `fa72b1849496a9b6e4697721cfef9d4fcd17b8f463b41dcacd714c5f9bb2352a`다.
 
 ### `DWNC-OPS-001` — 공유·스크랩 추정 10개 처리 결정
 - **Status:** `decision-needed`
@@ -272,3 +259,17 @@
   - 최종 manifest 2,758개·2,346,220,246바이트·SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`가 로컬·source-only 검증을 통과했다.
   - Cloudflare 관련 18개 suite·833 assertions, 정적 페이지 1,404개, redirect 349개, request surface 1,410경로·SHA-256 `1666d8dd85ac05c2274513cfbe438f24ead06a190f873af3b67f7e3aa373307c`가 통과했다.
   - release-source 준비를 commit `1f726f63381a903afdd04ec80c90407c742c82cd`·tree `46ec12f98c74a4fdbbc92e3749574bf085ad21ee`로 version upload보다 먼저 기록했고 push는 0이다.
+
+### `DWNC-S3-007` — staging R2 단일 객체 시험
+- **Status:** `done`
+- **Updated-at:** `2026-08-27`
+- **Acceptance:**
+  - 최종 manifest의 사용자 소유 객체 1개만 private staging bucket에 create-only로 만든다.
+  - PUT 전후 HEAD와 full GET의 SHA-256·size·MIME·cache metadata가 정확히 일치하는지 검증한다.
+  - 불일치하면 덮어쓰지 않고 orphan이나 기존 객체를 삭제하지 않는다.
+  - receipt는 저장소 밖 보호 경로에 덮어쓰기 없이 기록하고 자격증명은 출력하지 않는다.
+- **Evidence:**
+  - source commit `df3c678456f6af3471d846a32e28faa5751b9a2e`·tree `bbe8306cbf6577cd556533079593872020ddc8b5`에서 대표 객체를 추가 PUT 없이 HEAD 1·status 200 full GET 1로 검증했다. PUT 0·DELETE 0이고 version은 `null`이다.
+  - HEAD와 GET의 ETag `"d3ded31a7b52f467702909afbc7d5340"`·Last-Modified `2026-08-27T00:24:12.000Z`와 manifest SHA-256 세대가 일치했으며 verifiedAt은 `2026-08-27T05:07:48.418Z`다.
+  - create-only validation receipt SHA-256은 `fa72b1849496a9b6e4697721cfef9d4fcd17b8f463b41dcacd714c5f9bb2352a`다.
+  - 이어 PUT 없이 전수 inspection을 다시 수행해 exact 1·missing 2,757·mismatch 0·orphan 0을 확인했다. inspectedAt은 `2026-08-27T05:09:09.996Z`, receipt SHA-256은 `f00f3c13c9ae99f8a36599db85d7a180e31d8779776653bca72c2aee596d380e`다.

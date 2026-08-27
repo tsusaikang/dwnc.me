@@ -17,6 +17,16 @@ export const R2_VALIDATION_ENVIRONMENT_NAMES = Object.freeze([
   'PUBLIC_MEDIA_REMOTE_PUBLIC_KEY_PATH',
 ]);
 const SAFE_ERROR_CODE = /^[A-Z][A-Z0-9_]{2,80}$/u;
+const CONTROL_PLANE_TOKEN_DESCRIPTOR = 3;
+const CONTROL_PLANE_TOKEN_MAXIMUM_BYTES = 256;
+const CONTROL_PLANE_TOKEN_FRAME_MAGIC = Buffer.from('DWNCCT1\0', 'ascii');
+const CONTROL_PLANE_TOKEN_FRAME_HEADER_BYTES = CONTROL_PLANE_TOKEN_FRAME_MAGIC.length + 2;
+const CONTROL_PLANE_TOKEN_FRAME_DIGEST_BYTES = 32;
+const CONTROL_PLANE_TOKEN_FRAME_MAXIMUM_BYTES = CONTROL_PLANE_TOKEN_FRAME_HEADER_BYTES
+  + CONTROL_PLANE_TOKEN_MAXIMUM_BYTES + CONTROL_PLANE_TOKEN_FRAME_DIGEST_BYTES;
+const CONTROL_PLANE_LEGACY_TOKEN_NAMES = Object.freeze([
+  'CLOUDFLARE_API_TOKEN', 'CF_API_TOKEN', 'CLOUDFLARE_API_KEY', 'CF_API_KEY',
+]);
 
 export function structuredErrorCode(error, fallback = 'CLOUDFLARE_E_UNEXPECTED') {
   const candidate = typeof error?.code === 'string'
@@ -74,6 +84,59 @@ export function cloudflareWranglerEnvironment(source = process.env, extra = {}) 
   });
 }
 
+export function encodeCloudflareControlPlaneTokenFrame(apiToken) {
+  if (typeof apiToken !== 'string'
+    || !/^[A-Za-z0-9._~+\/-]{20,256}={0,2}$/u.test(apiToken)) {
+    throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
+  }
+  const tokenBytes = Buffer.from(apiToken, 'utf8');
+  const frame = Buffer.alloc(CONTROL_PLANE_TOKEN_FRAME_HEADER_BYTES + tokenBytes.length
+    + CONTROL_PLANE_TOKEN_FRAME_DIGEST_BYTES);
+  try {
+    CONTROL_PLANE_TOKEN_FRAME_MAGIC.copy(frame, 0);
+    frame.writeUInt16BE(tokenBytes.length, CONTROL_PLANE_TOKEN_FRAME_MAGIC.length);
+    tokenBytes.copy(frame, CONTROL_PLANE_TOKEN_FRAME_HEADER_BYTES);
+    createHash('sha256').update(tokenBytes).digest().copy(
+      frame, CONTROL_PLANE_TOKEN_FRAME_HEADER_BYTES + tokenBytes.length,
+    );
+    return frame;
+  } finally { tokenBytes.fill(0); }
+}
+
+function decodeCloudflareControlPlaneTokenFrame(frame) {
+  if (!Buffer.isBuffer(frame)
+    || frame.length < CONTROL_PLANE_TOKEN_FRAME_HEADER_BYTES
+      + 20 + CONTROL_PLANE_TOKEN_FRAME_DIGEST_BYTES
+    || frame.length > CONTROL_PLANE_TOKEN_FRAME_MAXIMUM_BYTES
+    || !frame.subarray(0, CONTROL_PLANE_TOKEN_FRAME_MAGIC.length)
+      .equals(CONTROL_PLANE_TOKEN_FRAME_MAGIC)) {
+    throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
+  }
+  const length = frame.readUInt16BE(CONTROL_PLANE_TOKEN_FRAME_MAGIC.length);
+  const expectedLength = CONTROL_PLANE_TOKEN_FRAME_HEADER_BYTES + length
+    + CONTROL_PLANE_TOKEN_FRAME_DIGEST_BYTES;
+  if (length < 20 || length > CONTROL_PLANE_TOKEN_MAXIMUM_BYTES
+    || frame.length !== expectedLength) {
+    throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
+  }
+  const tokenBytes = frame.subarray(
+    CONTROL_PLANE_TOKEN_FRAME_HEADER_BYTES,
+    CONTROL_PLANE_TOKEN_FRAME_HEADER_BYTES + length,
+  );
+  const digest = frame.subarray(CONTROL_PLANE_TOKEN_FRAME_HEADER_BYTES + length);
+  if (!createHash('sha256').update(tokenBytes).digest().equals(digest)) {
+    throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
+  }
+  let apiToken;
+  try { apiToken = new TextDecoder('utf-8', { fatal: true }).decode(tokenBytes); }
+  catch { throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD'); }
+  if (Buffer.byteLength(apiToken, 'utf8') !== length
+    || !/^[A-Za-z0-9._~+\/-]{20,256}={0,2}$/u.test(apiToken)) {
+    throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
+  }
+  return apiToken;
+}
+
 export function cloudflareControlPlaneCredentials(source = process.env) {
   const fdDefined = Object.hasOwn(source, 'CLOUDFLARE_API_TOKEN_FD');
   const legacyDefined = Object.hasOwn(source, 'CLOUDFLARE_API_TOKEN');
@@ -101,9 +164,9 @@ export function cloudflareControlPlaneCredentials(source = process.env) {
     bytes = Buffer.alloc(4097);
     let total = 0;
     while (true) {
-      const read = readSync(3, bytes, total, bytes.length - total, null);
-      if (read === 0) break;
-      total += read;
+      const count = readSync(3, bytes, total, bytes.length - total, null);
+      if (count === 0) break;
+      total += count;
       if (total > 4096) throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
     }
     const apiToken = bytes.subarray(0, total).toString('utf8');
@@ -121,12 +184,72 @@ export function cloudflareControlPlaneCredentials(source = process.env) {
   } catch (error) {
     if (error?.message?.startsWith('CLOUDFLARE_E_CONTROL_TOKEN_')) throw error;
     throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
+  } finally { bytes?.fill(0); }
+}
+
+export function cloudflareControlPlaneReadCredentials(source = process.env, {
+  descriptor = CONTROL_PLANE_TOKEN_DESCRIPTOR,
+  fstat = fstatSync,
+  read = readSync,
+  getuid = typeof process.getuid === 'function' ? () => process.getuid() : null,
+} = {}) {
+  const fdDefined = Object.hasOwn(source, 'CLOUDFLARE_API_TOKEN_FD');
+  const legacyDefined = CONTROL_PLANE_LEGACY_TOKEN_NAMES
+    .some((name) => Object.hasOwn(source, name));
+  const r2S3Defined = [
+    'R2_ACCOUNT_ID', 'R2_BUCKET_NAME', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY',
+    'R2_CREDENTIALS_FD',
+  ].some((name) => Object.hasOwn(source, name));
+  if (r2S3Defined) throw new Error('CLOUDFLARE_E_CONTROL_CREDENTIAL_AMBIGUOUS');
+  if (fdDefined && legacyDefined) throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_AMBIGUOUS');
+  if (legacyDefined || !fdDefined) throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD_REQUIRED');
+  if (descriptor !== CONTROL_PLANE_TOKEN_DESCRIPTOR
+    || source.CLOUDFLARE_API_TOKEN_FD !== String(descriptor)
+    || typeof source.CLOUDFLARE_ACCOUNT_ID !== 'string'
+    || !/^[A-Fa-f0-9]{32}$/u.test(source.CLOUDFLARE_ACCOUNT_ID)) {
+    throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
+  }
+  let bytes;
+  try {
+    const stats = fstat(descriptor);
+    if (!(stats.isFIFO() || stats.isSocket()) || stats.nlink !== 0
+      || ![0o600, 0o666].includes(stats.mode & 0o777)
+      || getuid !== null && stats.uid !== getuid()
+      || stats.size < 0 || stats.size > CONTROL_PLANE_TOKEN_FRAME_MAXIMUM_BYTES) {
+      throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
+    }
+    bytes = Buffer.alloc(CONTROL_PLANE_TOKEN_FRAME_MAXIMUM_BYTES + 1);
+    let total = 0;
+    while (true) {
+      const remaining = bytes.length - total;
+      if (remaining <= 0) throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
+      const count = read(descriptor, bytes, total, remaining, null);
+      if (!Number.isSafeInteger(count) || count < 0 || count > remaining) {
+        throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
+      }
+      if (count === 0) break;
+      total += count;
+      if (total > CONTROL_PLANE_TOKEN_FRAME_MAXIMUM_BYTES) {
+        throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
+      }
+    }
+    if (total === 0) throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
+    const apiToken = decodeCloudflareControlPlaneTokenFrame(bytes.subarray(0, total));
+    return {
+      accountId: source.CLOUDFLARE_ACCOUNT_ID,
+      apiToken,
+      environment: sanitizedEnvironment(source, {
+        CLOUDFLARE_ACCOUNT_ID: source.CLOUDFLARE_ACCOUNT_ID,
+        CLOUDFLARE_API_TOKEN_FD: String(descriptor),
+      }),
+    };
+  } catch (error) {
+    if (error?.message?.startsWith('CLOUDFLARE_E_CONTROL_TOKEN_')) throw error;
+    throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
   } finally {
     bytes?.fill(0);
   }
 }
-
-export const cloudflareControlPlaneReadCredentials = cloudflareControlPlaneCredentials;
 
 export function stagingSmokeTokenFromEnvironment(source = process.env, {
   descriptor = 3,

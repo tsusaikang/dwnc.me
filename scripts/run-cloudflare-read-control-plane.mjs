@@ -2,19 +2,28 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  assertCloudflareAccountTarget,
+  encodeCloudflareControlPlaneTokenFrame,
   installStructuredErrorHandler,
   sanitizedEnvironment,
   writeAnonymousInheritedInput,
 } from './lib/cloudflare-process.mjs';
+import { parseStagingR2ExposureCommand } from './lib/cloudflare-r2-exposure-command.mjs';
+import { assertSecureCreateOnlyDestination } from './lib/cloudflare-signing-key.mjs';
+import { loadTrackedPublicMediaReleasePolicy } from './lib/public-media-manifest.mjs';
 import { MacOSClipboard } from './lib/r2-credential-store.mjs';
 
 const commands = Object.freeze({
   'staging-r2-exposure': {
     script: 'scripts/fetch-public-media-r2-exposure.mjs',
-    args: ['--environment=staging'],
+    args: ['--purpose=staging-r2-private-exposure-read'],
     outputVariables: [
       'CLOUDFLARE_R2_EXPOSURE_CAPTURE_PATH',
       'CLOUDFLARE_R2_EXPOSURE_EVIDENCE_PATH',
+    ],
+    requiredVariables: [
+      'CLOUDFLARE_R2_EXPOSURE_EXPECTED_GIT_COMMIT',
+      'CLOUDFLARE_R2_EXPOSURE_EXPECTED_GIT_TREE',
     ],
   },
   'staging-workers-dev-status': {
@@ -24,8 +33,13 @@ const commands = Object.freeze({
       'CLOUDFLARE_STAGING_WORKERS_DEV_STATUS_CAPTURE_PATH',
       'CLOUDFLARE_STAGING_WORKERS_DEV_STATUS_EVIDENCE_PATH',
     ],
+    requiredVariables: [],
   },
 });
+
+const LEGACY_CONTROL_PLANE_TOKEN_NAMES = Object.freeze([
+  'CLOUDFLARE_API_TOKEN', 'CF_API_TOKEN', 'CLOUDFLARE_API_KEY', 'CF_API_KEY',
+]);
 
 export async function runCloudflareReadControlPlane({
   argv = process.argv.slice(2),
@@ -33,15 +47,18 @@ export async function runCloudflareReadControlPlane({
   root = process.cwd(),
   clipboard = new MacOSClipboard(),
   spawnChild = spawn,
+  loadPolicy = loadTrackedPublicMediaReleasePolicy,
+  assertAccount = assertCloudflareAccountTarget,
+  assertDestination = assertSecureCreateOnlyDestination,
 } = {}) {
   let apiToken = '';
-  let tokenBytes;
+  let tokenFrame;
   try {
     const [argument] = argv;
     if (!argument?.startsWith('--command=') || argv.length !== 1) {
       throw new Error('CLOUDFLARE_E_CONTROL_RUNNER_ARGUMENT');
     }
-    if (Object.hasOwn(environment, 'CLOUDFLARE_API_TOKEN')
+    if (LEGACY_CONTROL_PLANE_TOKEN_NAMES.some((name) => Object.hasOwn(environment, name))
       || Object.hasOwn(environment, 'CLOUDFLARE_API_TOKEN_FD')) {
       throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_AMBIGUOUS');
     }
@@ -58,13 +75,29 @@ export async function runCloudflareReadControlPlane({
       }
       outputEnvironment[name] = value;
     }
+    for (const name of selected.requiredVariables) {
+      const value = environment[name];
+      if (typeof value !== 'string') throw new Error('CLOUDFLARE_E_CONTROL_RUNNER_ARGUMENT');
+      outputEnvironment[name] = value;
+    }
+    if (argument === '--command=staging-r2-exposure') {
+      const parsed = parseStagingR2ExposureCommand({
+        argv: selected.args, environment: { ...environment, ...outputEnvironment }, root,
+      });
+      await Promise.all([
+        assertDestination(parsed.capturePath),
+        assertDestination(parsed.evidencePath),
+      ]);
+      const policy = await loadPolicy(root);
+      if (policy.staging?.bucket !== 'dwnc-me-public-media-staging') {
+        throw new Error('CLOUDFLARE_E_CONTROL_RUNNER_TARGET');
+      }
+      assertAccount(accountId, policy.staging.accountIdSha256);
+    }
     // Clipboard capability is checked before any attempt to read a token.
     await clipboard.preflight();
     apiToken = await clipboard.readAndClear();
-    if (!/^[A-Za-z0-9._~+\/-]{20,4096}={0,2}$/u.test(apiToken)) {
-      throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
-    }
-    tokenBytes = Buffer.from(apiToken);
+    tokenFrame = encodeCloudflareControlPlaneTokenFrame(apiToken);
     apiToken = '';
     const child = spawnChild(process.execPath, [path.join(root, selected.script), ...selected.args], {
       cwd: root,
@@ -81,7 +114,7 @@ export async function runCloudflareReadControlPlane({
       throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_FD');
     }
     const [, code] = await Promise.all([
-      writeAnonymousInheritedInput(tokenPipe, tokenBytes, { descriptor: 3, maximumBytes: 4096 }),
+      writeAnonymousInheritedInput(tokenPipe, tokenFrame, { descriptor: 3, maximumBytes: 512 }),
       new Promise((resolve, reject) => {
         child.once('error', reject);
         child.once('close', resolve);
@@ -90,7 +123,7 @@ export async function runCloudflareReadControlPlane({
     if (code !== 0) throw new Error('CLOUDFLARE_E_CONTROL_RUNNER_CHILD');
   } finally {
     apiToken = '';
-    tokenBytes?.fill(0);
+    tokenFrame?.fill(0);
     await clipboard.clear();
   }
 }
