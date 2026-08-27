@@ -83,6 +83,87 @@ export function createRemoteInspectionReceipt(manifest, inspection, {
   };
 }
 
+function validVersion(value) {
+  return value === null || typeof value === 'string'
+    && value.length >= 1 && value.length <= 256
+    && !/[\u0000-\u001f\u007f]/u.test(value);
+}
+
+export async function validateOneRemotePublicMediaObject(client, entry) {
+  if (!client || typeof client.head !== 'function' || typeof client.getFull !== 'function') {
+    throw new Error('MEDIA_E_R2_ONE_OBJECT_INPUT');
+  }
+  const head = await client.head(entry.key);
+  if (head === null) throw new Error('MEDIA_E_R2_ONE_OBJECT_MISSING');
+  if (!remoteObjectMatches(entry, head)) throw new Error('MEDIA_E_R2_ONE_OBJECT_HEAD_MISMATCH');
+  const full = await client.getFull(entry.key);
+  if (!remoteObjectMatches(entry, full)
+    || !remoteObjectGenerationMatches(head, full)
+    || full.bodyBytes !== entry.size || full.bodySha256 !== entry.sha256) {
+    throw new Error('MEDIA_E_R2_ONE_OBJECT_FULL_GET_MISMATCH');
+  }
+  return { head, full };
+}
+
+export function createOneObjectValidationReceipt(manifest, entry, validation, {
+  target,
+  gitCommitSha,
+  requestMethods,
+  verifiedAt = new Date().toISOString(),
+} = {}) {
+  const head = validation?.head;
+  const full = validation?.full;
+  const methodKeys = ['HEAD', 'GET', 'PUT', 'DELETE'];
+  if (!manifest?.entries?.some((candidate) => candidate.key === entry?.key
+      && publicMediaEntryManifestSha256(candidate) === publicMediaEntryManifestSha256(entry))
+    || !remoteObjectMatches(entry, head) || !remoteObjectMatches(entry, full)
+    || !remoteObjectGenerationMatches(head, full)
+    || full.bodyBytes !== entry.size || full.bodySha256 !== entry.sha256
+    || !target || Object.keys(target).length !== 3 || target.environment !== 'staging'
+    || !/^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/u.test(target.bucket ?? '')
+    || !/^[a-f0-9]{64}$/u.test(target.accountIdSha256 ?? '')
+    || !/^[a-f0-9]{40}$/u.test(gitCommitSha ?? '')
+    || !requestMethods || Object.keys(requestMethods).length !== methodKeys.length
+    || Object.keys(requestMethods).some((method) => !methodKeys.includes(method))
+    || !methodKeys.every((method) => Number.isSafeInteger(requestMethods[method])
+      && requestMethods[method] >= 0)
+    || requestMethods.HEAD !== 1 || requestMethods.GET !== 1
+    || requestMethods.PUT !== 0 || requestMethods.DELETE !== 0
+    || !validVersion(full.version)
+    || typeof verifiedAt !== 'string' || Number.isNaN(Date.parse(verifiedAt))) {
+    throw new Error('MEDIA_E_R2_ONE_OBJECT_RECEIPT');
+  }
+  return {
+    schemaVersion: 1,
+    contract: 'dwnc-public-media-r2-staging-one-object-validation-v1',
+    environment: target.environment,
+    credentialRole: 'validator',
+    gitCommitSha,
+    accountIdSha256: target.accountIdSha256,
+    bucket: target.bucket,
+    manifestSha256: manifest.manifestSha256,
+    manifestEntrySha256: publicMediaEntryManifestSha256(entry),
+    key: entry.key,
+    size: entry.size,
+    sha256: entry.sha256,
+    contentType: entry.contentType,
+    cacheControl: entry.cacheControl,
+    platformChecksumSha256: full.platformChecksumSha256,
+    version: full.version,
+    httpEtag: full.httpEtag,
+    lastModified: full.lastModified,
+    verificationLevel: 'head-and-full-get-sha256',
+    headExact: true,
+    fullGetBodyBytes: full.bodyBytes,
+    fullGetBodySha256: full.bodySha256,
+    sameGeneration: true,
+    requestMethods: { ...requestMethods },
+    overwrite: 0,
+    delete: 0,
+    verifiedAt,
+  };
+}
+
 export async function admitOneStagingPublicMediaObject(client, entry, loadBytes) {
   if (!client || typeof client.head !== 'function' || typeof client.putCreateOnly !== 'function'
     || typeof client.getFull !== 'function' || typeof loadBytes !== 'function') {

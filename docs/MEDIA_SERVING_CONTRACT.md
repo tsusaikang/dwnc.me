@@ -1,6 +1,6 @@
 # dwnc.me 공개 미디어 전달 계약 v1
 
-상태: **현재 HEAD `7d09f11ad5f0339be1563cc515192ed8da6726db`·tree `3e6c020e3201f83f4614a16d0f285643707334ee`·push 0 / staging signing key와 분리된 최소 권한 R2 자격증명 준비 완료 / 최초 원격 inspection은 exact 0·missing 2,758 PASS / 첫 create-only PUT 뒤 HEAD 호환 오류로 객체 수 재확인 대기 / smoke token·Worker·version·activation 없음 / 실제 도메인·DNS 미연결**
+상태: **현재 기준 HEAD `159550239419ecdb7fad22910d1da3bba4518e38`·tree `8857f6dd50843afd37d681b5314d6e41080f11df`·push 0 / staging signing key와 분리된 최소 권한 R2 자격증명 준비 완료 / 대표 객체 1개 HEAD exact·missing 2,757·mismatch 0·orphan 0 / 단일 객체 validator full GET 명령은 commit 전·실제 full GET 대기 / smoke token·Worker·version·activation 없음 / 실제 도메인·DNS 미연결**
 
 이 문서는 공개 글이 참조하는 대용량 미디어를 동일 출처 `https://dwnc.me/media/*`로 제공하기 위한 계약이다. 기존 URL, 로컬 원본, SHA-256 증거를 바꾸지 않고 private R2 bucket을 전달용 복제본으로 사용한다.
 
@@ -89,6 +89,14 @@ R2_CREDENTIAL_METADATA_PATH=/approved/local/path/staging-validator-metadata.json
   --expected-manifest-sha256=<approved-final-manifest-sha256> \
   --receipt-output=/approved/local/path/staging-r2-inspection-v1.json
 
+# 이미 존재하고 HEAD exact인 대표 객체 하나를 PUT 없이 full GET/SHA-256 검증한다.
+R2_CREDENTIAL_METADATA_PATH=/approved/local/path/staging-validator-metadata.json \
+  npm run media:r2:staging:validate-one:secure -- \
+  --key=<exact-manifest-key> \
+  --expected-manifest-sha256=<approved-final-manifest-sha256> \
+  --expected-git-sha=<clean-exact-full-git-sha> \
+  --receipt-output=/approved/local/path/staging-r2-one-object-validation-v1.json
+
 # 직전 account·bucket·manifest 일치와 자격증명 보호 조건이 통과한 뒤에만 실행한다.
 R2_CREDENTIAL_METADATA_PATH=/approved/local/path/staging-uploader-metadata.json \
   npm run media:r2:apply -- \
@@ -98,6 +106,8 @@ R2_CREDENTIAL_METADATA_PATH=/approved/local/path/staging-uploader-metadata.json 
 ```
 
 검사 명령은 staging·validator 역할에 고정되어 `--apply`, production 환경 주입, uploader metadata, overwrite·delete 인자를 받지 않는다. 원격 요청은 bucket 목록 조회 `GET`과 객체별 `HEAD`뿐이며 PUT·DELETE 코드 경로가 없다. 결과 파일은 exact·missing·mismatch·orphan 개수와 manifest·account fingerprint·bucket을 묶은 읽기 전용 검사 기록이고, release용 `full-get-sha256` receipt를 대신하지 않는다. 저장소 밖의 mode 700 디렉터리에 create-only·mode 600으로 기록한다.
+
+단일 객체 검증 명령도 staging·validator 역할에 고정한다. clean HEAD와 명시한 full Git SHA, tracked manifest의 exact key, account fingerprint와 private bucket을 첫 요청 전에 결속한다. `HEAD→status→HEAD`를 순서대로 읽는 Git 검사를 원격 요청 전, HEAD+GET 후, create-only receipt 기록 직전에 반복해 tracked file이나 HEAD가 중간에 바뀌면 기록을 만들지 않는다. R2 client의 `maxAttempts=1`로 자동 재시도를 끄고 HEAD와 status 200의 전체 GET을 각각 정확히 한 번만 허용하며, receipt 요청 수도 HEAD 1·GET 1·PUT 0·DELETE 0이어야 한다. body는 메모리에 전부 쌓지 않고 streaming SHA-256으로 확인한다. `206`, `Content-Range`, 짧거나 긴 body, metadata/checksum/ETag/Last-Modified drift, HEAD↔GET 세대 차이와 한쪽에만 있는 version ID를 거부한다. 기록은 Git SHA·manifest/entry SHA·key·bytes/SHA·MIME/cache·platform checksum·ETag·Last-Modified·nullable version을 담는다.
 
 Cloudflare의 현재 [공식 S3 호환표](https://developers.cloudflare.com/r2/api/s3/api/)에서 R2는 `HeadObject`와 `GetObject`를 지원하지만 `GetBucketVersioning`과 `PutBucketVersioning`은 지원하지 않는다. 따라서 S3 응답의 `x-amz-version-id`는 필수 무결성 header가 아니다. 없으면 canonical `null`로 기록한다. HEAD와 GET 양쪽에 있으면 값이 정확히 같아야 하고, 양쪽 모두 없으면 허용하며, 한쪽에만 있으면 세대가 달라진 것으로 보고 실패한다. 두 경우 모두 key·ETag·Content-Length·Content-Type·Cache-Control·Last-Modified·객체 SHA-256 metadata·manifest-entry SHA-256·platform SHA-256 checksum을 계속 정확히 대조하므로 version-id 허용 변경이 무결성 검사를 느슨하게 만들지 않는다.
 
@@ -204,16 +214,16 @@ Cloudflare Cache API는 저장 시 쓴 내부 cache key를 사용하므로 공�
 
 ## 8. 현재 Cloudflare 상태와 남은 작업
 
-최신 사전점검에서 올바른 Cloudflare account fingerprint가 정책과 exact 일치했다. 원격 작업 직전 private staging bucket `dwnc-me-public-media-staging`은 객체 0, `r2.dev` 꺼짐, custom domain 0, jurisdiction `default`, location `APAC`, storage class `Standard`였다. 실제 validator inspection도 exact 0·missing 2,758·mismatch 0·orphan 0으로 통과했다. 이어 첫 key에 create-only PUT을 최대 1회 수행했으나 post-HEAD에서 `x-amz-version-id` 부재를 당시 parser가 거부해 admission receipt는 만들어지지 않았다. 해당 객체가 생성됐을 수 있으므로 자동 재시도하지 않았고, 현재 원격 객체 수 재확인이 남아 있다. exact bucket 한정 Object Read & Write uploader와 별도 Object Read validator는 Active·TTL 2026-09-03이고, 실패 uploader v2는 revoked했다. 2026-08-25의 사용 불가능한 기존 두 token만 후속 정리 전까지 Active다. staging media·release Ed25519 private key는 macOS Keychain에만 보관하고 public fingerprint를 policy에 고정했다. 정상 생성 자격증명의 일반 출력·로그 비밀값 노출, clipboard 사용, private key export는 모두 0이다. staging Worker, smoke token, version, activation은 없다.
+최신 사전점검에서 올바른 Cloudflare account fingerprint가 정책과 exact 일치했다. 원격 작업 직전 private staging bucket `dwnc-me-public-media-staging`은 객체 0, `r2.dev` 꺼짐, custom domain 0, jurisdiction `default`, location `APAC`, storage class `Standard`였다. 최초 validator inspection은 exact 0·missing 2,758·mismatch 0·orphan 0으로 통과했다. 이어 첫 key에 create-only PUT을 최대 1회 수행했으나 post-HEAD에서 `x-amz-version-id` 부재를 당시 parser가 거부해 admission receipt는 만들어지지 않았다. 호환 commit 뒤 PUT 없이 다시 검사해 해당 객체 1개가 exact이고 missing 2,757·mismatch 0·orphan 0임을 확인했다. 두 번째 읽기 전용 검사 기록 SHA-256은 `27bf50a94fb6166a01201f3fb3a4a2dfc954b3d983e29a47f53ea38cbab31cd3`이다. exact bucket 한정 Object Read & Write uploader와 별도 Object Read validator는 Active·TTL 2026-09-03이고, 실패 uploader v2는 revoked했다. 2026-08-25의 사용 불가능한 기존 두 token만 후속 정리 전까지 Active다. staging media·release Ed25519 private key는 macOS Keychain에만 보관하고 public fingerprint를 policy에 고정했다. 정상 생성 자격증명의 일반 출력·로그 비밀값 노출, clipboard 사용, private key export는 모두 0이다. staging Worker, smoke token, version, activation은 없다.
 
-validator inspection·FD 단일 읽기 안전장치는 commit `7d09f11ad5f0339be1563cc515192ed8da6726db`·tree `3e6c020e3201f83f4614a16d0f285643707334ee`로 로컬 Git에 기록했고 push는 0이다. 현재 S3 version-id 호환 보강과 이 상태 기록은 다음 로컬 commit 전이다.
+S3 version-id 호환 보강은 commit `159550239419ecdb7fad22910d1da3bba4518e38`·tree `8857f6dd50843afd37d681b5314d6e41080f11df`로 로컬 Git에 기록했고 push는 0이다. 단일 객체 validator-only HEAD+streaming full-GET 명령과 이 상태 기록은 다음 로컬 commit 전이다.
 
-현재 최종 manifest는 2,758개·2,346,220,246바이트·SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`이고 로컬·source-only·build·Worker 회귀를 통과했다. 실제 최초 validator inspection은 exact 0·missing 2,758·mismatch 0·orphan 0으로 통과했고 기록 SHA-256은 `d058fce27c6a9114751fcbf5f2ba67f2dda9b8f385ad1d733c2864c847e4e263`이다. 첫 uploader 실행은 PUT 최대 1회 뒤 post-HEAD parser 단계에서 끝났으며 재시도·overwrite·DELETE는 0이다. 정리 전 2,889개는 역사 기준선일 뿐 현재 원격 작업 기준이 아니다.
+현재 최종 manifest는 2,758개·2,346,220,246바이트·SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`이고 로컬·source-only·build·Worker 회귀를 통과했다. 최초 빈-bucket 검사 기록 SHA-256은 `d058fce27c6a9114751fcbf5f2ba67f2dda9b8f385ad1d733c2864c847e4e263`, 현재 exact 1·missing 2,757 검사 기록 SHA-256은 `27bf50a94fb6166a01201f3fb3a4a2dfc954b3d983e29a47f53ea38cbab31cd3`이다. 첫 uploader 실행의 PUT은 최대 1회였고 재시도·overwrite·DELETE는 0이다. 해당 객체 full GET/SHA-256과 단일 객체 validation receipt는 아직 없다. 정리 전 2,889개는 역사 기준선일 뿐 현재 원격 작업 기준이 아니다.
 
 다음은 현재 수행하지 않았다.
 
-- parser 보강 commit 뒤 PUT 없이 validator-only inspection으로 첫 객체의 실제 존재·metadata 재확인
-- staging 단일 객체 admission 완료, final manifest 객체 create-only upload·원격 full verification
+- 단일 객체 validator-only 명령을 commit한 뒤 HEAD exact인 첫 객체를 PUT 없이 full GET/SHA-256 검증
+- staging 단일 객체 validation receipt 완료, final manifest 객체 create-only upload·원격 full verification
 - 새 자격증명 작동 확인 뒤 2026-08-25의 사용 불가능한 Active token 두 개 정리
 - production receipt의 보호 환경 full-GET/SHA 감사·서명과 account/public-key fingerprint 확정
 - staging·production bucket의 `r2.dev` 비활성·custom domain 0 control-plane 감사 증거 확정

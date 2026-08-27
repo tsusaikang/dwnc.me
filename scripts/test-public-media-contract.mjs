@@ -95,8 +95,32 @@ assert.deepEqual({
     '--receipt-output=/approved/staging-r2-inspection.json',
   ],
 });
+const oneObjectValidation = buildR2RunnerInvocation('staging-validate-one', [
+  `--key=${tracked.entries[0].key}`,
+  `--expected-manifest-sha256=${tracked.manifestSha256}`,
+  `--expected-git-sha=${'a'.repeat(40)}`,
+  '--receipt-output=/approved/staging-r2-one-object.json',
+]);
+assert.deepEqual({
+  script: oneObjectValidation.script,
+  environment: oneObjectValidation.environment,
+  role: oneObjectValidation.role,
+  allowApply: oneObjectValidation.allowApply,
+  args: oneObjectValidation.args,
+}, {
+  script: 'scripts/validate-public-media-r2-staging-object.mjs',
+  environment: 'staging',
+  role: 'validator',
+  allowApply: false,
+  args: [
+    `--key=${tracked.entries[0].key}`,
+    `--expected-manifest-sha256=${tracked.manifestSha256}`,
+    `--expected-git-sha=${'a'.repeat(40)}`,
+    '--receipt-output=/approved/staging-r2-one-object.json',
+  ],
+});
 assert.equal(assertR2RunnerCredentialEnvironment({ PATH: '/safe/bin' }), true);
-assertions += 6;
+assertions += 7;
 throwsCode(() => buildR2RunnerInvocation('staging-sync', ['--environment=production']),
   'MEDIA_E_R2_RUNNER_TARGET');
 throwsCode(() => buildR2RunnerInvocation('staging-sync', ['--environment=staging']),
@@ -121,15 +145,33 @@ throwsCode(() => buildR2RunnerInvocation('staging-inspect', ['--overwrite']),
 throwsCode(() => buildR2RunnerInvocation('staging-inspect', [
   '--concurrency=4', '--concurrency=8',
 ]), 'MEDIA_E_R2_RUNNER_ARGUMENT');
+throwsCode(() => buildR2RunnerInvocation('staging-validate-one', ['--apply']),
+  'MEDIA_E_R2_RUNNER_APPLY');
+throwsCode(() => buildR2RunnerInvocation('staging-validate-one', ['--environment=production']),
+  'MEDIA_E_R2_RUNNER_TARGET');
+throwsCode(() => buildR2RunnerInvocation('staging-validate-one', ['--role=uploader']),
+  'MEDIA_E_R2_RUNNER_ARGUMENT');
+throwsCode(() => buildR2RunnerInvocation('staging-validate-one', ['--delete']),
+  'MEDIA_E_R2_RUNNER_ARGUMENT');
+throwsCode(() => buildR2RunnerInvocation('staging-validate-one', ['--overwrite']),
+  'MEDIA_E_R2_RUNNER_ARGUMENT');
+throwsCode(() => buildR2RunnerInvocation('staging-validate-one', [
+  `--key=${tracked.entries[0].key}`, `--key=${tracked.entries[0].key}`,
+]), 'MEDIA_E_R2_RUNNER_ARGUMENT');
 throwsCode(() => assertR2RunnerCredentialEnvironment({ R2_CREDENTIALS_FD: '3' }),
   'MEDIA_E_R2_RUNNER_CREDENTIAL_AMBIGUOUS');
 throwsCode(() => assertR2RunnerCredentialEnvironment({
   R2_ACCOUNT_ID: 'a'.repeat(32),
 }), 'MEDIA_E_R2_RUNNER_CREDENTIAL_AMBIGUOUS');
+throwsCode(() => assertR2RunnerCredentialEnvironment({
+  R2_RUNNER_ROLE: 'validator',
+}), 'MEDIA_E_R2_RUNNER_CREDENTIAL_AMBIGUOUS');
 const packageJson = JSON.parse(await readFile(path.join(ROOT, 'package.json'), 'utf8'));
 assert.equal(packageJson.scripts['media:r2:staging:inspect:secure'],
   'node scripts/run-with-r2-credentials.mjs --command=staging-inspect --');
-assertions += 1;
+assert.equal(packageJson.scripts['media:r2:staging:validate-one:secure'],
+  'node scripts/run-with-r2-credentials.mjs --command=staging-validate-one --');
+assertions += 2;
 const releasePolicy = await loadTrackedPublicMediaReleasePolicy(ROOT);
 assert.equal(releasePolicy.production.bucket, 'dwnc-me-public-media-production');
 assert.equal(releasePolicy.staging.bucket, 'dwnc-me-public-media-staging');

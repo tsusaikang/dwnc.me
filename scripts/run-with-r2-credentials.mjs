@@ -68,6 +68,8 @@ try {
     env: sanitizedEnvironment(process.env, {
       ...passthrough,
       R2_CREDENTIALS_FD: '3',
+      R2_RUNNER_ENVIRONMENT: selected.environment,
+      R2_RUNNER_ROLE: selected.role,
       ...(selected.smokeToken ? { CLOUDFLARE_STAGING_SMOKE_TOKEN_FD: '4' } : {}),
     }),
     stdio,

@@ -23,6 +23,16 @@ const COMMANDS = Object.freeze({
       '--concurrency', '--expected-manifest-sha256', '--receipt-output',
     ]),
   }),
+  'staging-validate-one': Object.freeze({
+    script: 'scripts/validate-public-media-r2-staging-object.mjs',
+    environment: 'staging',
+    role: 'validator',
+    injectEnvironment: false,
+    allowApply: false,
+    allowedForwardedNames: Object.freeze([
+      '--key', '--expected-manifest-sha256', '--expected-git-sha', '--receipt-output',
+    ]),
+  }),
   'staging-audit-full': Object.freeze({
     script: 'scripts/audit-public-media-r2-full.mjs',
     environment: 'staging',
@@ -56,7 +66,7 @@ const COMMANDS = Object.freeze({
 
 const AMBIGUOUS_CREDENTIAL_ENVIRONMENT_NAMES = Object.freeze([
   'R2_ACCOUNT_ID', 'R2_BUCKET_NAME', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY',
-  'R2_CREDENTIALS_FD',
+  'R2_CREDENTIALS_FD', 'R2_RUNNER_ENVIRONMENT', 'R2_RUNNER_ROLE',
 ]);
 
 export function assertR2RunnerCredentialEnvironment(environment = {}) {

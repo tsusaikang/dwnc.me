@@ -303,6 +303,7 @@ try {
 
   const entrypoints = [
     'scripts/inspect-public-media-r2.mjs',
+    'scripts/validate-public-media-r2-staging-object.mjs',
     'scripts/sync-public-media-r2.mjs',
     'scripts/admit-public-media-r2-staging-object.mjs',
     'scripts/audit-public-media-r2-full.mjs',

@@ -318,7 +318,17 @@ export class R2S3Client {
     this.delay = delay;
     this.maxAttempts = maxAttempts;
     this.timeoutMilliseconds = timeoutMilliseconds;
+    this.requestCounts = new Map();
     signR2S3Request({ ...this.config, method: 'HEAD', now: this.now() });
+  }
+
+  requestMethodCounts() {
+    return Object.freeze({
+      HEAD: this.requestCounts.get('HEAD') ?? 0,
+      GET: this.requestCounts.get('GET') ?? 0,
+      PUT: this.requestCounts.get('PUT') ?? 0,
+      DELETE: this.requestCounts.get('DELETE') ?? 0,
+    });
   }
 
   async request({ method, key = '', query = [], headers = {}, body = undefined, payloadSha256 = sha256Hex('') }) {
@@ -330,6 +340,7 @@ export class R2S3Client {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort('MEDIA_E_R2_TIMEOUT'), this.timeoutMilliseconds);
       try {
+        this.requestCounts.set(method, (this.requestCounts.get(method) ?? 0) + 1);
         const response = await this.fetchImpl(signed.url, {
           method,
           headers: signed.headers,
@@ -392,14 +403,37 @@ export class R2S3Client {
     });
     if (response.status === 404) return null;
     if (response.status !== 200) fail('MEDIA_E_R2_GET', { status: response.status });
+    if (response.headers.get('content-range') !== null) fail('MEDIA_E_R2_GET_PARTIAL');
     const metadata = parseR2Head(response, key);
-    let bytes;
-    try { bytes = Buffer.from(await response.arrayBuffer()); }
-    catch { fail('MEDIA_E_R2_GET_BODY'); }
+    const digest = createHash('sha256');
+    let bodyBytes = 0;
+    const reader = response.body?.getReader();
+    if (!reader) fail('MEDIA_E_R2_GET_BODY');
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!(value instanceof Uint8Array) || value.byteLength === 0) {
+          fail('MEDIA_E_R2_GET_BODY');
+        }
+        bodyBytes += value.byteLength;
+        if (!Number.isSafeInteger(bodyBytes) || bodyBytes > metadata.size) {
+          await reader.cancel().catch(() => undefined);
+          fail('MEDIA_E_R2_GET_BODY');
+        }
+        digest.update(value);
+      }
+    } catch (error) {
+      if (error instanceof R2S3Error) throw error;
+      fail('MEDIA_E_R2_GET_BODY');
+    } finally {
+      reader.releaseLock();
+    }
+    if (bodyBytes !== metadata.size) fail('MEDIA_E_R2_GET_BODY');
     return {
       ...metadata,
-      bodyBytes: bytes.length,
-      bodySha256: sha256Hex(bytes),
+      bodyBytes,
+      bodySha256: digest.digest('hex'),
     };
   }
 
