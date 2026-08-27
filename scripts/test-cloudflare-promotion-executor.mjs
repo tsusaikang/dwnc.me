@@ -9,10 +9,13 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { createPreuploadArtifact } from './lib/cloudflare-artifact.mjs';
 import {
+  accountWorkersDevSubdomainRequestSha256,
   bootstrapConfigSha256,
   bootstrapDenyWorkerSha256,
+  canonicalAccountWorkersDevSubdomainEvidencePayload,
   canonicalBootstrapAuthorizationPayload,
   canonicalServiceExistenceEvidencePayload,
+  EXPECTED_ACCOUNT_WORKERS_DEV_SUBDOMAIN,
   serviceExistenceRequestSha256,
 } from './lib/cloudflare-bootstrap.mjs';
 import {
@@ -170,6 +173,8 @@ const file = '.fake-wrangler-state.json';
 const state = JSON.parse(readFileSync(file, 'utf8'));
 const args = process.argv.slice(2);
 if (args[0] === 'deployments' && args[1] === 'status') {
+  state.deploymentStatusCalls = (state.deploymentStatusCalls ?? 0) + 1;
+  writeFileSync(file, JSON.stringify(state));
   process.stdout.write(JSON.stringify({ id: state.deploymentId, versions: [{ version_id: state.currentVersionId, percentage: 100 }] }));
   process.exit(0);
 }
@@ -488,6 +493,8 @@ try {
 
   const bootstrap = await makeFixture('bootstrap', 'commit');
   const bootstrapCreatedVersionId = '92345678-1234-4123-8123-123456789abc';
+  const bootstrapObservedAt = new Date(Date.now() - 10_000).toISOString();
+  const bootstrapRequestStartedAt = new Date(Date.parse(bootstrapObservedAt) - 1).toISOString();
   const bootstrapEvidence = {
     schemaVersion: 1,
     contract: 'dwnc-cloudflare-service-existence-v1',
@@ -497,11 +504,31 @@ try {
     exists: false,
     httpStatus: 404,
     rawEvidenceSha256: sha256Hex('service-absent'),
-    observedAt: new Date(Date.now() - 10_000).toISOString(),
+    requestStartedAt: bootstrapRequestStartedAt,
+    requestCompletedAt: bootstrapObservedAt,
+    observedAt: bootstrapObservedAt,
     expiresAt: new Date(Date.now() + 4 * 60 * 1000).toISOString(),
   };
   const bootstrapEvidencePaths = await writeSigned(bootstrap.secrets, 'bootstrap-existence',
     bootstrapEvidence, canonicalServiceExistenceEvidencePayload,
+    bootstrap.privateKey, bootstrap.publicKeyPem);
+  const bootstrapAccountSubdomainEvidence = {
+    schemaVersion: 1,
+    contract: 'dwnc-cloudflare-account-workers-dev-subdomain-v1',
+    environment: 'production',
+    workerName: 'dwnc-me',
+    accountIdSha256,
+    accountSubdomain: EXPECTED_ACCOUNT_WORKERS_DEV_SUBDOMAIN,
+    origin: 'https://dwnc-me.dwnc.workers.dev',
+    rawEvidenceSha256: sha256Hex('account-subdomain-dwnc'),
+    requestStartedAt: bootstrapRequestStartedAt,
+    requestCompletedAt: bootstrapObservedAt,
+    observedAt: bootstrapObservedAt,
+    expiresAt: new Date(Date.now() + 4 * 60 * 1000).toISOString(),
+  };
+  const bootstrapAccountSubdomainPaths = await writeSigned(
+    bootstrap.secrets, 'bootstrap-account-subdomain', bootstrapAccountSubdomainEvidence,
+    canonicalAccountWorkersDevSubdomainEvidencePayload,
     bootstrap.privateKey, bootstrap.publicKeyPem);
   const bootstrapAuthorization = {
     schemaVersion: 1,
@@ -509,15 +536,23 @@ try {
     environment: 'production',
     workerName: 'dwnc-me',
     accountIdSha256,
+    expectedAccountSubdomain: EXPECTED_ACCOUNT_WORKERS_DEV_SUBDOMAIN,
     sourceGitSha: bootstrap.artifactResult.receipt.sourceGitSha,
     denyWorkerSha256: bootstrapDenyWorkerSha256(),
     bootstrapConfigSha256: bootstrapConfigSha256('production'),
     serviceEvidenceSha256: sha256Hex(canonicalServiceExistenceEvidencePayload(bootstrapEvidence)),
+    accountSubdomainEvidenceSha256: sha256Hex(
+      canonicalAccountWorkersDevSubdomainEvidencePayload(bootstrapAccountSubdomainEvidence)),
     freshAbsenceRequired: true,
     freshAbsenceRequestSha256: serviceExistenceRequestSha256({
       environment: 'production', accountIdSha256,
     }),
+    freshAccountSubdomainRequired: true,
+    freshAccountSubdomainRequestSha256: accountWorkersDevSubdomainRequestSha256({
+      environment: 'production', accountIdSha256,
+    }),
     maxFreshAbsenceAgeSeconds: 15,
+    maxFreshAccountSubdomainAgeSeconds: 15,
     buildUuid: 'a2345678-1234-4123-8123-123456789abc',
     nonceSha256: sha256Hex('bootstrap-executor-nonce'),
     createdAt: new Date(Date.now() - 10_000).toISOString(),
@@ -532,39 +567,48 @@ try {
     mode: 'commit', deploymentId, currentVersionId: bootstrapVersionId,
     targetVersionId: bootstrapCreatedVersionId,
   })}\n`);
-  const bootstrapCandidate = path.join(bootstrap.output, 'bootstrap-candidate.json');
-  const bootstrapFreshCapture = path.join(bootstrap.output, 'bootstrap-fresh-absence.json');
-  const mockFetchModule = path.join(bootstrap.root, 'mock-service-existence-fetch.mjs');
-  await writeFile(mockFetchModule, `globalThis.fetch = async () => new Response(JSON.stringify({
-  success: false, result: null, errors: [{ code: 10007, message: "not found" }]
-}), { status: 404 });\n`);
+  const mockFetchModule = path.join(bootstrap.root, 'mock-bootstrap-fetch.mjs');
+  await writeFile(mockFetchModule,
+    `globalThis.fetch = async () => { throw new Error('BOOTSTRAP_FETCH_MUST_NOT_RUN'); };\n`);
   const bootstrapToken = 'synthetic_bootstrap_token_1234567890';
-  const bootstrapRun = await execWithAnonymousToken(
+  const blockedOutput = path.join(bootstrap.output, 'must-remain-absent.json');
+  await assert.rejects(() => execWithAnonymousToken(
     process.execPath, [bootstrapExecutor, '--environment=production'], {
-    cwd: bootstrap.root,
-    env: {
-      ...process.env,
-      NODE_OPTIONS: `--import=${mockFetchModule}`,
-      CLOUDFLARE_ACCOUNT_ID: accountId,
-      CLOUDFLARE_DENY_BOOTSTRAP_APPROVED: 'production:dwnc-me:external-surface-0',
-      CLOUDFLARE_SERVICE_EXISTENCE_RECEIPT_PATH: bootstrapEvidencePaths.receiptPath,
-      CLOUDFLARE_SERVICE_EXISTENCE_SIGNATURE_PATH: bootstrapEvidencePaths.signaturePath,
-      CLOUDFLARE_SERVICE_EXISTENCE_PUBLIC_KEY_PATH: bootstrapEvidencePaths.publicKeyPath,
-      CLOUDFLARE_BOOTSTRAP_AUTHORIZATION_RECEIPT_PATH: bootstrapAuthorizationPaths.receiptPath,
-      CLOUDFLARE_BOOTSTRAP_AUTHORIZATION_SIGNATURE_PATH: bootstrapAuthorizationPaths.signaturePath,
-      CLOUDFLARE_BOOTSTRAP_AUTHORIZATION_PUBLIC_KEY_PATH: bootstrapAuthorizationPaths.publicKeyPath,
-      CLOUDFLARE_BOOTSTRAP_ATTEMPT_DIR: bootstrapAttempts,
-      CLOUDFLARE_BOOTSTRAP_NDJSON_PATH: path.join(bootstrap.output, 'bootstrap.ndjson'),
-      CLOUDFLARE_BOOTSTRAP_ATTESTATION_CANDIDATE_PATH: bootstrapCandidate,
-      CLOUDFLARE_BOOTSTRAP_FRESH_ABSENCE_CAPTURE_PATH: bootstrapFreshCapture,
+      cwd: bootstrap.root,
+      env: {
+        ...process.env,
+        NODE_OPTIONS: `--import=${mockFetchModule}`,
+        CLOUDFLARE_ACCOUNT_ID: accountId,
+        CLOUDFLARE_DENY_BOOTSTRAP_APPROVED: 'production:dwnc-me:workers-dev-disabled',
+        CLOUDFLARE_SERVICE_EXISTENCE_RECEIPT_PATH: bootstrapEvidencePaths.receiptPath,
+        CLOUDFLARE_SERVICE_EXISTENCE_SIGNATURE_PATH: bootstrapEvidencePaths.signaturePath,
+        CLOUDFLARE_SERVICE_EXISTENCE_PUBLIC_KEY_PATH: bootstrapEvidencePaths.publicKeyPath,
+        CLOUDFLARE_ACCOUNT_SUBDOMAIN_RECEIPT_PATH: bootstrapAccountSubdomainPaths.receiptPath,
+        CLOUDFLARE_ACCOUNT_SUBDOMAIN_SIGNATURE_PATH: bootstrapAccountSubdomainPaths.signaturePath,
+        CLOUDFLARE_ACCOUNT_SUBDOMAIN_PUBLIC_KEY_PATH: bootstrapAccountSubdomainPaths.publicKeyPath,
+        CLOUDFLARE_BOOTSTRAP_AUTHORIZATION_RECEIPT_PATH: bootstrapAuthorizationPaths.receiptPath,
+        CLOUDFLARE_BOOTSTRAP_AUTHORIZATION_SIGNATURE_PATH: bootstrapAuthorizationPaths.signaturePath,
+        CLOUDFLARE_BOOTSTRAP_AUTHORIZATION_PUBLIC_KEY_PATH: bootstrapAuthorizationPaths.publicKeyPath,
+        CLOUDFLARE_BOOTSTRAP_ATTEMPT_DIR: bootstrapAttempts,
+        CLOUDFLARE_BOOTSTRAP_NDJSON_PATH: blockedOutput,
+        CLOUDFLARE_BOOTSTRAP_ATTESTATION_CANDIDATE_PATH: blockedOutput,
+        CLOUDFLARE_BOOTSTRAP_FRESH_ABSENCE_CAPTURE_PATH: blockedOutput,
+        CLOUDFLARE_BOOTSTRAP_FRESH_ACCOUNT_SUBDOMAIN_CAPTURE_PATH: blockedOutput,
+        CLOUDFLARE_BOOTSTRAP_POST_STATE_CAPTURE_PATH: blockedOutput,
+      },
+      token: bootstrapToken,
+      maxBuffer: 2 * 1024 * 1024,
     },
-    token: bootstrapToken,
-    maxBuffer: 2 * 1024 * 1024,
-  });
-  equal(`${bootstrapRun.stdout}\n${bootstrapRun.stderr}`.includes(bootstrapToken), false);
-  equal(JSON.parse(bootstrapRun.stdout).externalSurfaceCount, 0);
-  equal(JSON.parse(await readFile(bootstrapCandidate, 'utf8')).versionId, bootstrapCreatedVersionId);
-
+  ), (error) => error?.stderr?.includes('CLOUDFLARE_E_BOOTSTRAP_STATUS_RECOVERY_REQUIRED')
+    && !error.stderr.includes(bootstrapToken)
+    && !error.stderr.includes('BOOTSTRAP_FETCH_MUST_NOT_RUN'));
+  assertions += 1;
+  equal(await readdir(bootstrapAttempts), []);
+  equal(await readFile(blockedOutput).then(() => true).catch(() => false), false);
+  const blockedBootstrapState = JSON.parse(await readFile(
+    path.join(bootstrap.root, '.fake-wrangler-state.json'), 'utf8'));
+  equal(blockedBootstrapState.currentVersionId, bootstrapVersionId);
+  equal(blockedBootstrapState.targetVersionId, bootstrapCreatedVersionId);
   const staging = await makeFixture('staging', 'commit');
   const stagingPreviousVersionId = '52345678-1234-4123-8123-123456789abc';
   const stagingVersionId = '62345678-1234-4123-8123-123456789abc';
@@ -809,7 +853,7 @@ try {
   console.log(JSON.stringify({
     suite: 'cloudflare-production-promotion-executor', assertions,
     fakeWranglerProcesses: 18,
-    denyBootstrapVerified: true,
+    denyBootstrapBlockedPendingRecovery: true,
     stagingSecretUploadVerified: true,
     stagingActivationCommitted: true,
     stagingAmbiguousRecoveryCommitted: true,

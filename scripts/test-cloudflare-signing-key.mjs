@@ -174,8 +174,9 @@ try {
 
   const releaseContracts = [
     'dwnc-cloudflare-service-existence-v1',
+    'dwnc-cloudflare-account-workers-dev-subdomain-v1',
     'dwnc-cloudflare-bootstrap-authorization-v1',
-    'dwnc-cloudflare-deny-bootstrap-attestation-v1',
+    'dwnc-cloudflare-deny-bootstrap-attestation-v2',
     'dwnc-cloudflare-upload-authorization-v1',
     'dwnc-cloudflare-staging-secret-authorization-v1',
     'dwnc-cloudflare-version-attestation-v1',
@@ -190,7 +191,9 @@ try {
     'dwnc-cloudflare-r2-private-exposure-v1',
   ];
   for (const [index, contract] of releaseContracts.entries()) {
-    const payloadObject = { schemaVersion: 1, contract, environment: 'staging' };
+    const payloadObject = {
+      schemaVersion: Number(/-v(\d+)$/u.exec(contract)?.[1]), contract, environment: 'staging',
+    };
     const candidatePath = path.join(directory, `candidate-${index}.json`);
     await writeCanonicalEvidenceCreateOnly(candidatePath, payloadObject);
     const stored = await readSecureFile(candidatePath);

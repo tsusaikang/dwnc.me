@@ -18,8 +18,9 @@ const ROLE_CONTRACTS = Object.freeze({
   'media-receipt': new Set(['dwnc-public-media-r2-receipt-v1']),
   'release-control': new Set([
     'dwnc-cloudflare-service-existence-v1',
+    'dwnc-cloudflare-account-workers-dev-subdomain-v1',
     'dwnc-cloudflare-bootstrap-authorization-v1',
-    'dwnc-cloudflare-deny-bootstrap-attestation-v1',
+    'dwnc-cloudflare-deny-bootstrap-attestation-v2',
     'dwnc-cloudflare-upload-authorization-v1',
     'dwnc-cloudflare-staging-secret-authorization-v1',
     'dwnc-cloudflare-version-attestation-v1',
@@ -395,8 +396,10 @@ export function parseCanonicalEvidenceStorage(storedBytes) {
   let payload;
   try { payload = JSON.parse(canonicalBytes.toString('utf8')); }
   catch { fail('CLOUDFLARE_E_SIGNING_CANONICAL'); }
+  const contractVersion = /-v(\d+)$/u.exec(payload?.contract ?? '');
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)
-    || payload.schemaVersion !== 1 || typeof payload.contract !== 'string'
+    || ![1, 2].includes(payload.schemaVersion) || typeof payload.contract !== 'string'
+    || Number(contractVersion?.[1]) !== payload.schemaVersion
     || canonicalJson(payload) !== canonicalBytes.toString('utf8')) {
     fail('CLOUDFLARE_E_SIGNING_CANONICAL');
   }
