@@ -229,7 +229,7 @@ function validateOpenAtMetadata(value) {
 }
 
 async function runOpenAt(context, operation, maximumBytes, input = null) {
-  if (!['absent', 'read', 'create'].includes(operation)
+  if (!['absent', 'read', 'read-partial', 'create'].includes(operation)
     || !Number.isSafeInteger(maximumBytes) || maximumBytes < 1
     || maximumBytes > 16 * 1024 * 1024
     || input !== null && !Buffer.isBuffer(input)) fail('CLOUDFLARE_E_SIGNING_FILE');
@@ -331,16 +331,20 @@ export async function writeSecureCreateOnly(file, bytes, { hooks = {} } = {}) {
   }
 }
 
-export async function readSecureFile(file, maximumBytes = 16 * 1024 * 1024, { hooks = {} } = {}) {
+export async function readSecureFile(file, maximumBytes = 16 * 1024 * 1024, {
+  hooks = {}, allowEmpty = false,
+} = {}) {
+  if (typeof allowEmpty !== 'boolean') fail('CLOUDFLARE_E_SIGNING_FILE');
+  const operation = allowEmpty ? 'read-partial' : 'read';
   const parent = await openSecureParent(file);
   parent.file = file;
   try {
     await hooks.afterParentOpened?.({ file, parent: parent.parent });
     await assertSecureParentUnchanged(parent);
-    const first = await runOpenAt(parent, 'read', maximumBytes);
+    const first = await runOpenAt(parent, operation, maximumBytes);
     await hooks.afterLeafOpened?.({ file, parent: parent.parent });
     let second;
-    try { second = await runOpenAt(parent, 'read', maximumBytes); }
+    try { second = await runOpenAt(parent, operation, maximumBytes); }
     catch (error) {
       first.bytes.fill(0);
       if (error?.message?.startsWith('CLOUDFLARE_E_SIGNING_FILE')) {

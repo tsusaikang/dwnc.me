@@ -138,7 +138,7 @@ def main():
     if len(sys.argv) != 4:
         fail(FILE_ERROR)
     operation, leaf, maximum_raw = sys.argv[1:]
-    if operation not in ("absent", "read", "create") or not leaf or leaf in (".", ".."):
+    if operation not in ("absent", "read", "read-partial", "create") or not leaf or leaf in (".", ".."):
         fail(FILE_ERROR)
     if "/" in leaf or "\\" in leaf or "\x00" in leaf or len(os.fsencode(leaf)) > 255:
         fail(FILE_ERROR)
@@ -171,16 +171,17 @@ def main():
             fail(FILE_ERROR)
         fail(FILE_EXISTS)
 
-    if operation == "read":
+    if operation in ("read", "read-partial"):
         fd = open_leaf(leaf, os.O_RDONLY | nofollow | cloexec)
         try:
             before = os.fstat(fd)
-            assert_leaf(before, maximum)
+            allow_empty = operation == "read-partial"
+            assert_leaf(before, maximum, allow_empty=allow_empty)
             data = read_all(fd, before.st_size)
             after = os.fstat(fd)
             linked = linked_leaf(leaf)
-            assert_leaf(after, maximum)
-            assert_leaf(linked, maximum)
+            assert_leaf(after, maximum, allow_empty=allow_empty)
+            assert_leaf(linked, maximum, allow_empty=allow_empty)
             assert_same(before, after)
             assert_same(before, linked)
             assert_same(directory_before, os.fstat(3))

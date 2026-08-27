@@ -8,10 +8,15 @@ import {
   sanitizedEnvironment,
   writeAnonymousInheritedInput,
 } from './lib/cloudflare-process.mjs';
+import {
+  assertCloudflareAccountTargetOutsideRepository,
+  defaultCloudflareAccountTargetMetadataPath,
+  loadCloudflareAccountTarget,
+  MacOSSingleReadClipboard,
+} from './lib/cloudflare-account-target.mjs';
 import { parseStagingR2ExposureCommand } from './lib/cloudflare-r2-exposure-command.mjs';
 import { assertSecureCreateOnlyDestination } from './lib/cloudflare-signing-key.mjs';
 import { loadTrackedPublicMediaReleasePolicy } from './lib/public-media-manifest.mjs';
-import { MacOSClipboard } from './lib/r2-credential-store.mjs';
 
 const commands = Object.freeze({
   'staging-r2-exposure': {
@@ -40,18 +45,25 @@ const commands = Object.freeze({
 const LEGACY_CONTROL_PLANE_TOKEN_NAMES = Object.freeze([
   'CLOUDFLARE_API_TOKEN', 'CF_API_TOKEN', 'CLOUDFLARE_API_KEY', 'CF_API_KEY',
 ]);
+const FORBIDDEN_PARENT_ACCOUNT_NAMES = Object.freeze([
+  'CLOUDFLARE_ACCOUNT_ID', 'CF_ACCOUNT_ID', 'R2_ACCOUNT_ID',
+  'CLOUDFLARE_ACCOUNT_TARGET_METADATA_PATH',
+]);
 
 export async function runCloudflareReadControlPlane({
   argv = process.argv.slice(2),
   environment = process.env,
   root = process.cwd(),
-  clipboard = new MacOSClipboard(),
+  clipboard = new MacOSSingleReadClipboard(),
   spawnChild = spawn,
   loadPolicy = loadTrackedPublicMediaReleasePolicy,
+  loadAccountTarget = loadCloudflareAccountTarget,
+  accountTargetMetadataPath,
   assertAccount = assertCloudflareAccountTarget,
   assertDestination = assertSecureCreateOnlyDestination,
 } = {}) {
   let apiToken = '';
+  let accountId = '';
   let tokenFrame;
   try {
     const [argument] = argv;
@@ -62,11 +74,23 @@ export async function runCloudflareReadControlPlane({
       || Object.hasOwn(environment, 'CLOUDFLARE_API_TOKEN_FD')) {
       throw new Error('CLOUDFLARE_E_CONTROL_TOKEN_AMBIGUOUS');
     }
+    if (FORBIDDEN_PARENT_ACCOUNT_NAMES.some((name) => Object.hasOwn(environment, name))) {
+      throw new Error('CLOUDFLARE_E_CONTROL_ACCOUNT_AMBIGUOUS');
+    }
     const selected = commands[argument.slice('--command='.length)];
-    const accountId = environment.CLOUDFLARE_ACCOUNT_ID;
-    if (!selected || typeof accountId !== 'string' || !/^[A-Fa-f0-9]{32}$/u.test(accountId)) {
+    if (!selected || typeof root !== 'string' || !path.isAbsolute(root)
+      || path.resolve(root) !== root
+      || accountTargetMetadataPath !== undefined
+        && (typeof accountTargetMetadataPath !== 'string'
+          || !path.isAbsolute(accountTargetMetadataPath)
+          || path.resolve(accountTargetMetadataPath) !== accountTargetMetadataPath)) {
       throw new Error('CLOUDFLARE_E_CONTROL_RUNNER_ARGUMENT');
     }
+    const selectedAccountTargetMetadataPath = accountTargetMetadataPath
+      ?? defaultCloudflareAccountTargetMetadataPath();
+    await assertCloudflareAccountTargetOutsideRepository(
+      selectedAccountTargetMetadataPath, root,
+    );
     const outputEnvironment = {};
     for (const name of selected.outputVariables) {
       const value = environment[name];
@@ -80,6 +104,13 @@ export async function runCloudflareReadControlPlane({
       if (typeof value !== 'string') throw new Error('CLOUDFLARE_E_CONTROL_RUNNER_ARGUMENT');
       outputEnvironment[name] = value;
     }
+    const policy = await loadPolicy(root);
+    const target = policy?.staging;
+    if (target?.environment !== 'staging'
+      || target?.bucket !== 'dwnc-me-public-media-staging'
+      || typeof target?.accountIdSha256 !== 'string') {
+      throw new Error('CLOUDFLARE_E_CONTROL_RUNNER_TARGET');
+    }
     if (argument === '--command=staging-r2-exposure') {
       const parsed = parseStagingR2ExposureCommand({
         argv: selected.args, environment: { ...environment, ...outputEnvironment }, root,
@@ -88,15 +119,16 @@ export async function runCloudflareReadControlPlane({
         assertDestination(parsed.capturePath),
         assertDestination(parsed.evidencePath),
       ]);
-      const policy = await loadPolicy(root);
-      if (policy.staging?.bucket !== 'dwnc-me-public-media-staging') {
-        throw new Error('CLOUDFLARE_E_CONTROL_RUNNER_TARGET');
-      }
-      assertAccount(accountId, policy.staging.accountIdSha256);
     }
+    const loadedAccountTarget = await loadAccountTarget({
+      metadataPath: selectedAccountTargetMetadataPath,
+      expectedAccountIdSha256: target.accountIdSha256,
+    });
+    accountId = loadedAccountTarget?.accountId ?? '';
+    assertAccount(accountId, target.accountIdSha256);
     // Clipboard capability is checked before any attempt to read a token.
     await clipboard.preflight();
-    apiToken = await clipboard.readAndClear();
+    apiToken = await clipboard.readOnceAndClear();
     tokenFrame = encodeCloudflareControlPlaneTokenFrame(apiToken);
     apiToken = '';
     const child = spawnChild(process.execPath, [path.join(root, selected.script), ...selected.args], {
@@ -123,6 +155,7 @@ export async function runCloudflareReadControlPlane({
     if (code !== 0) throw new Error('CLOUDFLARE_E_CONTROL_RUNNER_CHILD');
   } finally {
     apiToken = '';
+    accountId = '';
     tokenFrame?.fill(0);
     await clipboard.clear();
   }

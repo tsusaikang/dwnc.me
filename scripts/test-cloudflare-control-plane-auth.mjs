@@ -19,6 +19,7 @@ const expectedGitCommit = 'c'.repeat(40);
 const expectedGitTree = 'd'.repeat(40);
 const syntheticPolicy = Object.freeze({
   staging: Object.freeze({
+    environment: 'staging',
     bucket: 'dwnc-me-public-media-staging',
     accountIdSha256: cloudflareAccountIdSha256(accountId),
   }),
@@ -42,7 +43,7 @@ class MemoryClipboard {
     this.preflightCount += 1;
     if (this.preflightError !== null) throw new Error(this.preflightError);
   }
-  async readAndClear() {
+  async readOnceAndClear() {
     this.readCount += 1;
     const value = this.value;
     await this.clear();
@@ -75,14 +76,50 @@ const runnerDirectory = await realpath(await mkdtemp(path.join(
 )));
 await chmod(runnerDirectory, 0o700);
 const validRunnerEnvironment = Object.freeze({
-  CLOUDFLARE_ACCOUNT_ID: accountId,
   CLOUDFLARE_R2_EXPOSURE_CAPTURE_PATH: path.join(runnerDirectory, 'r2-exposure-capture.json'),
   CLOUDFLARE_R2_EXPOSURE_EVIDENCE_PATH: path.join(runnerDirectory, 'r2-exposure-evidence.json'),
   CLOUDFLARE_R2_EXPOSURE_EXPECTED_GIT_COMMIT: expectedGitCommit,
   CLOUDFLARE_R2_EXPOSURE_EXPECTED_GIT_TREE: expectedGitTree,
 });
 const loadSyntheticPolicy = async () => syntheticPolicy;
+let accountTargetReadCount = 0;
+const loadSyntheticAccountTarget = async ({ expectedAccountIdSha256 }) => {
+  accountTargetReadCount += 1;
+  equal(expectedAccountIdSha256, syntheticPolicy.staging.accountIdSha256);
+  return {
+    metadata: { accountIdSha256: expectedAccountIdSha256 },
+    accountId,
+  };
+};
+const syntheticAccountTargetMetadataPath = path.join(
+  runnerDirectory, 'staging-cloudflare-account-target.json',
+);
 const unexpectedSpawn = () => { throw new Error('TEST_E_UNEXPECTED_SPAWN'); };
+
+const insideRepositoryClipboard = new MemoryClipboard(apiToken);
+let insideRepositoryPolicyReads = 0;
+let insideRepositoryAccountReads = 0;
+await rejects(() => runCloudflareReadControlPlane({
+  argv: ['--command=staging-r2-exposure'],
+  environment: validRunnerEnvironment,
+  root: process.cwd(),
+  clipboard: insideRepositoryClipboard,
+  spawnChild: unexpectedSpawn,
+  loadPolicy: async () => {
+    insideRepositoryPolicyReads += 1;
+    return syntheticPolicy;
+  },
+  loadAccountTarget: async () => {
+    insideRepositoryAccountReads += 1;
+    return { accountId, metadata: {} };
+  },
+  accountTargetMetadataPath: path.join(process.cwd(), 'synthetic-account-target.json'),
+}), 'CLOUDFLARE_E_ACCOUNT_STORE_LOCATION');
+equal(insideRepositoryPolicyReads, 0);
+equal(insideRepositoryAccountReads, 0);
+equal(insideRepositoryClipboard.preflightCount, 0);
+equal(insideRepositoryClipboard.readCount, 0);
+equal(insideRepositoryClipboard.value, '');
 
 const invalidOutputClipboard = new MemoryClipboard(apiToken);
 await rejects(() => runCloudflareReadControlPlane({
@@ -94,6 +131,8 @@ await rejects(() => runCloudflareReadControlPlane({
   clipboard: invalidOutputClipboard,
   spawnChild: unexpectedSpawn,
   loadPolicy: loadSyntheticPolicy,
+  loadAccountTarget: loadSyntheticAccountTarget,
+  accountTargetMetadataPath: syntheticAccountTargetMetadataPath,
 }), 'CLOUDFLARE_E_CONTROL_RUNNER_ARGUMENT');
 equal(invalidOutputClipboard.preflightCount, 0);
 equal(invalidOutputClipboard.readCount, 0);
@@ -109,6 +148,8 @@ await rejects(() => runCloudflareReadControlPlane({
   clipboard: failedPreflightClipboard,
   spawnChild: unexpectedSpawn,
   loadPolicy: loadSyntheticPolicy,
+  loadAccountTarget: loadSyntheticAccountTarget,
+  accountTargetMetadataPath: syntheticAccountTargetMetadataPath,
 }), 'MEDIA_E_R2_CLIPBOARD_PREFLIGHT');
 equal(failedPreflightClipboard.preflightCount, 1);
 equal(failedPreflightClipboard.readCount, 0);
@@ -117,7 +158,7 @@ equal(failedPreflightClipboard.value, '');
 
 for (const [environmentOverride, expectedCode] of [
   [{ CF_API_TOKEN: apiToken }, 'CLOUDFLARE_E_CONTROL_TOKEN_AMBIGUOUS'],
-  [{ CLOUDFLARE_ACCOUNT_ID: 'b'.repeat(32) }, 'CLOUDFLARE_E_ACCOUNT_TARGET'],
+  [{ CLOUDFLARE_ACCOUNT_ID: 'b'.repeat(32) }, 'CLOUDFLARE_E_CONTROL_ACCOUNT_AMBIGUOUS'],
 ]) {
   const rejectedClipboard = new MemoryClipboard(apiToken);
   await rejects(() => runCloudflareReadControlPlane({
@@ -126,6 +167,8 @@ for (const [environmentOverride, expectedCode] of [
     clipboard: rejectedClipboard,
     spawnChild: unexpectedSpawn,
     loadPolicy: loadSyntheticPolicy,
+    loadAccountTarget: loadSyntheticAccountTarget,
+    accountTargetMetadataPath: syntheticAccountTargetMetadataPath,
   }), expectedCode);
   equal(rejectedClipboard.readCount, 0);
   equal(rejectedClipboard.value, '');
@@ -137,9 +180,24 @@ await rejects(() => runCloudflareReadControlPlane({
   clipboard: wrongPurposeClipboard,
   spawnChild: unexpectedSpawn,
   loadPolicy: loadSyntheticPolicy,
+  loadAccountTarget: loadSyntheticAccountTarget,
+  accountTargetMetadataPath: syntheticAccountTargetMetadataPath,
 }), 'CLOUDFLARE_E_CONTROL_RUNNER_ARGUMENT');
 equal(wrongPurposeClipboard.readCount, 0);
 equal(wrongPurposeClipboard.value, '');
+
+const wrongStoredAccountClipboard = new MemoryClipboard(apiToken);
+await rejects(() => runCloudflareReadControlPlane({
+  argv: ['--command=staging-r2-exposure'],
+  environment: validRunnerEnvironment,
+  clipboard: wrongStoredAccountClipboard,
+  spawnChild: unexpectedSpawn,
+  loadPolicy: loadSyntheticPolicy,
+  loadAccountTarget: async () => ({ accountId: 'b'.repeat(32), metadata: {} }),
+  accountTargetMetadataPath: syntheticAccountTargetMetadataPath,
+}), 'CLOUDFLARE_E_ACCOUNT_TARGET');
+equal(wrongStoredAccountClipboard.readCount, 0);
+equal(wrongStoredAccountClipboard.value, '');
 
 const successfulClipboard = new MemoryClipboard(apiToken);
 const writtenFrameChunks = [];
@@ -160,13 +218,19 @@ await runCloudflareReadControlPlane({
   clipboard: successfulClipboard,
   spawnChild,
   loadPolicy: loadSyntheticPolicy,
+  loadAccountTarget: loadSyntheticAccountTarget,
+  accountTargetMetadataPath: syntheticAccountTargetMetadataPath,
 });
 equal(successfulClipboard.readCount, 1);
 equal(successfulClipboard.value, '');
 equal(spawned.args.some((value) => value.includes(apiToken)), false);
+equal(spawned.args.some((value) => value.includes(accountId)), false);
 equal(Object.values(spawned.options.env).some((value) => value === apiToken), false);
 equal(spawned.options.env.CLOUDFLARE_API_TOKEN_FD, '3');
+equal(spawned.options.env.CLOUDFLARE_ACCOUNT_ID, accountId);
+equal(accountTargetReadCount, 2);
 const capturedFrame = Buffer.concat(writtenFrameChunks);
+equal(capturedFrame.includes(Buffer.from(accountId)), false);
 let capturedReadCount = 0;
 let capturedOffset = 0;
 const capturedCredentials = cloudflareControlPlaneReadCredentials({
