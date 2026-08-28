@@ -34,6 +34,7 @@ import {
 } from './lib/public-media-git.mjs';
 
 const ROOT = process.cwd();
+const OFFLINE_BOUNDARY_SYMBOL = Symbol.for('dwnc.r2-full-audit.offline-boundary.v1');
 installStructuredErrorHandler('media-r2-full-audit');
 
 function parseArguments(argv) {
@@ -194,6 +195,9 @@ await assertExactCleanPublicMediaGit(
 await writeCanonicalEvidenceCreateOnly(
   options.receiptOutput, receipt, canonicalRemoteReceiptPayload,
 );
+const offlineBoundary = globalThis[OFFLINE_BOUNDARY_SYMBOL];
+const fixtureCounters = typeof offlineBoundary?.snapshot === 'function'
+  ? offlineBoundary.snapshot() : null;
 console.log(JSON.stringify({
   validationScope: 'public-media-remote-full-get',
   environment: options.environment,
@@ -207,7 +211,7 @@ console.log(JSON.stringify({
   receiptWritten: true,
   receiptSigned: false,
   bucketExposureBound: true,
-  liveNetworkCallsInFixture: 0,
+  ...(fixtureCounters === null ? {} : { offlineBoundary: fixtureCounters }),
 }, null, 2));
 exposureStored?.fill(0);
 exposureCanonicalBytes?.fill(0);

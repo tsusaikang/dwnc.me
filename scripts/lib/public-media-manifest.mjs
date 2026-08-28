@@ -1,7 +1,6 @@
 import { createHash, createPublicKey, timingSafeEqual, verify as verifySignature } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { loadProjectionBackedPublicContent } from './public-content-preflight.mjs';
 
 export const PUBLIC_MEDIA_SCHEMA_VERSION = 1;
 export const PUBLIC_MEDIA_CONTRACT = 'dwnc-public-media-r2-v1';
@@ -12,6 +11,7 @@ export const PUBLIC_MEDIA_RELEASE_POLICY_PATH = 'src/data/public-media-release-p
 export const PUBLIC_MEDIA_BASELINE_OBJECTS = 2_758;
 export const PUBLIC_MEDIA_BASELINE_BYTES = 2_346_220_246;
 export const PUBLIC_MEDIA_BASELINE_SHA256 = '61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532';
+export const PUBLIC_MEDIA_BASELINE_FULL_OBJECT_SET_SHA256 = '9345d2f06c8bd7cda457a9d4335cdc2213e71dcd30bb9e11e6f3e1f8e11ae467';
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
 const MIME_PATTERN = /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/u;
@@ -135,7 +135,9 @@ export function validatePublicMediaManifest(manifest, {
     || manifest.manifestSha256 !== digest) fail('MEDIA_E_MANIFEST_SUMMARY');
   if (enforceBaseline && (manifest.objectCount !== PUBLIC_MEDIA_BASELINE_OBJECTS
     || manifest.totalBytes !== PUBLIC_MEDIA_BASELINE_BYTES
-    || digest !== expectedManifestSha256)) fail('MEDIA_E_MANIFEST_BASELINE');
+    || digest !== expectedManifestSha256
+    || publicMediaFullGetObjectSetSha256(manifest.entries)
+      !== PUBLIC_MEDIA_BASELINE_FULL_OBJECT_SET_SHA256)) fail('MEDIA_E_MANIFEST_BASELINE');
   return { objectCount: manifest.objectCount, totalBytes, manifestSha256: digest };
 }
 
@@ -186,6 +188,7 @@ export async function loadPublicProjection(root) {
 }
 
 export async function collectProjectedPublicMedia(root, { assetMode = 'manifest' } = {}) {
+  const { loadProjectionBackedPublicContent } = await import('./public-content-preflight.mjs');
   const projection = await loadPublicProjection(root);
   const contentRows = await loadProjectionBackedPublicContent(root, projection, { assetMode });
   const assetEvidence = contentRows.flatMap((row) => row.assetEvidence);

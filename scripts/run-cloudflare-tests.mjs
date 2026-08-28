@@ -10,6 +10,7 @@ const TESTS = Object.freeze([
   'test-public-media-contract.mjs',
   'test-r2-client-entrypoints.mjs',
   'test-r2-bulk-hardening.mjs',
+  'test-r2-full-audit-entrypoint.mjs',
   'test-r2-one-object-validator.mjs',
   'test-r2-credential-store.mjs',
   'test-cloudflare-account-target.mjs',

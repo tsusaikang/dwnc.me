@@ -98,6 +98,7 @@
     "media:r2:staging:sync:secure": "node scripts/run-with-r2-credentials.mjs --command=staging-sync --",
     "media:r2:staging:audit:full:secure": "node scripts/run-with-r2-credentials.mjs --command=staging-audit-full --",
     "media:r2:hardening:test": "node scripts/test-r2-bulk-hardening.mjs",
+    "media:r2:staging:audit:full:offline:test": "node scripts/test-r2-full-audit-entrypoint.mjs",
     "media:r2:audit:full": "node scripts/run-with-r2-credentials.mjs --command=staging-audit-full --",
     "media:validate:remote": "node scripts/validate-public-media-remote.mjs",
     "runtime:check": "node scripts/check-runtime.mjs",

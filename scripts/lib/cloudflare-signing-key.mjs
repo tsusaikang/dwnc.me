@@ -244,7 +244,7 @@ async function runOpenAt(context, operation, maximumBytes, input = null) {
     || maximumBytes > 16 * 1024 * 1024
     || input !== null && !Buffer.isBuffer(input)) fail('CLOUDFLARE_E_SIGNING_FILE');
   const child = spawn(OPENAT_PYTHON, [
-    OPENAT_HELPER, operation, path.basename(context.file),
+    '-I', '-S', '-B', OPENAT_HELPER, operation, path.basename(context.file),
     String(maximumBytes),
   ], {
     env: {

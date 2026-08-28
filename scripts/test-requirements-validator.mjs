@@ -11,9 +11,9 @@ const sourceArchive = fs.readFileSync(
   path.join(projectRoot, 'docs', 'REQUIREMENTS_ARCHIVE.md'),
   'utf8',
 );
+const sourceProjectState = fs.readFileSync(path.join(projectRoot, 'PROJECT_STATE.md'), 'utf8');
 
 const linkedFiles = [
-  'PROJECT_STATE.md',
   'docs/MEDIA_SERVING_CONTRACT.md',
   'docs/MIGRATION_PLAN.md',
   'docs/URL_CONTRACT.md',
@@ -21,7 +21,11 @@ const linkedFiles = [
   'src/data/public-media-release-policy-v1.json',
 ];
 
-function createFixture({ current = sourceCurrent, archive = sourceArchive } = {}) {
+function createFixture({
+  current = sourceCurrent,
+  archive = sourceArchive,
+  projectState = sourceProjectState,
+} = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dwnc-requirements-validator-'));
   fs.mkdirSync(path.join(root, 'docs'), { recursive: true });
   fs.mkdirSync(path.join(root, 'scripts'), { recursive: true });
@@ -31,6 +35,7 @@ function createFixture({ current = sourceCurrent, archive = sourceArchive } = {}
   );
   fs.writeFileSync(path.join(root, 'docs', 'REQUIREMENTS.md'), current, { flag: 'wx' });
   fs.writeFileSync(path.join(root, 'docs', 'REQUIREMENTS_ARCHIVE.md'), archive, { flag: 'wx' });
+  fs.writeFileSync(path.join(root, 'PROJECT_STATE.md'), projectState, { flag: 'wx' });
 
   for (const relativePath of linkedFiles) {
     const destination = path.join(root, relativePath);
@@ -61,6 +66,40 @@ function assertRejected(result, expectedMessage) {
   assert.match(`${result.stdout}\n${result.stderr}`, expectedMessage);
 }
 
+function assertPlainLanguageSummary({
+  current = sourceCurrent,
+  projectState = sourceProjectState,
+} = {}) {
+  const dashboardStart = current.indexOf('## 한눈에 보는 진행 상황');
+  const technicalReferenceStart = current.indexOf('### 기술 참고');
+  assert.notEqual(dashboardStart, -1, 'missing user dashboard');
+  assert.notEqual(technicalReferenceStart, -1, 'missing technical reference boundary');
+  const userSummary = current.slice(dashboardStart, technicalReferenceStart);
+  const unclearTerm = userSummary.match(
+    /시험용 Worker|새 Worker 버전|최초 Worker|Worker가|DNS/i,
+  )?.[0];
+  assert.equal(
+    unclearTerm,
+    undefined,
+    `user summary contains unclear technical wording: ${unclearTerm}`,
+  );
+  for (const requiredPhrase of [
+    '시험용 사이트 프로그램',
+    '실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하지 않는다',
+    '실제 `dwnc.me` 주소가 가리키는 곳과 주소 연결 설정을 바꾸는 일',
+    '이번 변경은 로컬 파일 12개에만',
+  ]) {
+    assert.ok(
+      userSummary.includes(requiredPhrase),
+      `user summary is missing current plain-language wording: ${requiredPhrase}`,
+    );
+  }
+  assert.ok(
+    projectState.includes('이번 변경은 로컬 파일 12개에만'),
+    'project summary must report the current 12-file local change',
+  );
+}
+
 function archivedRequirement({ id, updatedAt, status = 'done' }) {
   return [
     `### \`${id}\` — archive fixture ${id}`,
@@ -74,6 +113,8 @@ function archivedRequirement({ id, updatedAt, status = 'done' }) {
     '  - fixture evidence',
   ].join('\n');
 }
+
+assertPlainLanguageSummary();
 
 withFixture({}, (result) => {
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
@@ -232,6 +273,72 @@ withFixture(
   (result) => assertRejected(result, /user summary contains unclear technical wording: gate/),
 );
 
+assert.throws(
+  () =>
+    assertPlainLanguageSummary({
+    current: sourceCurrent.replace(
+      '시험용 사이트 프로그램을 처음 만드는 도중',
+      '최초 Worker 생성 도중',
+    ),
+    }),
+  /user summary contains unclear technical wording: 최초 Worker/,
+);
+
+assert.throws(
+  () =>
+    assertPlainLanguageSummary({
+    current: sourceCurrent.replace(
+      '시험용 사이트 프로그램이 예전 주소',
+      'Worker가 예전 주소',
+    ),
+    }),
+  /user summary contains unclear technical wording: Worker가/,
+);
+
+assert.throws(
+  () =>
+    assertPlainLanguageSummary({
+    current: sourceCurrent.replace(
+      '실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하지 않는다',
+      '실제 `dwnc.me` 주소와 DNS는 연결하지 않는다',
+    ),
+    }),
+  /user summary contains unclear technical wording: DNS/,
+);
+
+assert.throws(
+  () =>
+    assertPlainLanguageSummary({
+    current: sourceCurrent.replace(
+      '실제 `dwnc.me` 주소가 가리키는 곳과 주소 연결 설정을 바꾸는 일',
+      '실제 `dwnc.me` 도메인 연결과 DNS 변경',
+    ),
+    }),
+  /user summary contains unclear technical wording: DNS/,
+);
+
+assert.throws(
+  () =>
+    assertPlainLanguageSummary({
+    current: sourceCurrent.replace(
+      '이번 변경은 로컬 파일 12개에만',
+      '이번 변경은 로컬 파일 11개에만',
+    ),
+    }),
+  /user summary is missing current plain-language wording: 이번 변경은 로컬 파일 12개에만/,
+);
+
+assert.throws(
+  () =>
+    assertPlainLanguageSummary({
+      projectState: sourceProjectState.replace(
+        '이번 변경은 로컬 파일 12개에만',
+        '이번 변경은 로컬 파일 11개에만',
+      ),
+    }),
+  /project summary must report the current 12-file local change/,
+);
+
 withFixture(
   {
     current: sourceCurrent.replace(
@@ -250,8 +357,8 @@ withFixture(
 withFixture(
   {
     current: sourceCurrent.replace(
-      '| `PLAN-06` | 실제 도메인과 연결되지 않은 시험용 사이트를 올려 점검한다. | 새 Worker 버전에서 일반 페이지, 예전 주소 349개를 두 가지 요청 방식으로 총 698회, 오류 주소와 사진 응답을 모두 확인한다. | `대기` |',
-      '| `PLAN-06` | 실제 도메인과 연결되지 않은 시험용 사이트를 올려 점검한다. | 새 Worker 버전에서 일반 페이지, 예전 주소 349개를 두 가지 요청 방식으로 총 698회, 오류 주소와 사진 응답을 모두 확인한다. | `진행 중` |',
+      '| `PLAN-06` | 실제 도메인과 연결되지 않은 시험용 사이트를 올려 점검한다. | 새 시험용 사이트 프로그램에서 일반 페이지, 예전 주소 349개를 두 가지 요청 방식으로 총 698회, 오류 주소와 사진 응답을 모두 확인한다. | `대기` |',
+      '| `PLAN-06` | 실제 도메인과 연결되지 않은 시험용 사이트를 올려 점검한다. | 새 시험용 사이트 프로그램에서 일반 페이지, 예전 주소 349개를 두 가지 요청 방식으로 총 698회, 오류 주소와 사진 응답을 모두 확인한다. | `진행 중` |',
     ),
   },
   (result) => assertRejected(result, /overall plan must have exactly one in-progress PLAN; found 2/),
@@ -262,4 +369,4 @@ withFixture(
   (result) => assertRejected(result, /has invalid priority urgent/),
 );
 
-console.log('requirements validator tests PASS: baseline=1, negative=19');
+console.log('requirements validator tests PASS: baseline=1, negative=25');
