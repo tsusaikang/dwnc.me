@@ -8,6 +8,9 @@ const RESPONSE_ROLES = new Set([
   'script-workers-dev-subdomain',
   'script-settings',
   'script-content-v2',
+  'deployment-discovery',
+  'versions-list',
+  'versions-list-page',
   'version-detail',
   'deployments-before',
   'deployments-after',
@@ -140,6 +143,7 @@ export function parseBootstrapJsonBytes(bytes, contentType, errorCode) {
 
 export function bootstrapRequestTargetSha256({
   role, environment, workerName, accountIdSha256, versionId = null,
+  page = null, perPage = null,
 }) {
   if (!RESPONSE_ROLES.has(role) || !['production', 'staging'].includes(environment)
     || typeof workerName !== 'string' || !/^[a-z0-9-]{1,64}$/u.test(workerName)
@@ -148,24 +152,30 @@ export function bootstrapRequestTargetSha256({
       && !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u
         .test(versionId)
     || ['version-detail', 'deployments-before', 'deployments-after'].includes(role)
-      !== (versionId !== null)) {
+      !== (versionId !== null)
+    || role === 'versions-list-page' !== (Number.isSafeInteger(page)
+      && page >= 1 && page <= 10 && perPage === 50)) {
     fail('CLOUDFLARE_E_BOOTSTRAP_REQUEST_TARGET');
   }
   return sha256Hex(canonicalJson({
     method: 'GET', role, environment, workerName, accountIdSha256, versionId,
     contract: 'dwnc-cloudflare-bootstrap-request-target-v1',
+    ...(role === 'versions-list-page' ? { page, perPage } : {}),
   }));
 }
 
 function assertBootstrapRequestUrl(url, {
-  role, workerName, accountIdSha256, versionId, bodyKind,
+  role, workerName, accountIdSha256, versionId, bodyKind, page, perPage,
 }, errorCode) {
   let parsed;
   try { parsed = new URL(url); }
   catch { fail(errorCode); }
+  const expectedSearch = role === 'versions-list' ? '?deployable=true'
+    : role === 'versions-list-page'
+      ? `?deployable=true&page=${page}&per_page=${perPage}` : '';
   if (parsed.protocol !== 'https:' || parsed.hostname !== 'api.cloudflare.com'
     || parsed.port !== '' || parsed.username !== '' || parsed.password !== ''
-    || parsed.search !== '' || parsed.hash !== '') fail(errorCode);
+    || parsed.search !== expectedSearch || parsed.hash !== '') fail(errorCode);
   const match = /^\/client\/v4\/accounts\/([A-Fa-f0-9]{32})\/workers(\/.*)$/u
     .exec(parsed.pathname);
   if (!match || sha256Hex(`cloudflare-account-id-v1\0${match[1].toLowerCase()}`)
@@ -176,6 +186,9 @@ function assertBootstrapRequestUrl(url, {
     'script-workers-dev-subdomain': `/scripts/${workerName}/subdomain`,
     'script-settings': `/scripts/${workerName}/script-settings`,
     'script-content-v2': `/scripts/${workerName}/content/v2`,
+    'deployment-discovery': `/scripts/${workerName}/deployments`,
+    'versions-list': `/scripts/${workerName}/versions`,
+    'versions-list-page': `/scripts/${workerName}/versions`,
     'version-detail': `/scripts/${workerName}/versions/${versionId}`,
     'deployments-before': `/scripts/${workerName}/deployments`,
     'deployments-after': `/scripts/${workerName}/deployments`,
@@ -192,6 +205,8 @@ export async function fetchBootstrapGet({
   workerName,
   accountIdSha256,
   versionId = null,
+  page = null,
+  perPage = null,
   expectedStatuses = [200],
   bodyKind = 'json',
   fetchImpl = globalThis.fetch,
@@ -206,10 +221,10 @@ export async function fetchBootstrapGet({
     || new Set(expectedStatuses).size !== expectedStatuses.length
     || typeof fetchImpl !== 'function' || typeof now !== 'function') fail(errorCode);
   assertBootstrapRequestUrl(url, {
-    role, workerName, accountIdSha256, versionId, bodyKind,
+    role, workerName, accountIdSha256, versionId, bodyKind, page, perPage,
   }, errorCode);
   const requestTargetSha256 = bootstrapRequestTargetSha256({
-    role, environment, workerName, accountIdSha256, versionId,
+    role, environment, workerName, accountIdSha256, versionId, page, perPage,
   });
   const started = instant(now, errorCode);
   let response;

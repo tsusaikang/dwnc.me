@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {
-  chmod, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, writeFile,
+  chmod, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, writeFile,
 } from 'node:fs/promises';
 import path from 'node:path';
 import {
@@ -148,7 +148,29 @@ function plan() {
     authorizationSha256,
     serviceEvidenceSha256,
     accountSubdomainEvidenceSha256,
-    controlPlane: { accountId, apiToken },
+    controlPlane: {
+      accountId,
+      apiToken,
+      environment: 'staging',
+      envelope: {
+        operation: 'staging-bootstrap',
+        accountIdSha256,
+        metadataSha256: '5'.repeat(64),
+        preflightSha256: '6'.repeat(64),
+        permissionContractSha256: '7'.repeat(64),
+        authRoot: '/private/tmp/dwnc-staging-control-synthetic',
+      },
+      wranglerEnvironment(extra) {
+        return {
+          PATH: '/usr/bin:/bin',
+          HOME: '/private/tmp/dwnc-staging-control-synthetic/home',
+          TMPDIR: '/private/tmp/dwnc-staging-control-synthetic/tmp',
+          CLOUDFLARE_ACCOUNT_ID: accountId,
+          CLOUDFLARE_API_TOKEN: apiToken,
+          ...extra,
+        };
+      },
+    },
   };
 }
 
@@ -167,6 +189,7 @@ function apiFixture({
   secretInFreshResponse = false,
   unsafeSnapshot = false,
   contentEntrypoint = 'deny-all-worker.js',
+  isDeployed = () => false,
 } = {}) {
   const calls = [];
   const base = `https://api.cloudflare.com/client/v4/accounts/${accountId}/workers`;
@@ -176,12 +199,16 @@ function apiFixture({
   const settingsUrl = `${base}/scripts/dwnc-me-staging/script-settings`;
   const contentUrl = `${base}/scripts/dwnc-me-staging/content/v2`;
   const versionUrl = `${base}/scripts/dwnc-me-staging/versions/${versionId}`;
+  const versionsUrl = `${base}/scripts/dwnc-me-staging/versions?deployable=true`;
+  const pagedVersionsUrl = `${base}/scripts/dwnc-me-staging/versions`
+    + '?deployable=true&page=1&per_page=50';
   const deploymentsUrl = `${base}/scripts/dwnc-me-staging/deployments`;
   const fetchImpl = async (url, options) => {
     calls.push(url);
     fakeApiCalls += 1;
     assertGet(url, options);
     if (url === serviceUrl) {
+      if (isDeployed()) return jsonResponse(envelope({ id: 'dwnc-me-staging' }));
       const body = JSON.stringify({
         success: false,
         result: null,
@@ -211,15 +238,25 @@ function apiFixture({
       annotations: { 'workers/tag': expectedTag, 'workers/message': expectedMessage },
       resources: { script: { handlers: ['fetch'] }, bindings: [], assets: null },
     }));
+    if (url === versionsUrl) return jsonResponse(envelope({ items: [{ id: versionId }] }));
+    if (url === pagedVersionsUrl) {
+      const body = JSON.parse(envelope({ items: [{ id: versionId }] }));
+      body.result_info = {
+        page: 1, per_page: 50, count: 1, total_count: 1, total_pages: 1,
+      };
+      return jsonResponse(JSON.stringify(body));
+    }
     if (url === deploymentsUrl) return jsonResponse(envelope({ deployments: [{
       id: deploymentId,
       strategy: 'percentage',
       versions: [{ version_id: versionId, percentage: 100 }],
+      annotations: { 'workers/message': expectedMessage },
     }] }));
     throw new Error('SYNTHETIC_UNEXPECTED_REQUEST');
   };
   return { calls, fetchImpl, urls: {
     serviceUrl, accountUrl, deploymentsUrl, scriptUrl, settingsUrl, contentUrl, versionUrl,
+    versionsUrl, pagedVersionsUrl,
   } };
 }
 
@@ -287,7 +324,11 @@ async function makeCase({
     );
   }
   if (insecureEvidenceDirectory) await chmod(paths.directory, 0o755);
-  const api = apiFixture({ secretInFreshResponse, unsafeSnapshot, contentEntrypoint });
+  let deployed = false;
+  const api = apiFixture({
+    secretInFreshResponse, unsafeSnapshot, contentEntrypoint,
+    isDeployed: () => deployed,
+  });
   const wranglerCalls = [];
   const claimCalls = [];
   const gitCalls = [];
@@ -298,13 +339,14 @@ async function makeCase({
   const execFileAsync = async (binary, args, options) => {
     wranglerCalls.push({ binary, args, options });
     fakeWranglerProcesses += 1;
-    equal(binary, path.join(ROOT, 'node_modules/.bin/wrangler'));
-    equal(args, expectedArguments);
-    equal(args.some((argument) => path.isAbsolute(argument)), false);
+    equal(binary, process.execPath);
+    equal(args.slice(-expectedArguments.length), expectedArguments);
+    equal(args.includes('--permission'), true);
+    equal(args.includes('/private/tmp/dwnc-staging-control-synthetic/sealed-wrangler/resolution-guard.cjs'), true);
     equal(path.dirname(options.env.WRANGLER_OUTPUT_FILE_PATH), options.cwd);
     equal(options.cwd.startsWith(`${temporaryRoot}${path.sep}`), true);
     equal(options.env.CLOUDFLARE_ACCOUNT_ID, accountId);
-    equal(Object.hasOwn(options.env, 'CLOUDFLARE_API_TOKEN'), false);
+    equal(options.env.CLOUDFLARE_API_TOKEN, apiToken);
     equal(Object.hasOwn(options.env, 'CF_API_TOKEN'), false);
     equal(await readFile(path.join(options.cwd, 'deny-all-worker.js'), 'utf8'),
       DENY_ALL_WORKER_SOURCE);
@@ -314,6 +356,7 @@ async function makeCase({
     if (execFailure) throw new Error('SYNTHETIC_WRANGLER_FAILURE');
     await writeFile(options.env.WRANGLER_OUTPUT_FILE_PATH,
       oversizedOutput ? Buffer.alloc(1024 * 1024 + 1, 0x61) : deployNdjson());
+    deployed = true;
     return { stdout: '', stderr: '' };
   };
   const openFixture = async (...args) => {
@@ -373,6 +416,8 @@ async function makeCase({
     writeCanonicalEvidenceCreateOnly,
     readSecureFile,
     fileSystem: {
+      lstat,
+      mkdir,
       mkdtemp,
       open: openFixture,
       rm: removeFixture,
@@ -410,8 +455,8 @@ try {
     candidateWritten: true,
   });
   equal(success.wranglerCalls.length, 1);
-  equal(success.api.calls.length, 16);
-  equal(success.gitCalls.length, 3);
+  equal(success.api.calls.length, 40);
+  equal(success.gitCalls.length, 6);
   equal(success.claimCalls.length, 1);
   equal(success.pinnedWranglerCalls, [ROOT]);
   const claimPath = path.join(
@@ -419,6 +464,8 @@ try {
   );
   const allOutputs = [
     claimPath,
+    success.paths.prepared, success.paths.started, success.paths.result,
+    success.paths.status.primary, success.paths.status.recovery,
     success.paths.freshAbsence.primary, success.paths.freshAbsence.recovery,
     success.paths.freshAccountSubdomain.primary, success.paths.freshAccountSubdomain.recovery,
     success.paths.deployOutput.primary, success.paths.deployOutput.recovery,
@@ -428,6 +475,8 @@ try {
   ];
   const remainingOutputs = [
     claimPath,
+    success.paths.started, success.paths.result,
+    success.paths.status.primary, success.paths.status.recovery,
     success.paths.freshAbsence.recovery,
     success.paths.freshAccountSubdomain.recovery,
     success.paths.deployOutput.primary, success.paths.deployOutput.recovery,
@@ -435,9 +484,12 @@ try {
     success.paths.after.primary, success.paths.after.recovery,
     success.paths.attestation.primary, success.paths.attestation.recovery,
   ];
-  equal(success.outputPreflightCalls, [...allOutputs, ...remainingOutputs]);
+  equal(success.outputPreflightCalls, [
+    ...allOutputs, ...remainingOutputs, success.paths.status.primary, success.paths.status.primary,
+  ]);
   const expectedSnapshot = [
     success.api.urls.deploymentsUrl,
+    success.api.urls.versionsUrl,
     success.api.urls.accountUrl,
     success.api.urls.scriptUrl,
     success.api.urls.settingsUrl,
@@ -448,11 +500,23 @@ try {
   equal(success.api.calls, [
     success.api.urls.serviceUrl,
     success.api.urls.accountUrl,
+    success.api.urls.serviceUrl,
+    success.api.urls.deploymentsUrl,
+    success.api.urls.pagedVersionsUrl,
+    ...expectedSnapshot,
+    success.api.urls.serviceUrl,
+    success.api.urls.deploymentsUrl,
+    success.api.urls.pagedVersionsUrl,
+    ...expectedSnapshot,
     ...expectedSnapshot,
     ...expectedSnapshot,
   ]);
   equal((await readdir(success.temporaryRoot)).length, 0);
   equal((await readdir(success.paths.directory)).sort(), [
+    'attempt-prepared.json',
+    'attempt-result.json',
+    'attempt-started.json',
+    'attempt-status.json',
     'attestation-candidate.json',
     'fresh-account-subdomain.json',
     'fresh-service-absence.json',
@@ -475,7 +539,7 @@ try {
     /CLOUDFLARE_E_BOOTSTRAP_CAPTURE_SECRET/u);
   equal(secretFailure.api.calls.length, 1);
   equal(secretFailure.wranglerCalls.length, 0);
-  equal(await readdir(secretFailure.paths.directory), []);
+  equal(await readdir(secretFailure.paths.directory), ['attempt-prepared.json']);
   equal(await readdir(secretFailure.temporaryRoot), []);
 } finally { await secretFailure.cleanup(); }
 
@@ -483,9 +547,13 @@ const execFailure = await makeCase({ execFailure: true });
 try {
   await rejects(() => executeBootstrapMutationCore(plan(), execFailure.dependencies),
     /SYNTHETIC_WRANGLER_FAILURE/u);
-  equal(execFailure.api.calls.length, 2);
+  equal(execFailure.api.calls.length, 4);
   equal(execFailure.wranglerCalls.length, 1);
   equal((await readdir(execFailure.paths.directory)).sort(), [
+    'attempt-prepared.json',
+    'attempt-result.json',
+    'attempt-started.json',
+    'attempt-status.json',
     'fresh-account-subdomain.json',
     'fresh-service-absence.json',
     `staging-bootstrap-${authorizationSha256}.json`,
@@ -497,7 +565,7 @@ const oversizedFailure = await makeCase({ oversizedOutput: true });
 try {
   await rejects(() => executeBootstrapMutationCore(plan(), oversizedFailure.dependencies),
     /CLOUDFLARE_E_BOOTSTRAP_DEPLOY_OUTPUT_FILE/u);
-  equal(oversizedFailure.api.calls.length, 2);
+  equal(oversizedFailure.api.calls.length, 24);
   equal(oversizedFailure.wranglerCalls.length, 1);
   equal((await readdir(oversizedFailure.paths.directory)).includes(
     'wrangler-deploy-output.json'), false);
@@ -507,14 +575,17 @@ try {
 const snapshotFailure = await makeCase({ unsafeSnapshot: true });
 try {
   await rejects(() => executeBootstrapMutationCore(plan(), snapshotFailure.dependencies),
-    /CLOUDFLARE_E_BOOTSTRAP_POST_STATE_RESPONSE/u);
+    /CLOUDFLARE_E_BOOTSTRAP_RECOVERY_AMBIGUOUS/u);
   equal(snapshotFailure.wranglerCalls.length, 1);
-  equal(snapshotFailure.api.calls.length, 9);
+  equal(snapshotFailure.api.calls.length, 24);
   equal((await readdir(snapshotFailure.paths.directory)).sort(), [
+    'attempt-prepared.json',
+    'attempt-result.json',
+    'attempt-started.json',
+    'attempt-status.json',
     'fresh-account-subdomain.json',
     'fresh-service-absence.json',
     `staging-bootstrap-${authorizationSha256}.json`,
-    'wrangler-deploy-output.json',
   ]);
   equal(await readdir(snapshotFailure.temporaryRoot), []);
 } finally { await snapshotFailure.cleanup(); }
@@ -522,14 +593,17 @@ try {
 const entrypointFailure = await makeCase({ contentEntrypoint: apiToken });
 try {
   await rejects(() => executeBootstrapMutationCore(plan(), entrypointFailure.dependencies),
-    /CLOUDFLARE_E_BOOTSTRAP_SCRIPT_CONTENT/u);
+    /CLOUDFLARE_E_BOOTSTRAP_RECOVERY_AMBIGUOUS/u);
   equal(entrypointFailure.wranglerCalls.length, 1);
-  equal(entrypointFailure.api.calls.length, 9);
+  equal(entrypointFailure.api.calls.length, 24);
   equal((await readdir(entrypointFailure.paths.directory)).sort(), [
+    'attempt-prepared.json',
+    'attempt-result.json',
+    'attempt-started.json',
+    'attempt-status.json',
     'fresh-account-subdomain.json',
     'fresh-service-absence.json',
     `staging-bootstrap-${authorizationSha256}.json`,
-    'wrangler-deploy-output.json',
   ]);
   equal(await readdir(entrypointFailure.temporaryRoot), []);
 } finally { await entrypointFailure.cleanup(); }
@@ -589,7 +663,7 @@ for (const secondSnapshot of [
     equal(gitRace.claimCalls.length, 0);
     equal(gitRace.wranglerCalls.length, 0);
     equal((await readdir(gitRace.paths.directory)).sort(), [
-      'fresh-account-subdomain.json', 'fresh-service-absence.json',
+      'attempt-prepared.json', 'fresh-account-subdomain.json', 'fresh-service-absence.json',
     ]);
     equal(await readdir(gitRace.temporaryRoot), []);
   } finally { await gitRace.cleanup(); }
@@ -638,6 +712,7 @@ try {
   equal(postClaimExpiry.wranglerCalls.length, 0);
   equal(postClaimExpiry.gitCalls.length, 3);
   equal((await readdir(postClaimExpiry.paths.directory)).sort(), [
+    'attempt-prepared.json',
     'fresh-account-subdomain.json',
     'fresh-service-absence.json',
     `staging-bootstrap-${authorizationSha256}.json`,
@@ -660,6 +735,7 @@ for (const finalSnapshot of [
     equal(postClaimGitRace.wranglerCalls.length, 0);
     equal(postClaimGitRace.gitCalls.length, 3);
     equal((await readdir(postClaimGitRace.paths.directory)).sort(), [
+      'attempt-prepared.json',
       'fresh-account-subdomain.json',
       'fresh-service-absence.json',
       `staging-bootstrap-${authorizationSha256}.json`,
@@ -676,7 +752,7 @@ try {
   equal(error.message, 'CLOUDFLARE_E_BOOTSTRAP_CLEANUP');
   equal(error.message.includes(closeCleanupFailure.home), false);
   equal(error.message.includes(apiToken), false);
-  equal(closeCleanupFailure.api.calls.length, 16);
+  equal(closeCleanupFailure.api.calls.length, 40);
   equal(closeCleanupFailure.wranglerCalls.length, 1);
   equal(await readdir(closeCleanupFailure.temporaryRoot), []);
 } finally { await closeCleanupFailure.cleanup(); }
@@ -689,7 +765,7 @@ try {
   equal(error.message, 'CLOUDFLARE_E_BOOTSTRAP_CLEANUP');
   equal(error.message.includes(deleteCleanupFailure.home), false);
   equal(error.message.includes(apiToken), false);
-  equal(deleteCleanupFailure.api.calls.length, 16);
+  equal(deleteCleanupFailure.api.calls.length, 40);
   equal(deleteCleanupFailure.wranglerCalls.length, 1);
   equal((await readdir(deleteCleanupFailure.temporaryRoot)).length, 1);
 } finally { await deleteCleanupFailure.cleanup(); }
@@ -704,7 +780,7 @@ try {
   equal(error.message, 'CLOUDFLARE_E_BOOTSTRAP_CLEANUP');
   equal(error.message.includes(primaryAndCleanupFailure.home), false);
   equal(error.message.includes(apiToken), false);
-  equal(primaryAndCleanupFailure.api.calls.length, 2);
+  equal(primaryAndCleanupFailure.api.calls.length, 4);
   equal(primaryAndCleanupFailure.wranglerCalls.length, 1);
   equal((await readdir(primaryAndCleanupFailure.temporaryRoot)).length, 1);
 } finally { await primaryAndCleanupFailure.cleanup(); }
@@ -736,9 +812,9 @@ try {
   equal(invalidPlan.outputPreflightCalls.length, 0);
 } finally { await invalidPlan.cleanup(); }
 
-for (const directInput of [undefined, plan()]) {
+for (const directInput of [undefined, { ...plan(), environment: 'production' }]) {
   await rejects(() => executeBootstrapMutationProduction(directInput),
-    /CLOUDFLARE_E_BOOTSTRAP_STATUS_RECOVERY_REQUIRED/u);
+    /CLOUDFLARE_E_BOOTSTRAP_EXECUTION_PLAN/u);
 }
 
 ok(assertions > 200);
@@ -750,6 +826,6 @@ console.log(JSON.stringify({
   liveNetworkCalls: 0,
   externalWrites: 0,
   actualDeployments: 0,
-  recoveryGuardStillRequired: true,
+  statusRecoveryIntegrated: true,
   status: 'PASS',
 }, null, 2));

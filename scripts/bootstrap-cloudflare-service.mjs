@@ -21,7 +21,6 @@ import {
 import { executeBootstrapMutationProduction } from './lib/cloudflare-bootstrap-execution.mjs';
 import {
   assertStagingControlOperationEnvelope,
-  cloudflareControlPlaneCredentials,
   installStructuredErrorHandler,
 } from './lib/cloudflare-process.mjs';
 import { readCloudflareStagingControlOperation }
@@ -31,14 +30,12 @@ import { loadTrackedPublicMediaReleasePolicy } from './lib/public-media-manifest
 const ROOT = process.cwd();
 installStructuredErrorHandler('cloudflare-deny-bootstrap');
 const environment = process.argv.find((value) => value.startsWith('--environment='))?.split('=')[1];
-if (!['production', 'staging'].includes(environment)) {
+if (environment !== 'staging') {
   throw new Error('CLOUDFLARE_E_BOOTSTRAP_ENVIRONMENT');
 }
-if (environment === 'staging') {
-  // This validates the verified runner receipt without reading FD 3. The token remains
-  // unread until the separate status-only recovery stop below has been implemented.
-  assertStagingControlOperationEnvelope(process.env, 'staging-bootstrap');
-}
+// Production has no credential-reading bootstrap entrypoint. Staging must always
+// arrive through the verified control runner before FD 3 is read.
+assertStagingControlOperationEnvelope(process.env, 'staging-bootstrap');
 const absolute = (value) => {
   if (typeof value !== 'string' || !path.isAbsolute(value) || path.resolve(value) !== value) {
     throw new Error('CLOUDFLARE_E_BOOTSTRAP_PATH');
@@ -128,23 +125,17 @@ verifySignedPayload({
 const authorizationSha256 = sha256Hex(
   canonicalBootstrapAuthorizationPayload(authorizationFiles.receipt),
 );
-// No flag or environment variable can bypass this stop. The separate status-only
-// recovery protocol must be implemented and reviewed before this local constant changes.
-const statusOnlyRecoveryImplemented = () => false;
-if (!statusOnlyRecoveryImplemented()) {
-  throw new Error('CLOUDFLARE_E_BOOTSTRAP_STATUS_RECOVERY_REQUIRED');
-}
-const controlPlane = environment === 'staging'
-  ? readCloudflareStagingControlOperation(process.env, 'staging-bootstrap')
-  : cloudflareControlPlaneCredentials(process.env);
-const execution = await executeBootstrapMutationProduction({
-  repositoryRoot: ROOT,
-  environment,
-  targetAccountIdSha256: target.accountIdSha256,
-  authorization: authorizationFiles.receipt,
-  authorizationSha256,
-  serviceEvidenceSha256: evidenceSha256,
-  accountSubdomainEvidenceSha256,
-  controlPlane,
-});
-console.log(JSON.stringify(execution.result));
+const controlPlane = readCloudflareStagingControlOperation(process.env, 'staging-bootstrap');
+try {
+  const execution = await executeBootstrapMutationProduction({
+    repositoryRoot: ROOT,
+    environment,
+    targetAccountIdSha256: target.accountIdSha256,
+    authorization: authorizationFiles.receipt,
+    authorizationSha256,
+    serviceEvidenceSha256: evidenceSha256,
+    accountSubdomainEvidenceSha256,
+    controlPlane,
+  });
+  console.log(JSON.stringify(execution.result));
+} finally { controlPlane.clear?.(); }

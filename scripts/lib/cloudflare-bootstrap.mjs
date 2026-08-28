@@ -711,27 +711,47 @@ function parseVersionDetailValue(parsed, { expectedVersionId, expectedTag, expec
   };
 }
 
-function parseDeploymentValue(parsed, expectedVersionId) {
+function parseDeployableVersionsValue(parsed, expectedVersionId) {
   const result = parseSuccessEnvelopeValue(parsed, 'POST_STATE');
-  if (!Array.isArray(result.deployments) || result.deployments.length < 1) {
+  if (!exactKeys(result, ['items']) || !Array.isArray(result.items)
+    || result.items.length !== 1 || result.items[0]?.id !== expectedVersionId) {
+    fail('CLOUDFLARE_E_BOOTSTRAP_ATTESTATION_CAS');
+  }
+  return { deployableVersionIds: [expectedVersionId] };
+}
+
+function parseDeploymentCandidate(parsed, expectedMessage) {
+  const result = parseSuccessEnvelopeValue(parsed, 'POST_STATE');
+  if (!Array.isArray(result.deployments) || result.deployments.length !== 1) {
     fail('CLOUDFLARE_E_BOOTSTRAP_ATTESTATION_CAS');
   }
   const current = result.deployments[0];
   if (!UUID.test(current?.id ?? '') || current.strategy !== 'percentage'
     || !Array.isArray(current.versions) || current.versions.length !== 1
-    || current.versions[0]?.version_id !== expectedVersionId
-    || current.versions[0]?.percentage !== 100) {
+    || !UUID.test(current.versions[0]?.version_id ?? '')
+    || current.versions[0]?.percentage !== 100
+    || current.annotations?.['workers/message'] !== expectedMessage) {
     fail('CLOUDFLARE_E_BOOTSTRAP_ATTESTATION_CAS');
   }
   return {
     deploymentId: current.id,
     deploymentStrategy: current.strategy,
-    deploymentVersions: [{ versionId: expectedVersionId, percentage: 100 }],
+    deploymentVersions: [{ versionId: current.versions[0].version_id, percentage: 100 }],
+    deploymentMessage: expectedMessage,
   };
+}
+
+function parseDeploymentValue(parsed, expectedVersionId, expectedMessage) {
+  const values = parseDeploymentCandidate(parsed, expectedMessage);
+  if (values.deploymentVersions[0].versionId !== expectedVersionId) {
+    fail('CLOUDFLARE_E_BOOTSTRAP_ATTESTATION_CAS');
+  }
+  return values;
 }
 
 const SNAPSHOT_ROLES = Object.freeze([
   'deployments-before',
+  'versions-list',
   'account-workers-dev-subdomain',
   'script-workers-dev-subdomain',
   'script-settings',
@@ -761,9 +781,11 @@ function snapshotSemantic(values) {
     assetsAbsent: values.assetsAbsent,
     versionTag: values.versionTag,
     versionMessage: values.versionMessage,
+    deployableVersionIds: values.deployableVersionIds,
     deploymentId: values.deploymentId,
     deploymentStrategy: values.deploymentStrategy,
     deploymentVersions: values.deploymentVersions,
+    deploymentMessage: values.deploymentMessage,
     denyModuleSha256: values.denyModuleSha256,
     denyModuleBytes: values.denyModuleBytes,
     entrypointSource: values.entrypointSource,
@@ -806,11 +828,16 @@ async function parsedSnapshotValues(responses, expected) {
   const scriptValues = parseScriptSubdomainValue(json('script-workers-dev-subdomain'));
   const settingsValues = parseScriptSettingsValue(json('script-settings'));
   const versionValues = parseVersionDetailValue(json('version-detail'), expected);
+  const versionListValues = parseDeployableVersionsValue(
+    json('versions-list'), expected.expectedVersionId,
+  );
   const deploymentBeforeJson = json('deployments-before');
   const deploymentAfterJson = json('deployments-after');
-  const deploymentValues = parseDeploymentValue(deploymentBeforeJson, expected.expectedVersionId);
+  const deploymentValues = parseDeploymentValue(
+    deploymentBeforeJson, expected.expectedVersionId, expected.expectedMessage,
+  );
   const deploymentAfterValues = parseDeploymentValue(
-    deploymentAfterJson, expected.expectedVersionId,
+    deploymentAfterJson, expected.expectedVersionId, expected.expectedMessage,
   );
   if (canonicalJson(deploymentBeforeJson) !== canonicalJson(deploymentAfterJson)
     || canonicalJson(deploymentValues) !== canonicalJson(deploymentAfterValues)) {
@@ -826,6 +853,7 @@ async function parsedSnapshotValues(responses, expected) {
     ...scriptValues,
     ...settingsValues,
     ...versionValues,
+    ...versionListValues,
     ...deploymentValues,
     ...moduleValues,
   };
@@ -871,6 +899,9 @@ export async function fetchBootstrapPostStateCapture({
     });
     fetched.push(deploymentBefore);
     const middleSettled = await Promise.allSettled([
+      fetchBootstrapGet({ ...common,
+        url: `${base}/scripts/${workerName}/versions?deployable=true`,
+        role: 'versions-list', bodyKind: 'json' }),
       fetchBootstrapGet({ ...common, url: `${base}/subdomain`,
         role: 'account-workers-dev-subdomain', bodyKind: 'json' }),
       fetchBootstrapGet({ ...common, url: `${base}/scripts/${workerName}/subdomain`,
@@ -993,8 +1024,9 @@ export async function validateBootstrapPostStateCapture(capture, {
     'logsDestinations', 'tracesEnabled', 'tracesHeadSamplingRate', 'tracesPersist',
     'tracesDestinations', 'tracesPropagationPolicy', 'settingsPolicySha256',
     'versionId', 'versionHandlers',
-    'bindingsEmpty', 'assetsAbsent', 'versionTag', 'versionMessage', 'deploymentId',
-    'deploymentStrategy', 'deploymentVersions', 'denyModuleSha256', 'denyModuleBytes',
+    'bindingsEmpty', 'assetsAbsent', 'versionTag', 'versionMessage', 'deployableVersionIds',
+    'deploymentId', 'deploymentStrategy', 'deploymentVersions', 'deploymentMessage',
+    'denyModuleSha256', 'denyModuleBytes',
     'entrypointSource', 'mediaTypeSource', 'filenameSource', 'semanticStateSha256',
     'responseDescriptorsSha256', 'observationStartedAt', 'observationCompletedAt', 'observedAt',
   ];
@@ -1026,6 +1058,8 @@ export async function validateBootstrapPostStateCapture(capture, {
     || evidence.deploymentStrategy !== 'percentage'
     || canonicalJson(evidence.deploymentVersions)
       !== canonicalJson([{ versionId: evidence.versionId, percentage: 100 }])
+    || canonicalJson(evidence.deployableVersionIds) !== canonicalJson([evidence.versionId])
+    || evidence.deploymentMessage !== evidence.versionMessage
     || canonicalJson(evidence.versionHandlers) !== canonicalJson(['fetch'])
     || evidence.bindingsEmpty !== true || evidence.assetsAbsent !== true
     || !['single-module-inference', 'cf-entrypoint'].includes(evidence.entrypointSource)
@@ -1114,6 +1148,10 @@ export function defaultBootstrapProtectedEvidencePaths({
   });
   return {
     directory,
+    prepared: path.join(directory, 'attempt-prepared.json'),
+    started: path.join(directory, 'attempt-started.json'),
+    result: path.join(directory, 'attempt-result.json'),
+    status: pair('attempt-status'),
     freshAbsence: pair('fresh-service-absence'),
     freshAccountSubdomain: pair('fresh-account-subdomain'),
     deployOutput: pair('wrangler-deploy-output'),
@@ -1696,6 +1734,27 @@ export function bootstrapDenyWorkerSha256() {
 
 export function bootstrapConfigSha256(environment) {
   return sha256Hex(canonicalJson(bootstrapConfig(environment)));
+}
+
+export function bootstrapSettingsPolicySha256() {
+  return sha256Hex(canonicalJson({
+    logpush: false,
+    tailConsumers: [],
+    tags: [],
+    observabilityEnabled: true,
+    observabilityHeadSamplingRate: 1,
+    redactQueryString: false,
+    logsEnabled: true,
+    logsHeadSamplingRate: 1,
+    invocationLogs: false,
+    logsPersist: true,
+    logsDestinations: [],
+    tracesEnabled: false,
+    tracesHeadSamplingRate: 1,
+    tracesPersist: true,
+    tracesDestinations: [],
+    tracesPropagationPolicy: null,
+  }));
 }
 
 export function createBootstrapPromotionBaseline(attestation) {

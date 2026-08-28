@@ -1,4 +1,8 @@
+import { execFile } from 'node:child_process';
+import { lstat, mkdir, mkdtemp, open, rm, writeFile } from 'node:fs/promises';
+import { userInfo } from 'node:os';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import {
   assertBootstrapCaptureHasNoSensitiveValues,
   bootstrapArguments,
@@ -32,11 +36,28 @@ import {
 } from './cloudflare-release.mjs';
 import {
   assertCloudflareAccountTarget,
-  cloudflareWranglerEnvironment,
+  assertPinnedWranglerInstalled,
+  claimOneTimeAuthorization,
 } from './cloudflare-process.mjs';
+import { assertCloudflareAccountTargetOutsideRepository }
+  from './cloudflare-account-target.mjs';
 import {
+  assertSecureCreateOnlyDestination,
   parseCanonicalEvidenceStorage,
+  readSecureFile,
+  writeCanonicalEvidenceCreateOnly,
 } from './cloudflare-signing-key.mjs';
+import {
+  canonicalBootstrapPreparedRecord,
+  canonicalBootstrapResultRecord,
+  canonicalBootstrapStartedRecord,
+} from './cloudflare-bootstrap-attempt.mjs';
+import {
+  bootstrapPreparedSha256,
+  bootstrapStartedSha256,
+  normalizeBootstrapWranglerResult,
+  recoverBootstrapStatusCore,
+} from './cloudflare-bootstrap-recovery.mjs';
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const MAXIMUM_DEPLOY_OUTPUT_BYTES = 1024 * 1024;
@@ -52,7 +73,7 @@ const EXACT_DEPENDENCY_KEYS = [
   'claimOneTimeAuthorization', 'writeCanonicalEvidenceCreateOnly',
   'readSecureFile', 'fileSystem',
 ];
-const EXACT_FILE_SYSTEM_KEYS = ['mkdtemp', 'open', 'rm', 'writeFile'];
+const EXACT_FILE_SYSTEM_KEYS = ['lstat', 'mkdir', 'mkdtemp', 'open', 'rm', 'writeFile'];
 const GIT_OID = /^[a-f0-9]{40}$/u;
 
 const fail = (code) => { throw new Error(code); };
@@ -90,9 +111,20 @@ function validatePlan(plan, now) {
     || plan.serviceEvidenceSha256 !== plan.authorization.serviceEvidenceSha256
     || plan.accountSubdomainEvidenceSha256
       !== plan.authorization.accountSubdomainEvidenceSha256
-    || !exactKeys(plan.controlPlane, ['accountId', 'apiToken'])
+    || !plan.controlPlane || typeof plan.controlPlane !== 'object'
+    || Array.isArray(plan.controlPlane)
     || typeof plan.controlPlane.apiToken !== 'string'
-    || plan.controlPlane.apiToken.length < 1 || plan.controlPlane.apiToken.length > 4096) {
+    || plan.controlPlane.apiToken.length < 1 || plan.controlPlane.apiToken.length > 4096
+    || plan.environment === 'staging' && (
+      plan.controlPlane.environment !== 'staging'
+      || plan.controlPlane.envelope?.operation !== 'staging-bootstrap'
+      || plan.controlPlane.envelope?.accountIdSha256 !== plan.targetAccountIdSha256
+      || ![plan.controlPlane.envelope?.metadataSha256,
+        plan.controlPlane.envelope?.preflightSha256,
+        plan.controlPlane.envelope?.permissionContractSha256]
+        .every((value) => SHA256.test(value ?? ''))
+      || typeof plan.controlPlane.wranglerEnvironment !== 'function'
+    )) {
     fail('CLOUDFLARE_E_BOOTSTRAP_EXECUTION_PLAN');
   }
   assertAbsoluteDirectory(plan.repositoryRoot, 'CLOUDFLARE_E_BOOTSTRAP_EXECUTION_PLAN');
@@ -179,19 +211,86 @@ function bootstrapClaimPath(paths, plan) {
   );
 }
 
+function stagingEnvelopeEvidence(plan) {
+  const envelope = plan.controlPlane.envelope;
+  if (plan.environment !== 'staging' || envelope?.operation !== 'staging-bootstrap') {
+    fail('CLOUDFLARE_E_BOOTSTRAP_EXECUTION_PLAN');
+  }
+  return {
+    metadataSha256: envelope.metadataSha256,
+    preflightSha256: envelope.preflightSha256,
+    permissionContractSha256: envelope.permissionContractSha256,
+  };
+}
+
+async function claimSha256(file, deps) {
+  let bytes;
+  try {
+    bytes = await deps.readSecureFile(file, 64 * 1024);
+    if (bytes.length < 3 || bytes.at(-1) !== 0x0a) {
+      fail('CLOUDFLARE_E_BOOTSTRAP_CLAIM_RECORD');
+    }
+    return sha256Hex(bytes.subarray(0, bytes.length - 1));
+  } finally { bytes?.fill(0); }
+}
+
+function recoveryControlPlane(plan) {
+  const evidence = stagingEnvelopeEvidence(plan);
+  return {
+    accountId: plan.controlPlane.accountId,
+    apiToken: plan.controlPlane.apiToken,
+    envelope: {
+      operation: 'staging-bootstrap',
+      accountIdSha256: plan.targetAccountIdSha256,
+      ...evidence,
+    },
+  };
+}
+
+function sealedWranglerCommand(plan, args, outputPath) {
+  const authRoot = plan.controlPlane.envelope?.authRoot;
+  if (typeof authRoot !== 'string' || !path.isAbsolute(authRoot)
+    || path.resolve(authRoot) !== authRoot) {
+    fail('CLOUDFLARE_E_BOOTSTRAP_EXECUTION_PLAN');
+  }
+  const runtimeRoot = path.join(authRoot, 'sealed-wrangler');
+  return {
+    binary: process.execPath,
+    args: [
+      '--no-warnings', '--permission',
+      `--allow-fs-read=${authRoot}`,
+      `--allow-fs-write=${authRoot}`,
+      '--require', path.join(runtimeRoot, 'resolution-guard.cjs'),
+      path.join(runtimeRoot, 'node_modules/wrangler/wrangler-dist/cli.js'),
+      ...args,
+    ],
+    environment: plan.controlPlane.wranglerEnvironment({
+      WRANGLER_OUTPUT_FILE_PATH: outputPath,
+    }),
+  };
+}
+
 function allProtectedOutputPaths(paths, plan) {
   const pairs = [
     paths.freshAbsence, paths.freshAccountSubdomain, paths.deployOutput,
     paths.before, paths.after, paths.attestation,
   ];
-  return [bootstrapClaimPath(paths, plan), ...pairs.flatMap((pair) => [
+  return [
+    bootstrapClaimPath(paths, plan), paths.prepared, paths.started, paths.result,
+    paths.status.primary, paths.status.recovery,
+    ...pairs.flatMap((pair) => [
     pair.primary, pair.recovery,
-  ])];
+    ]),
+  ];
 }
 
 function remainingProtectedOutputPaths(paths, plan) {
   return [
     bootstrapClaimPath(paths, plan),
+    paths.started,
+    paths.result,
+    paths.status.primary,
+    paths.status.recovery,
     paths.freshAbsence.recovery,
     paths.freshAccountSubdomain.recovery,
     paths.deployOutput.primary,
@@ -300,6 +399,8 @@ export async function executeBootstrapMutationCore(planInput, dependencyInput) {
     authorizationSha256: plan.authorizationSha256,
     home: deps.userHome,
   });
+  try { await deps.fileSystem.mkdir(protectedPaths.directory, { recursive: true, mode: 0o700 }); }
+  catch { fail('CLOUDFLARE_E_BOOTSTRAP_OUTPUT_PREFLIGHT'); }
   await deps.assertPinnedWranglerInstalled(plan.repositoryRoot);
   await assertProtectedOutputsReady(allProtectedOutputPaths(protectedPaths, plan), plan, deps);
   let temporary = null;
@@ -320,6 +421,33 @@ export async function executeBootstrapMutationCore(planInput, dependencyInput) {
     );
 
     const initialBoundary = await assertAuthorizationAndGit(plan, deps);
+    const commandArguments = bootstrapArguments({
+      environment: plan.environment, authorizationSha256: plan.authorizationSha256,
+    });
+    const envelopeEvidence = stagingEnvelopeEvidence(plan);
+    const preparedRecord = {
+      schemaVersion: 1,
+      contract: 'dwnc-cloudflare-deny-bootstrap-prepared-v1',
+      environment: plan.environment,
+      workerName,
+      accountIdSha256: plan.targetAccountIdSha256,
+      authorizationSha256: plan.authorizationSha256,
+      sourceGitSha: initialBoundary.git.commit,
+      sourceGitTree: initialBoundary.git.tree,
+      denyWorkerSha256: bootstrapDenyWorkerSha256(),
+      bootstrapConfigSha256: bootstrapConfigSha256(plan.environment),
+      serviceEvidenceSha256: plan.serviceEvidenceSha256,
+      accountSubdomainEvidenceSha256: plan.accountSubdomainEvidenceSha256,
+      commandArgumentsSha256: sha256Hex(canonicalJson(commandArguments)),
+      runnerMetadataSha256: envelopeEvidence.metadataSha256,
+      runnerPreflightSha256: envelopeEvidence.preflightSha256,
+      runnerPermissionSha256: envelopeEvidence.permissionContractSha256,
+      preparedAt: initialBoundary.checkedAt.toISOString(),
+    };
+    await deps.writeCanonicalEvidenceCreateOnly(
+      protectedPaths.prepared, preparedRecord, canonicalBootstrapPreparedRecord,
+    );
+    const preparedSha256 = bootstrapPreparedSha256(preparedRecord);
 
     const freshCapture = await fetchServiceExistenceCapture({
       environment: plan.environment,
@@ -366,55 +494,162 @@ export async function executeBootstrapMutationCore(planInput, dependencyInput) {
       protectedPaths.freshAccountSubdomain.primary, freshAccountSubdomainCapture,
       canonicalAccountWorkersDevSubdomainCapturePayload,
     );
+    const freshAbsenceCaptureSha256 = sha256Hex(
+      canonicalServiceExistenceCapturePayload(freshCapture),
+    );
+    const freshAccountSubdomainCaptureSha256 = sha256Hex(
+      canonicalAccountWorkersDevSubdomainCapturePayload(freshAccountSubdomainCapture),
+    );
     await assertProtectedOutputsReady(
       remainingProtectedOutputPaths(protectedPaths, plan), plan, deps,
     );
     await assertAuthorizationAndGit(plan, deps, initialBoundary.git);
-    await deps.claimOneTimeAuthorization({
+    const claimedFile = await deps.claimOneTimeAuthorization({
       directory: protectedPaths.directory,
       authorizationSha256: plan.authorizationSha256,
       scope: `${plan.environment}-bootstrap`,
       target: workerName,
+      binding: {
+        environment: plan.environment,
+        workerName,
+        accountIdSha256: plan.targetAccountIdSha256,
+        authorizationSha256: plan.authorizationSha256,
+        sourceGitSha: initialBoundary.git.commit,
+        sourceGitTree: initialBoundary.git.tree,
+        denyWorkerSha256: preparedRecord.denyWorkerSha256,
+        bootstrapConfigSha256: preparedRecord.bootstrapConfigSha256,
+        serviceEvidenceSha256: preparedRecord.serviceEvidenceSha256,
+        accountSubdomainEvidenceSha256: preparedRecord.accountSubdomainEvidenceSha256,
+        commandArgumentsSha256: preparedRecord.commandArgumentsSha256,
+        preparedSha256,
+        freshAbsenceCaptureSha256,
+        freshAccountSubdomainCaptureSha256,
+      },
+      now: deps.now,
     });
+    const claimedSha256 = await claimSha256(claimedFile, deps);
 
     outputHandle = await deps.fileSystem.open(outputPath, 'wx+', 0o600);
     const outputInitialMetadata = await outputHandle.stat({ bigint: true });
-    const args = bootstrapArguments({
-      environment: plan.environment, authorizationSha256: plan.authorizationSha256,
-    });
-    const wranglerEnvironment = cloudflareWranglerEnvironment(
-      deps.wranglerSourceEnvironment,
-      {
-        CI: '1',
-        WRANGLER_OUTPUT_FILE_PATH: outputPath,
-        WRANGLER_WRITE_LOGS: '0',
-        WRANGLER_SEND_METRICS: 'false',
-        WRANGLER_NO_SKILLS_UPDATE_PROMPTS: 'true',
-      },
-    );
     const mutationBoundary = await assertAuthorizationAndGit(
       plan, deps, initialBoundary.git,
     );
     const commandStarted = mutationBoundary.checkedAt;
     assertFreshAtDeployment(freshCapture, commandStarted.toISOString());
     assertFreshAtDeployment(freshAccountSubdomainCapture, commandStarted.toISOString());
-    await deps.execFileAsync(path.join(plan.repositoryRoot, 'node_modules/.bin/wrangler'), args, {
-      cwd: temporary,
-      encoding: 'utf8',
-      timeout: 60_000,
-      maxBuffer: 2 * 1024 * 1024,
-      env: wranglerEnvironment,
-    });
-    const commandCompleted = instant(deps.now);
-    deploymentOutput = await readPreparedDeployOutput(
-      outputHandle, outputPath, outputInitialMetadata, deps.fileSystem.open,
-    );
-    const deployCapture = createBootstrapDeployOutputCapture(deploymentOutput, {
+    const startedRecord = {
+      schemaVersion: 1,
+      contract: 'dwnc-cloudflare-deny-bootstrap-started-v1',
       environment: plan.environment,
+      workerName,
+      accountIdSha256: plan.targetAccountIdSha256,
       authorizationSha256: plan.authorizationSha256,
-      commandStartedAt: commandStarted.toISOString(),
-      commandCompletedAt: commandCompleted.toISOString(),
+      sourceGitSha: mutationBoundary.git.commit,
+      sourceGitTree: mutationBoundary.git.tree,
+      denyWorkerSha256: preparedRecord.denyWorkerSha256,
+      bootstrapConfigSha256: preparedRecord.bootstrapConfigSha256,
+      serviceEvidenceSha256: preparedRecord.serviceEvidenceSha256,
+      accountSubdomainEvidenceSha256: preparedRecord.accountSubdomainEvidenceSha256,
+      commandArgumentsSha256: preparedRecord.commandArgumentsSha256,
+      preparedSha256,
+      claimSha256: claimedSha256,
+      freshAbsenceCaptureSha256,
+      freshAccountSubdomainCaptureSha256,
+      startedAt: commandStarted.toISOString(),
+    };
+    await deps.writeCanonicalEvidenceCreateOnly(
+      protectedPaths.started, startedRecord, canonicalBootstrapStartedRecord,
+    );
+    const startedSha256 = bootstrapStartedSha256(startedRecord);
+    const sealed = sealedWranglerCommand(plan, commandArguments, outputPath);
+    let wranglerError = null;
+    let wranglerValue = {};
+    try {
+      wranglerValue = await deps.execFileAsync(sealed.binary, sealed.args, {
+        cwd: temporary,
+        encoding: 'utf8',
+        timeout: 60_000,
+        maxBuffer: 2 * 1024 * 1024,
+        env: sealed.environment,
+      });
+    } catch (error) { wranglerError = error; }
+    const commandCompleted = instant(deps.now);
+    let deployCapture = null;
+    let deployOutputError = null;
+    if (wranglerError === null) {
+      try {
+        deploymentOutput = await readPreparedDeployOutput(
+          outputHandle, outputPath, outputInitialMetadata, deps.fileSystem.open,
+        );
+        deployCapture = createBootstrapDeployOutputCapture(deploymentOutput, {
+          environment: plan.environment,
+          authorizationSha256: plan.authorizationSha256,
+          commandStartedAt: commandStarted.toISOString(),
+          commandCompletedAt: commandCompleted.toISOString(),
+        });
+      } catch (error) { deployOutputError = error; }
+    }
+    const normalized = normalizeBootstrapWranglerResult(wranglerError, wranglerValue);
+    const resultRecord = {
+      schemaVersion: 1,
+      contract: 'dwnc-cloudflare-deny-bootstrap-result-v1',
+      environment: plan.environment,
+      workerName,
+      accountIdSha256: plan.targetAccountIdSha256,
+      authorizationSha256: plan.authorizationSha256,
+      sourceGitSha: mutationBoundary.git.commit,
+      sourceGitTree: mutationBoundary.git.tree,
+      denyWorkerSha256: preparedRecord.denyWorkerSha256,
+      bootstrapConfigSha256: preparedRecord.bootstrapConfigSha256,
+      serviceEvidenceSha256: preparedRecord.serviceEvidenceSha256,
+      accountSubdomainEvidenceSha256: preparedRecord.accountSubdomainEvidenceSha256,
+      commandArgumentsSha256: preparedRecord.commandArgumentsSha256,
+      preparedSha256,
+      startedSha256,
+      ...normalized,
+      deployOutputState: deployCapture ? 'valid'
+        : wranglerError === null ? 'invalid' : 'absent',
+      deployOutputSha256: deployCapture?.rawOutputSha256 ?? null,
+      versionId: deployCapture?.versionId ?? null,
+      completedAt: commandCompleted.toISOString(),
+    };
+    let resultWriteError = null;
+    try {
+      await deps.writeCanonicalEvidenceCreateOnly(
+        protectedPaths.result, resultRecord, canonicalBootstrapResultRecord,
+      );
+    } catch (error) { resultWriteError = error; }
+    const recovered = await recoverBootstrapStatusCore({
+      repositoryRoot: plan.repositoryRoot,
+      environment: plan.environment,
+      targetAccountIdSha256: plan.targetAccountIdSha256,
+      authorizationSha256: plan.authorizationSha256,
+      sourceGitSha: plan.authorization.sourceGitSha,
+      serviceEvidenceSha256: plan.serviceEvidenceSha256,
+      accountSubdomainEvidenceSha256: plan.accountSubdomainEvidenceSha256,
+      denyWorkerSha256: preparedRecord.denyWorkerSha256,
+      bootstrapConfigSha256: preparedRecord.bootstrapConfigSha256,
+      commandArgumentsSha256: preparedRecord.commandArgumentsSha256,
+      controlPlane: recoveryControlPlane(plan),
+    }, protectedPaths, {
+      fetchImpl: deps.fetchImpl,
+      now: deps.now,
+      userHome: deps.userHome,
+      inspectGit: deps.inspectGit,
+      lstat: deps.fileSystem.lstat,
+      readSecureFile: deps.readSecureFile,
+      writeCanonicalEvidenceCreateOnly: deps.writeCanonicalEvidenceCreateOnly,
+      assertOutsideRepository: deps.assertOutsideRepository,
+      assertSecureCreateOnlyDestination: deps.assertSecureCreateOnlyDestination,
     });
+    if (resultWriteError) throw resultWriteError;
+    if (recovered.status.classification !== 'exact-recovered') {
+      if (wranglerError) throw wranglerError;
+      if (deployOutputError) throw deployOutputError;
+      fail('CLOUDFLARE_E_BOOTSTRAP_RECOVERY_AMBIGUOUS');
+    }
+    if (wranglerError) throw wranglerError;
+    if (deployOutputError) throw deployOutputError;
     await assertBootstrapCaptureHasNoSensitiveValues(deployCapture, {
       accountId: plan.controlPlane.accountId, apiToken: plan.controlPlane.apiToken,
     });
@@ -568,6 +803,38 @@ export async function executeBootstrapMutationCore(planInput, dependencyInput) {
   }
 }
 
-export async function executeBootstrapMutationProduction() {
-  fail('CLOUDFLARE_E_BOOTSTRAP_STATUS_RECOVERY_REQUIRED');
+async function inspectBootstrapGit(repositoryRoot) {
+  const run = async (args) => (await promisify(execFile)('git', args, {
+    cwd: repositoryRoot, encoding: 'utf8', maxBuffer: 1024 * 1024, timeout: 15_000,
+  })).stdout.trim();
+  const [commit, tree, status] = await Promise.all([
+    run(['rev-parse', 'HEAD']),
+    run(['rev-parse', 'HEAD^{tree}']),
+    run(['status', '--porcelain=v1', '--untracked-files=normal']),
+  ]);
+  return { commit, tree, clean: status.length === 0 };
+}
+
+export async function executeBootstrapMutationProduction(plan) {
+  if (plan?.environment !== 'staging'
+    || plan.controlPlane?.envelope?.operation !== 'staging-bootstrap') {
+    fail('CLOUDFLARE_E_BOOTSTRAP_EXECUTION_PLAN');
+  }
+  const authRoot = plan.controlPlane.envelope.authRoot;
+  return executeBootstrapMutationCore(plan, {
+    fetchImpl: globalThis.fetch,
+    execFileAsync: promisify(execFile),
+    now: () => new Date(),
+    userHome: userInfo().homedir,
+    temporaryRoot: path.join(authRoot, 'tmp'),
+    wranglerSourceEnvironment: process.env,
+    inspectGit: inspectBootstrapGit,
+    assertPinnedWranglerInstalled,
+    assertOutsideRepository: assertCloudflareAccountTargetOutsideRepository,
+    assertSecureCreateOnlyDestination,
+    claimOneTimeAuthorization,
+    writeCanonicalEvidenceCreateOnly,
+    readSecureFile,
+    fileSystem: { lstat, mkdir, mkdtemp, open, rm, writeFile },
+  });
 }

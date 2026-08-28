@@ -599,7 +599,7 @@ try {
       token: bootstrapToken,
       maxBuffer: 2 * 1024 * 1024,
     },
-  ), (error) => error?.stderr?.includes('CLOUDFLARE_E_BOOTSTRAP_STATUS_RECOVERY_REQUIRED')
+  ), (error) => error?.stderr?.includes('CLOUDFLARE_E_BOOTSTRAP_ENVIRONMENT')
     && !error.stderr.includes(bootstrapToken)
     && !error.stderr.includes('BOOTSTRAP_FETCH_MUST_NOT_RUN'));
   assertions += 1;
@@ -609,6 +609,20 @@ try {
     path.join(bootstrap.root, '.fake-wrangler-state.json'), 'utf8'));
   equal(blockedBootstrapState.currentVersionId, bootstrapVersionId);
   equal(blockedBootstrapState.targetVersionId, bootstrapCreatedVersionId);
+  const poisonProductionToken = 'production-token-must-never-be-read-or-printed';
+  await assert.rejects(() => exec(
+    process.execPath, [bootstrapExecutor, '--environment=production'], {
+      cwd: bootstrap.root,
+      env: {
+        PATH: '/usr/bin:/bin', HOME: bootstrap.root,
+        CLOUDFLARE_API_TOKEN: poisonProductionToken,
+        CLOUDFLARE_API_TOKEN_FD: '999999',
+      },
+      encoding: 'utf8', timeout: 15_000, maxBuffer: 1024 * 1024,
+    },
+  ), (error) => error?.stderr?.includes('CLOUDFLARE_E_BOOTSTRAP_ENVIRONMENT')
+    && !error.stderr.includes(poisonProductionToken));
+  assertions += 1;
   const staging = await makeFixture('staging', 'commit');
   const stagingPreviousVersionId = '52345678-1234-4123-8123-123456789abc';
   const stagingVersionId = '62345678-1234-4123-8123-123456789abc';
@@ -853,7 +867,7 @@ try {
   console.log(JSON.stringify({
     suite: 'cloudflare-production-promotion-executor', assertions,
     fakeWranglerProcesses: 18,
-    denyBootstrapBlockedPendingRecovery: true,
+    productionBootstrapRejectedByStagingOnlyPlan: true,
     stagingSecretUploadVerified: true,
     stagingActivationCommitted: true,
     stagingAmbiguousRecoveryCommitted: true,

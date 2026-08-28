@@ -655,6 +655,140 @@ await rejects(() => runCloudflareStagingControl({
   argv: ['--command=production-deploy'], environment: {}, root: process.cwd(),
 }), 'CLOUDFLARE_E_STAGING_CONTROL_ALLOWLIST');
 
+const recoveryEnvironment = {
+  CLOUDFLARE_SERVICE_EXISTENCE_RECEIPT_PATH: '/private/tmp/recovery-service.json',
+  CLOUDFLARE_SERVICE_EXISTENCE_SIGNATURE_PATH: '/private/tmp/recovery-service.sig',
+  CLOUDFLARE_SERVICE_EXISTENCE_PUBLIC_KEY_PATH: '/private/tmp/recovery-service.pem',
+  CLOUDFLARE_ACCOUNT_SUBDOMAIN_RECEIPT_PATH: '/private/tmp/recovery-subdomain.json',
+  CLOUDFLARE_ACCOUNT_SUBDOMAIN_SIGNATURE_PATH: '/private/tmp/recovery-subdomain.sig',
+  CLOUDFLARE_ACCOUNT_SUBDOMAIN_PUBLIC_KEY_PATH: '/private/tmp/recovery-subdomain.pem',
+  CLOUDFLARE_BOOTSTRAP_AUTHORIZATION_RECEIPT_PATH: '/private/tmp/recovery-auth.json',
+  CLOUDFLARE_BOOTSTRAP_AUTHORIZATION_SIGNATURE_PATH: '/private/tmp/recovery-auth.sig',
+  CLOUDFLARE_BOOTSTRAP_AUTHORIZATION_PUBLIC_KEY_PATH: '/private/tmp/recovery-auth.pem',
+  CLOUDFLARE_DENY_BOOTSTRAP_RECOVERY_APPROVED: 'staging:dwnc-me-staging:status-only',
+};
+let recoveryLocalContextCalls = 0;
+let recoveryLocalStatusCalls = 0;
+let recoveryAccountTargetReads = 0;
+let recoveryWranglerChecks = 0;
+let recoveryTokenReads = 0;
+let recoveryTokenVerifies = 0;
+let recoveryWhoamiCalls = 0;
+let recoveryChildSpawns = 0;
+let recoveryExternalFetches = 0;
+const existingStatus = {
+  classification: 'exact-recovered',
+  requestCounts: { GET: 22, HEAD: 0, POST: 0, PUT: 0, PATCH: 0, DELETE: 0 },
+};
+const localRecoveryResult = await runCloudflareStagingControl({
+  argv: ['--command=staging-bootstrap-recover'],
+  environment: recoveryEnvironment,
+  root: process.cwd(),
+  accountTargetMetadataPath: '/private/tmp/dwnc-runner/account.json',
+  tokenMetadataPath: '/private/tmp/dwnc-runner/token.json',
+  loadPolicy: async () => syntheticPolicy,
+  loadRecoveryContext: async () => {
+    recoveryLocalContextCalls += 1;
+    return { plan: Object.freeze({}), paths: Object.freeze({}) };
+  },
+  inspectRecoveryStatus: async () => {
+    recoveryLocalStatusCalls += 1;
+    return { state: 'complete', status: existingStatus };
+  },
+  loadAccountTarget: async () => { recoveryAccountTargetReads += 1; return {}; },
+  requireWrangler: async () => { recoveryWranglerChecks += 1; return {}; },
+  loadControlToken: async () => { recoveryTokenReads += 1; return {}; },
+  verifyControlToken: async () => { recoveryTokenVerifies += 1; return {}; },
+  execWrangler: async () => { recoveryWhoamiCalls += 1; return {}; },
+  spawnChild: () => { recoveryChildSpawns += 1; return {}; },
+  fetchImpl: async () => { recoveryExternalFetches += 1; throw new Error('unexpected fetch'); },
+  assertDestination: async () => undefined,
+});
+equal(localRecoveryResult.classification, 'exact-recovered');
+equal(localRecoveryResult.existing, true);
+equal(localRecoveryResult.credentialAccessed, false);
+equal(localRecoveryResult.childStarted, false);
+equal(recoveryLocalContextCalls, 1);
+equal(recoveryLocalStatusCalls, 1);
+equal(recoveryAccountTargetReads, 0);
+equal(recoveryWranglerChecks, 0);
+equal(recoveryTokenReads, 0);
+await rejects(() => runCloudflareStagingControl({
+  argv: ['--command=staging-bootstrap-recover'],
+  environment: recoveryEnvironment,
+  root: process.cwd(),
+  accountTargetMetadataPath: '/private/tmp/dwnc-runner/account.json',
+  tokenMetadataPath: '/private/tmp/dwnc-runner/token.json',
+  loadPolicy: async () => syntheticPolicy,
+  loadRecoveryContext: async () => { throw new Error('TEST_E_BAD_RECOVERY_CONTEXT'); },
+  loadAccountTarget: async () => { recoveryAccountTargetReads += 1; return {}; },
+  requireWrangler: async () => { recoveryWranglerChecks += 1; return {}; },
+  loadControlToken: async () => { recoveryTokenReads += 1; return {}; },
+  verifyControlToken: async () => { recoveryTokenVerifies += 1; return {}; },
+  execWrangler: async () => { recoveryWhoamiCalls += 1; return {}; },
+  spawnChild: () => { recoveryChildSpawns += 1; return {}; },
+  fetchImpl: async () => { recoveryExternalFetches += 1; throw new Error('unexpected fetch'); },
+  assertDestination: async () => undefined,
+}), 'TEST_E_BAD_RECOVERY_CONTEXT');
+await rejects(() => runCloudflareStagingControl({
+  argv: ['--command=staging-bootstrap-recover'],
+  environment: recoveryEnvironment,
+  root: process.cwd(),
+  accountTargetMetadataPath: '/private/tmp/dwnc-runner/account.json',
+  tokenMetadataPath: '/private/tmp/dwnc-runner/token.json',
+  loadPolicy: async () => syntheticPolicy,
+  loadRecoveryContext: async () => ({ plan: Object.freeze({}), paths: Object.freeze({}) }),
+  inspectRecoveryStatus: async () => { throw new Error('TEST_E_DAMAGED_RECOVERY_PHASE'); },
+  loadAccountTarget: async () => { recoveryAccountTargetReads += 1; return {}; },
+  requireWrangler: async () => { recoveryWranglerChecks += 1; return {}; },
+  loadControlToken: async () => { recoveryTokenReads += 1; return {}; },
+  verifyControlToken: async () => { recoveryTokenVerifies += 1; return {}; },
+  execWrangler: async () => { recoveryWhoamiCalls += 1; return {}; },
+  spawnChild: () => { recoveryChildSpawns += 1; return {}; },
+  fetchImpl: async () => { recoveryExternalFetches += 1; throw new Error('unexpected fetch'); },
+  assertDestination: async () => undefined,
+}), 'TEST_E_DAMAGED_RECOVERY_PHASE');
+let productionEntrypointError;
+try {
+  await promisify(execFile)(process.execPath, [
+    path.join(process.cwd(), 'scripts/run-cloudflare-staging-control.mjs'),
+    '--command=staging-bootstrap-recover', '--environment=production',
+  ], {
+    cwd: process.cwd(),
+    env: { PATH: '/usr/bin:/bin', HOME: '/private/tmp' },
+    encoding: 'utf8', timeout: 15_000, maxBuffer: 1024 * 1024,
+  });
+} catch (error) { productionEntrypointError = error; }
+equal(productionEntrypointError?.code, 1);
+equal(productionEntrypointError?.stdout, '');
+equal(productionEntrypointError?.stderr.includes('CLOUDFLARE_E_STAGING_CONTROL_ARGUMENT'), true);
+let productionNpmEntrypointError;
+try {
+  await promisify(execFile)('npm', [
+    'run', '--silent', 'cloudflare:staging:service:bootstrap:recover', '--',
+    '--environment=production',
+  ], {
+    cwd: process.cwd(),
+    env: { PATH: process.env.PATH, HOME: '/private/tmp' },
+    encoding: 'utf8', timeout: 15_000, maxBuffer: 1024 * 1024,
+  });
+} catch (error) { productionNpmEntrypointError = error; }
+equal(productionNpmEntrypointError?.code, 1);
+equal(productionNpmEntrypointError?.stderr.includes(
+  'CLOUDFLARE_E_STAGING_CONTROL_ARGUMENT'), true);
+equal(recoveryTokenVerifies, 0);
+equal(recoveryWhoamiCalls, 0);
+equal(recoveryChildSpawns, 0);
+equal(recoveryExternalFetches, 0);
+await rejects(() => runCloudflareStagingControl({
+  argv: ['--command=staging-bootstrap-recover', '--environment=production'],
+  environment: recoveryEnvironment,
+  root: process.cwd(),
+  loadPolicy: async () => { throw new Error('unexpected policy'); },
+  loadControlToken: async () => { recoveryTokenReads += 1; return {}; },
+}), 'CLOUDFLARE_E_STAGING_CONTROL_ARGUMENT');
+equal(recoveryTokenReads, 0);
+
 const statusEnvironment = {
   PATH: '/private/tmp/dwnc-poisoned-path',
   CLOUDFLARE_STAGING_WORKERS_DEV_STATUS_CAPTURE_PATH: '/private/tmp/status-capture.json',
@@ -1248,8 +1382,8 @@ const [bootstrapSource, packageSource] =
 const envelopePosition = bootstrapSource.indexOf('assertStagingControlOperationEnvelope(');
 const recoveryStopPosition = bootstrapSource.indexOf('statusOnlyRecoveryImplemented');
 const tokenReadPosition = bootstrapSource.indexOf('readCloudflareStagingControlOperation(');
-equal(envelopePosition >= 0 && envelopePosition < recoveryStopPosition, true);
-equal(tokenReadPosition > recoveryStopPosition, true);
+equal(envelopePosition >= 0 && envelopePosition < tokenReadPosition, true);
+equal(recoveryStopPosition, -1);
 equal(bootstrapSource.includes('wrangler deploy'), false);
 const packageJson = JSON.parse(packageSource);
 equal(Object.hasOwn(packageJson.scripts, 'cloudflare:r2:exposure:fetch:fd'), false);
@@ -1261,6 +1395,8 @@ for (const scriptName of [
   'cloudflare:staging:activate',
   'cloudflare:staging:workers-dev:status',
   'cloudflare:staging:workers-dev:enable',
+  'cloudflare:staging:service:bootstrap',
+  'cloudflare:staging:service:bootstrap:recover',
 ]) {
   equal(packageJson.scripts[scriptName].startsWith(
     'node scripts/run-cloudflare-staging-control.mjs --command=',

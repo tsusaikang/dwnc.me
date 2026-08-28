@@ -156,6 +156,7 @@ function snapshotFixture({
   strategy = 'percentage',
   percentage = 100,
   deploymentAfterHistory = [],
+  deployableVersions = [{ id: versionId }],
   versionOverrides = {},
   failureSuffix = null,
   calls = [],
@@ -176,11 +177,13 @@ function snapshotFixture({
     })],
   ]);
   const contentUrl = `${base}/scripts/${workerName}/content/v2`;
+  const versionsUrl = `${base}/scripts/${workerName}/versions?deployable=true`;
   const deploymentsUrl = `${base}/scripts/${workerName}/deployments`;
   let deploymentsCalls = 0;
   return async (url, options) => {
     calls.push({ url, options });
-    if (!responses.has(url) && url !== contentUrl && url !== deploymentsUrl) {
+    if (!responses.has(url) && url !== contentUrl && url !== versionsUrl
+      && url !== deploymentsUrl) {
       throw new Error('unexpected fixture URL');
     }
     assertGetOptions(options, url === contentUrl
@@ -196,6 +199,10 @@ function snapshotFixture({
         ...(entrypoint === null ? {} : { 'cf-entrypoint': entrypoint }),
       } });
     }
+    if (url === versionsUrl) {
+      const body = envelope({ items: deployableVersions });
+      return new Response(body, { status: 200, headers: jsonHeaders(body) });
+    }
     if (url === deploymentsUrl) {
       deploymentsCalls += 1;
       if (deploymentsCalls > 2) throw new Error('unexpected deployments call');
@@ -203,6 +210,7 @@ function snapshotFixture({
         id: deploymentsCalls === 1 ? deployment : deploymentAfter,
         strategy,
         versions: [{ version_id: versionId, percentage }],
+        annotations: { 'workers/message': expectedMessage },
       }, ...(deploymentsCalls === 2 ? deploymentAfterHistory : [])] });
       return new Response(body, { status: 200, headers: jsonHeaders(body) });
     }
@@ -532,18 +540,21 @@ await rejects(() => fetchAccountWorkersDevSubdomainCapture({
   },
 }), /CLOUDFLARE_E_BOOTSTRAP_ACCOUNT_SUBDOMAIN_RESPONSE/u);
 
-// A full snapshot binds all six authoritative endpoints and exact request options.
+// A full snapshot binds every authoritative endpoint and exact request options.
 const calls = [];
 const validSnapshot = await createSnapshot({ calls, now: clock() });
-equal(calls.length, 7);
+equal(calls.length, 8);
 equal(validSnapshot.responses.map((response) => response.role), [
   'deployments-before',
+  'versions-list',
   'account-workers-dev-subdomain', 'script-workers-dev-subdomain', 'script-settings',
   'script-content-v2', 'version-detail', 'deployments-after',
 ]);
 equal(validSnapshot.evidence.deploymentId, deploymentId);
 equal(validSnapshot.evidence.deploymentStrategy, 'percentage');
 equal(validSnapshot.evidence.deploymentVersions, [{ versionId, percentage: 100 }]);
+equal(validSnapshot.evidence.deployableVersionIds, [versionId]);
+equal(validSnapshot.evidence.deploymentMessage, expectedMessage);
 equal(validSnapshot.evidence.workersDevEnabled, false);
 equal(validSnapshot.evidence.previewsEnabled, false);
 equal(validSnapshot.evidence.tracesEnabled, false);
@@ -721,6 +732,7 @@ for (const options of [
   { deployment: 'not-a-uuid' },
   { strategy: 'gradual' },
   { percentage: 99 },
+  { deployableVersions: [{ id: versionId }, { id: '42345678-1234-4123-8123-123456789abc' }] },
   { failureSuffix: '/script-settings' },
 ]) {
   await rejects(() => createSnapshot({ ...options, now: clock() }),
@@ -925,6 +937,10 @@ equal(paths.directory,
 equal(paths.before.recovery, pathJoin(paths.directory, 'post-state-before-recovery.json'));
 equal(paths.after.recovery, pathJoin(paths.directory, 'post-state-after-recovery.json'));
 equal(paths.deployOutput.recovery, pathJoin(paths.directory, 'wrangler-deploy-output-recovery.json'));
+equal(paths.prepared, pathJoin(paths.directory, 'attempt-prepared.json'));
+equal(paths.started, pathJoin(paths.directory, 'attempt-started.json'));
+equal(paths.result, pathJoin(paths.directory, 'attempt-result.json'));
+equal(paths.status.recovery, pathJoin(paths.directory, 'attempt-status-recovery.json'));
 throws(() => defaultBootstrapProtectedEvidencePaths({
   environment: 'staging', authorizationSha256, home: 'relative',
 }), /CLOUDFLARE_E_BOOTSTRAP_EVIDENCE_PATH/u);

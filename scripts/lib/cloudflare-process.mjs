@@ -5,6 +5,10 @@ import {
   chmod, copyFile, lstat, mkdir, readFile, readdir, realpath, writeFile,
 } from 'node:fs/promises';
 import path from 'node:path';
+import {
+  BOOTSTRAP_ATTEMPT_IDENTITY_KEYS,
+  validateBootstrapAttemptIdentity,
+} from './cloudflare-bootstrap-attempt.mjs';
 import { cloudflareAccountIdSha256 } from './public-media-manifest.mjs';
 import { readSecureFile, writeSecureCreateOnly } from './cloudflare-signing-key.mjs';
 import { validateStagingSmokeToken } from '../../src/lib/staging-smoke-token.js';
@@ -86,6 +90,7 @@ const CONTROL_PLANE_LEGACY_TOKEN_NAMES = Object.freeze([
 export const CLOUDFLARE_STAGING_CONTROL_OPERATIONS = Object.freeze([
   'staging-service-existence',
   'staging-bootstrap',
+  'staging-bootstrap-recover',
   'staging-version-upload',
   'staging-version-detail',
   'staging-deployment-status',
@@ -93,7 +98,9 @@ export const CLOUDFLARE_STAGING_CONTROL_OPERATIONS = Object.freeze([
   'staging-workers-dev-status',
   'staging-workers-dev-enable',
 ]);
-export const CLOUDFLARE_STAGING_WRANGLER_EXTRA_ALLOWLIST = Object.freeze([]);
+export const CLOUDFLARE_STAGING_WRANGLER_EXTRA_ALLOWLIST = Object.freeze([
+  'WRANGLER_OUTPUT_FILE_PATH',
+]);
 const CLOUDFLARE_STAGING_CONTROL_OPERATION_SET
   = new Set(CLOUDFLARE_STAGING_CONTROL_OPERATIONS);
 const SHA256 = /^[a-f0-9]{64}$/u;
@@ -183,6 +190,9 @@ export function assertStagingControlOperationEnvelope(source = process.env, expe
   const xdgData = source.XDG_DATA_HOME;
   const temporary = source.TMPDIR;
   const envFile = source.CLOUDFLARE_STAGING_CONTROL_ENV_FILE;
+  const recoveryHomeOverride = source.CLOUDFLARE_BOOTSTRAP_RECOVERY_HOME;
+  const recoveryAuthenticationGetCountOverride
+    = source.CLOUDFLARE_STAGING_CONTROL_AUTHENTICATION_GET_COUNT;
   if (![authRoot, isolatedHome, xdgConfig, xdgCache, xdgData, temporary, envFile]
     .every((value) => typeof value === 'string' && path.isAbsolute(value)
       && path.resolve(value) === value)
@@ -195,6 +205,8 @@ export function assertStagingControlOperationEnvelope(source = process.env, expe
     || source.WRANGLER_SEND_METRICS !== 'false'
     || source.WRANGLER_SEND_ERROR_REPORTS !== 'false'
     || !['0', 'false'].includes(source.WRANGLER_WRITE_LOGS)
+    || recoveryHomeOverride !== undefined
+    || recoveryAuthenticationGetCountOverride !== undefined
     || source.CI !== '1') {
     throw new Error('CLOUDFLARE_E_STAGING_CONTROL_ISOLATION');
   }
@@ -208,6 +220,8 @@ export function assertStagingControlOperationEnvelope(source = process.env, expe
     permissionContractSha256: source.CLOUDFLARE_STAGING_CONTROL_PERMISSION_SHA256,
     authRoot,
     envFile,
+    authenticationRequestCounts: expectedOperation === 'staging-bootstrap-recover'
+      ? { GET: 2, HEAD: 0, POST: 0, PUT: 0, PATCH: 0, DELETE: 0 } : null,
   };
 }
 
@@ -222,7 +236,12 @@ export function cloudflareStagingWranglerEnvironment(source, credentials, {
     || !/^cfat_[A-Za-z0-9]{40}[a-f0-9]{8}$/u.test(credentials.apiToken)
     || !extra || typeof extra !== 'object' || Array.isArray(extra)
     || Object.keys(extra).some((name) => !CLOUDFLARE_STAGING_WRANGLER_EXTRA_ALLOWLIST
-      .includes(name))) {
+      .includes(name))
+    || Object.hasOwn(extra, 'WRANGLER_OUTPUT_FILE_PATH')
+      && (typeof extra.WRANGLER_OUTPUT_FILE_PATH !== 'string'
+        || !path.isAbsolute(extra.WRANGLER_OUTPUT_FILE_PATH)
+        || path.resolve(extra.WRANGLER_OUTPUT_FILE_PATH) !== extra.WRANGLER_OUTPUT_FILE_PATH
+        || !isContainedPath(source.TMPDIR, extra.WRANGLER_OUTPUT_FILE_PATH))) {
     throw new Error('CLOUDFLARE_E_STAGING_CONTROL_WRANGLER');
   }
   return sanitizedEnvironment(source, {
@@ -247,6 +266,7 @@ export function cloudflareStagingWranglerEnvironment(source, credentials, {
     WS_NO_UTF_8_VALIDATE: '1',
     CI: '1',
     NO_COLOR: '1',
+    ...extra,
   });
 }
 
@@ -782,7 +802,8 @@ export async function sealPinnedWranglerRuntime(descriptor, authRoot,
 }
 
 export async function claimOneTimeAuthorization({
-  directory, authorizationSha256, scope, target, hooks = {},
+  directory, authorizationSha256, scope, target, binding = null,
+  now = () => new Date(), hooks = {},
 }) {
   if (typeof directory !== 'string' || !path.isAbsolute(directory)
     || !/^[a-f0-9]{64}$/u.test(authorizationSha256 ?? '')
@@ -792,14 +813,48 @@ export async function claimOneTimeAuthorization({
     throw new Error('CLOUDFLARE_E_AUTHORIZATION_ATTEMPT');
   }
   const file = path.join(directory, `${scope}-${authorizationSha256}.json`);
-  const payload = JSON.stringify({
-    schemaVersion: 1,
-    contract: 'dwnc-cloudflare-one-time-authorization-attempt-v1',
-    authorizationSha256,
-    scope,
-    targetSha256: createHash('sha256').update(target).digest('hex'),
-    claimedAt: new Date().toISOString(),
-  });
+  let claimedAt;
+  try { claimedAt = now(); }
+  catch { throw new Error('CLOUDFLARE_E_AUTHORIZATION_ATTEMPT'); }
+  if (!(claimedAt instanceof Date) || Number.isNaN(claimedAt.getTime())) {
+    throw new Error('CLOUDFLARE_E_AUTHORIZATION_ATTEMPT');
+  }
+  let payloadValue;
+  if (binding === null) {
+    payloadValue = {
+      schemaVersion: 1,
+      contract: 'dwnc-cloudflare-one-time-authorization-attempt-v1',
+      authorizationSha256,
+      scope,
+      targetSha256: createHash('sha256').update(target).digest('hex'),
+      claimedAt: claimedAt.toISOString(),
+    };
+  } else {
+    const bindingKeys = [
+      ...BOOTSTRAP_ATTEMPT_IDENTITY_KEYS, 'preparedSha256',
+      'freshAbsenceCaptureSha256', 'freshAccountSubdomainCaptureSha256',
+    ];
+    if (!binding || typeof binding !== 'object' || Array.isArray(binding)
+      || Object.keys(binding).length !== bindingKeys.length
+      || Object.keys(binding).some((key) => !bindingKeys.includes(key))
+      || ![binding.preparedSha256, binding.freshAbsenceCaptureSha256,
+        binding.freshAccountSubdomainCaptureSha256]
+        .every((value) => /^[a-f0-9]{64}$/u.test(value ?? ''))) {
+      throw new Error('CLOUDFLARE_E_AUTHORIZATION_ATTEMPT');
+    }
+    try { validateBootstrapAttemptIdentity(binding, 'CLOUDFLARE_E_AUTHORIZATION_ATTEMPT'); }
+    catch { throw new Error('CLOUDFLARE_E_AUTHORIZATION_ATTEMPT'); }
+    payloadValue = {
+      schemaVersion: 3,
+      contract: 'dwnc-cloudflare-one-time-authorization-attempt-v3',
+      authorizationSha256,
+      scope,
+      targetSha256: createHash('sha256').update(target).digest('hex'),
+      binding,
+      claimedAt: claimedAt.toISOString(),
+    };
+  }
+  const payload = JSON.stringify(payloadValue);
   try { await writeSecureCreateOnly(file, `${payload}\n`, { hooks }); }
   catch (error) {
     if (error?.message === 'CLOUDFLARE_E_SIGNING_FILE_EXISTS') {
