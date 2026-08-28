@@ -64,6 +64,7 @@
     "cloudflare:service:bootstrap": "node scripts/bootstrap-cloudflare-service.mjs",
     "cloudflare:signing:key:init": "node scripts/initialize-cloudflare-signing-key.mjs",
     "cloudflare:signing:sign": "node scripts/sign-cloudflare-evidence.mjs",
+    "cloudflare:account-target:preflight": "node scripts/manage-cloudflare-account-target.mjs --mode=preflight",
     "cloudflare:account-target:init": "node scripts/manage-cloudflare-account-target.mjs --mode=initialize",
     "cloudflare:account-target:inspect": "node scripts/manage-cloudflare-account-target.mjs --mode=inspect",
     "cloudflare:account-target:recover": "node scripts/manage-cloudflare-account-target.mjs --mode=recover",
