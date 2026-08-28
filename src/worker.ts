@@ -1,5 +1,6 @@
 import mediaManifest from './data/public-media-r2-v1.json' with { type: 'json' };
 import publicRequestSurface from './data/public-request-surface-v1.json' with { type: 'json' };
+import edgeRedirectManifest from '../docs/EDGE_REDIRECTS_V1.json' with { type: 'json' };
 import {
   createMediaWorker,
 } from './lib/media-worker.ts';
@@ -8,6 +9,7 @@ const handle = createMediaWorker(
   mediaManifest.entries,
   mediaManifest.manifestSha256,
   publicRequestSurface,
+  edgeRedirectManifest,
 );
 
 export default {

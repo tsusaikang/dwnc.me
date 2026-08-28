@@ -122,7 +122,7 @@ async function makeFixture(name, mode) {
   const secrets = path.join(root, 'secrets');
   const state = path.join(root, 'promotion-state');
   const output = path.join(root, 'output');
-  await mkdir(path.join(root, 'dist'), { recursive: true });
+  await mkdir(path.join(root, 'dist/about'), { recursive: true });
   await mkdir(path.join(root, 'public'), { recursive: true });
   await mkdir(path.join(root, 'src/data'), { recursive: true });
   await mkdir(path.join(root, 'node_modules/.bin'), { recursive: true });
@@ -245,6 +245,7 @@ process.exit(24);
     mode, deploymentId, currentVersionId: bootstrapVersionId, targetVersionId,
   })}\n`);
   await writeFile(path.join(root, 'dist/index.html'), '<h1>fixture a</h1>');
+  await writeFile(path.join(root, 'dist/about/index.html'), '<h1>fixture about</h1>');
   await writeFile(path.join(root, 'dist/_redirects'), '/old / 308\n');
   await writeFile(path.join(root, 'public/_redirects'), '/old / 308\n');
   await writeFile(path.join(bundle, 'worker.js'), 'export default { async fetch() { return new Response("ok"); } };');

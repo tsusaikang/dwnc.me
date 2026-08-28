@@ -17,6 +17,18 @@ export interface PublicRequestSurface {
   allowedPathHashes: readonly string[];
 }
 
+export interface EdgeRedirectEntry {
+  from: string;
+  to: string;
+  status: number;
+}
+
+export interface EdgeRedirectManifest {
+  schemaVersion: number;
+  canonicalOrigin: string;
+  redirects: readonly EdgeRedirectEntry[];
+}
+
 interface MediaCacheLike {
   match(request: Request): Promise<Response | undefined>;
   put(request: Request, response: Response): Promise<void>;
@@ -50,6 +62,9 @@ interface ByteRange {
 
 const PATH_PATTERN = /^\/media\/[A-Za-z0-9._/-]+$/u;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
+const LEGACY_REDIRECT_PATH_PATTERN = /^\/(?:[1-9]\d*|naver\/[1-9]\d*)$/u;
+const CANONICAL_REDIRECT_PATH_PATTERN = /^\/posts\/[1-9]\d*$/u;
+const EDGE_REDIRECT_COUNT = 349;
 const encoder = new TextEncoder();
 
 function observe(code: string): void {
@@ -127,6 +142,54 @@ function normalizeStaticPath(pathname: string): string | null {
   return decoded.length > 1 && decoded.endsWith('/') ? decoded.slice(0, -1) : decoded;
 }
 
+function exactKeys(value: unknown, keys: readonly string[]): boolean {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+    && Object.keys(value).length === keys.length
+    && Object.keys(value).every((key) => keys.includes(key));
+}
+
+function isSafeRedirectPath(pathname: string): boolean {
+  return pathname.startsWith('/') && pathname !== '/'
+    && !pathname.endsWith('/') && !pathname.includes('//') && !pathname.includes('\\')
+    && !/[?#*%\s\u0000-\u001f\u007f]/u.test(pathname)
+    && !pathname.split('/').some((segment, index) => index > 0
+      && (segment === '' || segment === '.' || segment === '..'));
+}
+
+function validateRedirectManifest(manifest: EdgeRedirectManifest): Map<string, string> {
+  if (!exactKeys(manifest, ['schemaVersion', 'canonicalOrigin', 'redirects'])
+    || manifest.schemaVersion !== 1
+    || manifest.canonicalOrigin !== 'https://dwnc.me'
+    || !Array.isArray(manifest.redirects)
+    || manifest.redirects.length !== EDGE_REDIRECT_COUNT) {
+    throw new Error('MEDIA_E_WORKER_REDIRECTS');
+  }
+  const index = new Map<string, string>();
+  const targets = new Set<string>();
+  for (const redirect of manifest.redirects) {
+    if (!exactKeys(redirect, ['from', 'to', 'status'])
+      || redirect.status !== 308
+      || typeof redirect.from !== 'string'
+      || typeof redirect.to !== 'string'
+      || !LEGACY_REDIRECT_PATH_PATTERN.test(redirect.from)
+      || !CANONICAL_REDIRECT_PATH_PATTERN.test(redirect.to)
+      || !isSafeRedirectPath(redirect.from)
+      || !isSafeRedirectPath(redirect.to)
+      || redirect.from === '/media' || redirect.from.startsWith('/media/')
+      || redirect.to === '/media' || redirect.to.startsWith('/media/')
+      || index.has(redirect.from) || targets.has(redirect.to)) {
+      throw new Error('MEDIA_E_WORKER_REDIRECTS');
+    }
+    index.set(redirect.from, redirect.to);
+    targets.add(redirect.to);
+  }
+  return index;
+}
+
+function redirect(target: string): Response {
+  return new Response(null, { status: 308, headers: { location: target } });
+}
+
 async function entryManifestSha256(entry: PublicMediaWorkerEntry): Promise<string> {
   return bytesToHex(await crypto.subtle.digest('SHA-256', encoder.encode(canonicalEntryPayload(entry))));
 }
@@ -136,8 +199,8 @@ function platformSha256(object: R2ObjectLike): string | null {
   return value instanceof ArrayBuffer && value.byteLength === 32 ? bytesToHex(value) : null;
 }
 
-function unavailable(): Response {
-  return new Response('Not found.\n', {
+function unavailable(method = 'GET'): Response {
+  return new Response(method === 'HEAD' ? null : 'Not found.\n', {
     status: 404,
     headers: {
       'cache-control': 'no-store',
@@ -303,6 +366,7 @@ export function createMediaWorker(
   entries: readonly PublicMediaWorkerEntry[],
   manifestSha256: string,
   publicSurface: PublicRequestSurface,
+  redirectManifest: EdgeRedirectManifest,
 ) {
   if (!SHA256_PATTERN.test(manifestSha256)) throw new Error('MEDIA_E_WORKER_MANIFEST');
   const index = validateEntries(entries);
@@ -319,6 +383,7 @@ export function createMediaWorker(
   if (publicPathHashes.size !== publicSurface.allowedPathHashes.length) {
     throw new Error('MEDIA_E_WORKER_SURFACE');
   }
+  const redirects = validateRedirectManifest(redirectManifest);
 
   return async function handle(
     request: Request,
@@ -327,20 +392,26 @@ export function createMediaWorker(
   ): Promise<Response> {
     const url = new URL(request.url);
     const smokeAuthorized = await stagingSmokeAuthorized(request, url, env);
-    if (smokeAuthorized === false) return unavailable();
+    if (smokeAuthorized === false) return unavailable(request.method);
     const cacheProbe = smokeAuthorized === true
       && request.headers.get('x-dwnc-smoke-cache-probe') === '1';
     const response = await (async (): Promise<Response> => {
     if (!url.pathname.startsWith('/media/')) {
       if (!['GET', 'HEAD'].includes(request.method)) return invalidMethod();
       const publicPath = normalizeStaticPath(url.pathname);
-      if (!publicPath || !publicPathHashes.has(await sha256Text(publicPath))) return unavailable();
+      if (!publicPath || !publicPathHashes.has(await sha256Text(publicPath))) {
+        return unavailable(request.method);
+      }
+      const redirectTarget = redirects.get(url.pathname);
+      if (redirectTarget) return redirect(redirectTarget);
       return env.ASSETS.fetch(request);
     }
     if (url.search || !PATH_PATTERN.test(url.pathname) || url.pathname.includes('//')
-      || url.pathname.includes('..') || url.pathname.includes('\\') || url.pathname.includes('%')) return unavailable();
+      || url.pathname.includes('..') || url.pathname.includes('\\') || url.pathname.includes('%')) {
+      return unavailable(request.method);
+    }
     const entry = index.get(url.pathname);
-    if (!entry) return unavailable();
+    if (!entry) return unavailable(request.method);
     if (!['GET', 'HEAD'].includes(request.method)) return invalidMethod();
 
     const cache = cacheForEnvironment(env);
@@ -364,7 +435,7 @@ export function createMediaWorker(
     let metadata: R2ObjectLike | null;
     try { metadata = await env.MEDIA_BUCKET.head(entry.key); }
     catch { observe('MEDIA_W_R2_HEAD'); return upstreamFailure(); }
-    if (!metadata) return unavailable();
+    if (!metadata) return unavailable(request.method);
     if (!objectMatches(entry, metadata, expectedManifestEntrySha256)) {
       observe('MEDIA_W_R2_HEAD_INTEGRITY');
       return upstreamFailure();
@@ -396,7 +467,7 @@ export function createMediaWorker(
         ? { range: { offset: range.offset, length: range.length } }
         : undefined);
     } catch { observe('MEDIA_W_R2_GET'); return upstreamFailure(); }
-    if (!object) return unavailable();
+    if (!object) return unavailable(request.method);
     if (!object.body
       || !objectMatches(entry, object, expectedManifestEntrySha256)
       || !sameObjectGeneration(metadata, object)) {

@@ -7,7 +7,8 @@ const sha256Hex = (value) => createHash('sha256').update(value).digest('hex');
 
 function requestPathForFile(relative) {
   const normalized = relative.split(path.sep).join('/').normalize('NFC');
-  if (normalized === '.assetsignore' || normalized === '_redirects' || normalized.startsWith('media/')
+  if (normalized === '.assetsignore' || normalized === '_redirects' || normalized === '404.html'
+    || normalized.startsWith('media/')
     || normalized.endsWith('.map')) return null;
   if (normalized === 'index.html') return '/';
   if (normalized.endsWith('/index.html')) return `/${normalized.slice(0, -'/index.html'.length)}`;

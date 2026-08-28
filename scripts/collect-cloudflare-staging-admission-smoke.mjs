@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { validateStagingArtifactDirectory } from './lib/cloudflare-artifact.mjs';
 import {
@@ -15,6 +14,7 @@ import {
   canonicalStagingAdmissionSmokePayload,
   canonicalStagingMediaProbePayload,
   collectStagingAdmissionSmokeEvidence,
+  stagingSmokeLimitsFromEnvironment,
   validateStagingAdmissionSmokeReceipt,
   validateStagingMediaProbeReceipt,
 } from './lib/cloudflare-staging.mjs';
@@ -22,6 +22,7 @@ import {
   installStructuredErrorHandler,
   stagingSmokeTokenFromEnvironment,
 } from './lib/cloudflare-process.mjs';
+import { loadStagingSmokeRedirectAuthority } from './lib/cloudflare-redirects.mjs';
 import { writeCanonicalEvidenceCreateOnly } from './lib/cloudflare-signing-key.mjs';
 import {
   loadTrackedPublicMediaManifest,
@@ -39,16 +40,14 @@ const absolute = (value) => {
 const artifactDirectory = absolute(process.env.CLOUDFLARE_PREUPLOAD_ARTIFACT_DIR);
 const outputPath = absolute(process.env.CLOUDFLARE_STAGING_ADMISSION_SMOKE_CANDIDATE_PATH);
 const origin = process.env.CLOUDFLARE_STAGING_SYNTHETIC_ORIGIN;
-const token = stagingSmokeTokenFromEnvironment(process.env, { descriptor: 3 });
 if (!/^https:\/\//u.test(origin ?? '')) {
   throw new Error('CLOUDFLARE_E_STAGING_ADMISSION_SMOKE_CREDENTIALS');
 }
-const [manifest, redirectsRaw, policy] = await Promise.all([
+const [manifest, policy] = await Promise.all([
   loadTrackedPublicMediaManifest(ROOT),
-  readFile(path.join(ROOT, 'public/_redirects'), 'utf8'),
   loadTrackedPublicMediaReleasePolicy(ROOT),
 ]);
-const { receipt: artifact, artifactSha256 } = await validateStagingArtifactDirectory(
+const { receipt: artifact, artifactSha256, staticEntry } = await validateStagingArtifactDirectory(
   artifactDirectory, { policy, manifest },
 );
 const signedPaths = (prefix) => ({
@@ -124,20 +123,24 @@ if (Date.now() - Date.parse(stagingStatusFiles.receipt.observedAt) > 15 * 60 * 1
   || Date.parse(stagingStatusFiles.receipt.observedAt) > Date.now() + 120000) {
   throw new Error('CLOUDFLARE_E_STAGING_ADMISSION_SMOKE_STATUS_EXPIRED');
 }
-const redirects = redirectsRaw.trim().split('\n').map((line) => {
-  const [from, to, status] = line.trim().split(/\s+/u);
-  if (status !== '308') throw new Error('CLOUDFLARE_E_STAGING_ADMISSION_SMOKE_REDIRECTS');
-  return { from, to };
-});
+const { redirects } = await loadStagingSmokeRedirectAuthority(
+  ROOT, artifactDirectory, artifact,
+);
+const token = stagingSmokeTokenFromEnvironment(process.env, { descriptor: 3 });
 const fetcher = (input, init = {}) => {
   const headers = new Headers(init.headers);
   headers.set('authorization', stagingSmokeAuthorizationHeader(token));
-  return fetch(input, { ...init, headers });
+  headers.set('accept-encoding', 'identity');
+  return fetch(input, { ...init, redirect: 'manual', headers });
 };
 const observedAt = new Date().toISOString();
 const receipt = await collectStagingAdmissionSmokeEvidence({
   fetcher,
-  unauthenticatedFetcher: (input, init = {}) => fetch(input, init),
+  unauthenticatedFetcher: (input, init = {}) => {
+    const headers = new Headers(init.headers);
+    headers.set('accept-encoding', 'identity');
+    return fetch(input, { ...init, redirect: 'manual', headers });
+  },
   origin,
   artifactSha256,
   payloadSha256: artifact.payloadSha256,
@@ -151,8 +154,9 @@ const receipt = await collectStagingAdmissionSmokeEvidence({
     canonicalStagingMediaProbePayload(stagingProbeFiles.receipt)),
   stagingDeployment100: true,
   mediaEntry: manifest.entries[0],
-  staticPath: '/about',
+  staticEntry,
   redirects,
+  limits: stagingSmokeLimitsFromEnvironment(),
   observedAt,
   expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
 });
@@ -165,6 +169,9 @@ console.log(JSON.stringify({
   artifactSha256,
   stagingVersionId: receipt.stagingVersionId,
   redirectCount: receipt.redirectCount,
+  redirectRequestCount: receipt.redirectRequestCount,
+  totalRequestCount: receipt.totalRequestCount,
+  cacheProbeRequestCount: receipt.cacheProbeRequestCount,
   productionVersionAttestationRequired: false,
   candidateUnsigned: true,
   signingRequired: true,

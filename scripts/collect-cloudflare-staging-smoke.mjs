@@ -1,4 +1,3 @@
-import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { validateArtifactDirectory } from './lib/cloudflare-artifact.mjs';
 import {
@@ -13,7 +12,10 @@ import {
   verifySignedPayload,
 } from './lib/cloudflare-release.mjs';
 import { stagingSmokeAuthorizationHeader } from '../src/lib/staging-smoke-token.js';
-import { collectStagingSmokeEvidence } from './lib/cloudflare-staging.mjs';
+import {
+  collectStagingSmokeEvidence,
+  stagingSmokeLimitsFromEnvironment,
+} from './lib/cloudflare-staging.mjs';
 import {
   canonicalStagingMediaProbePayload,
   validateStagingMediaProbeReceipt,
@@ -22,6 +24,7 @@ import {
   installStructuredErrorHandler,
   stagingSmokeTokenFromEnvironment,
 } from './lib/cloudflare-process.mjs';
+import { loadStagingSmokeRedirectAuthority } from './lib/cloudflare-redirects.mjs';
 import { writeCanonicalEvidenceCreateOnly } from './lib/cloudflare-signing-key.mjs';
 import { loadTrackedPublicMediaManifest } from './lib/public-media-manifest.mjs';
 import { loadTrackedPublicMediaReleasePolicy } from './lib/public-media-manifest.mjs';
@@ -35,16 +38,13 @@ const absolute = (value) => {
 const artifactDirectory = absolute(process.env.CLOUDFLARE_PREUPLOAD_ARTIFACT_DIR);
 const outputPath = absolute(process.env.CLOUDFLARE_STAGING_SMOKE_CANDIDATE_PATH);
 const origin = process.env.CLOUDFLARE_STAGING_SYNTHETIC_ORIGIN;
-const token = stagingSmokeTokenFromEnvironment(process.env, { descriptor: 3 });
 if (!/^https:\/\//u.test(origin ?? '')) {
   throw new Error('CLOUDFLARE_E_SMOKE_CREDENTIALS');
 }
-const [{ artifactSha256 }, manifest, redirectsRaw] = await Promise.all([
+const [{ receipt: artifact, artifactSha256, staticEntry }, manifest] = await Promise.all([
   validateArtifactDirectory(artifactDirectory),
   loadTrackedPublicMediaManifest(ROOT),
-  readFile(path.join(ROOT, 'public/_redirects'), 'utf8'),
 ]);
-const { receipt: artifact } = await validateArtifactDirectory(artifactDirectory);
 const policy = await loadTrackedPublicMediaReleasePolicy(ROOT);
 const signedPaths = (prefix) => ({
   receiptPath: absolute(process.env[`${prefix}_RECEIPT_PATH`]),
@@ -131,17 +131,21 @@ if (Date.now() - Date.parse(stagingStatusFiles.receipt.observedAt) > 15 * 60 * 1
   || Date.parse(stagingStatusFiles.receipt.observedAt) > Date.now() + 120000) {
   throw new Error('CLOUDFLARE_E_SMOKE_STATUS_EXPIRED');
 }
-const redirects = redirectsRaw.trim().split('\n').map((line) => {
-  const [from, to, status] = line.trim().split(/\s+/u);
-  if (status !== '308') throw new Error('CLOUDFLARE_E_SMOKE_REDIRECTS');
-  return { from, to };
-});
+const { redirects } = await loadStagingSmokeRedirectAuthority(
+  ROOT, artifactDirectory, artifact,
+);
+const token = stagingSmokeTokenFromEnvironment(process.env, { descriptor: 3 });
 const fetcher = (input, init = {}) => {
   const headers = new Headers(init.headers);
   headers.set('authorization', stagingSmokeAuthorizationHeader(token));
-  return fetch(input, { ...init, headers });
+  headers.set('accept-encoding', 'identity');
+  return fetch(input, { ...init, redirect: 'manual', headers });
 };
-const unauthenticatedFetcher = (input, init = {}) => fetch(input, init);
+const unauthenticatedFetcher = (input, init = {}) => {
+  const headers = new Headers(init.headers);
+  headers.set('accept-encoding', 'identity');
+  return fetch(input, { ...init, redirect: 'manual', headers });
+};
 const receipt = await collectStagingSmokeEvidence({
   fetcher,
   unauthenticatedFetcher,
@@ -159,8 +163,9 @@ const receipt = await collectStagingSmokeEvidence({
     canonicalStagingMediaProbePayload(stagingProbeFiles.receipt)),
   stagingDeployment100: true,
   mediaEntry: manifest.entries[0],
-  staticPath: '/about',
+  staticEntry,
   redirects,
+  limits: stagingSmokeLimitsFromEnvironment(),
   observedAt: new Date().toISOString(),
   expiresAt: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
 });
@@ -168,5 +173,8 @@ validateStagingSmokeReceipt(receipt);
 await writeCanonicalEvidenceCreateOnly(outputPath, receipt, canonicalStagingSmokePayload);
 console.log(JSON.stringify({
   contract: receipt.contract, artifactSha256, redirectCount: receipt.redirectCount,
+  redirectRequestCount: receipt.redirectRequestCount,
+  totalRequestCount: receipt.totalRequestCount,
+  cacheProbeRequestCount: receipt.cacheProbeRequestCount,
   candidateUnsigned: true, signingRequired: true, secretPrinted: false,
 }, null, 2));

@@ -33,6 +33,18 @@ export const PINNED_WRANGLER_RUNTIME_FILE_COUNT = 660;
 export const PINNED_WRANGLER_RUNTIME_BYTES = 207_434_085;
 export const PINNED_WRANGLER_RUNTIME_SHA256
   = 'a3c3dcd0bcecb7cb78994c96ac1711dd2fe985c7e698bfae1456e7610e0ae2eb';
+export const STAGING_SMOKE_RUNNER_LIMITS = Object.freeze({
+  totalTimeoutMs: 8 * 60 * 1_000,
+  gracefulTerminationMs: 1_500,
+  forcedSettleMs: 1_500,
+  maximumOutputBytes: 1024 * 1024,
+});
+export const STAGING_SMOKE_NATIVE_CHILD_GUARD = Symbol.for(
+  'dwnc.cloudflare.staging-smoke.native-child-guard.v1',
+);
+export const STAGING_SMOKE_SECRET_READ_OBSERVER = Symbol.for(
+  'dwnc.cloudflare.staging-smoke.secret-read-observer.v1',
+);
 const SEALED_WRANGLER_RESOLUTION_GUARD = `'use strict';
 const fs = require('node:fs');
 const Module = require('node:module');
@@ -476,6 +488,36 @@ export function stagingSmokeTokenFromEnvironment(source = process.env, {
   } finally { bytes?.fill(0); }
 }
 
+export async function runStagingSmokeAfterLocalPreflight({
+  preflight,
+  readToken,
+  startChild,
+  signal,
+}) {
+  if (typeof preflight !== 'function' || typeof readToken !== 'function'
+    || typeof startChild !== 'function'
+    || signal !== undefined && !(signal instanceof AbortSignal)) {
+    throw new Error('CLOUDFLARE_E_SMOKE_RUNNER_BOUNDARY');
+  }
+  const assertActive = () => {
+    if (signal?.aborted) throw new Error('CLOUDFLARE_E_SMOKE_RUNNER_TIMEOUT');
+  };
+  assertActive();
+  await preflight(signal);
+  assertActive();
+  let tokenBytes;
+  try {
+    tokenBytes = await readToken();
+    assertActive();
+    if (!Buffer.isBuffer(tokenBytes) || tokenBytes.length !== 43) {
+      throw new Error('CLOUDFLARE_E_SMOKE_RUNNER_BOUNDARY');
+    }
+    return await startChild(tokenBytes, signal);
+  } finally {
+    tokenBytes?.fill(0);
+  }
+}
+
 export function stagingSmokeTokenBytesFromSecretsFile(stored) {
   if (!Buffer.isBuffer(stored) || stored.length === 0 || stored.length > 4096) {
     throw new Error('CLOUDFLARE_E_STAGING_SECRET_FILE');
@@ -899,13 +941,15 @@ export async function assertOneTimeAuthorizationClaim({
 }
 
 export async function writeAnonymousInheritedInput(stream, value, {
-  descriptor = 3, maximumBytes = 1024 * 1024,
+  descriptor = 3, maximumBytes = 1024 * 1024, signal,
 } = {}) {
   const bytes = Buffer.isBuffer(value) ? Buffer.from(value)
     : typeof value === 'string' ? Buffer.from(value) : null;
   if (!bytes || bytes.length === 0 || bytes.length > maximumBytes
     || !Number.isSafeInteger(descriptor) || descriptor < 3 || descriptor > 64
-    || !stream || typeof stream.end !== 'function' || typeof stream.once !== 'function') {
+    || !stream || typeof stream.end !== 'function' || typeof stream.once !== 'function'
+    || typeof stream.off !== 'function'
+    || signal !== undefined && !(signal instanceof AbortSignal)) {
     throw new Error('CLOUDFLARE_E_SEALED_INPUT');
   }
   const sha256 = createHash('sha256').update(bytes).digest('hex');
@@ -917,16 +961,205 @@ export async function writeAnonymousInheritedInput(stream, value, {
         if (settled) return;
         settled = true;
         stream.off('error', onError);
+        signal?.removeEventListener('abort', onAbort);
         if (error !== null && error !== undefined) {
           reject(new Error('CLOUDFLARE_E_SEALED_INPUT'));
         } else resolve();
       };
       const onError = (error) => finish(error ?? new Error('sealed input error'));
+      const onAbort = () => {
+        try { stream.destroy?.(); } catch { /* best effort */ }
+        finish(new Error('sealed input aborted'));
+      };
       stream.once('error', onError);
+      signal?.addEventListener('abort', onAbort, { once: true });
+      if (signal?.aborted) { onAbort(); return; }
       stream.end(bytes, (error) => finish(error));
     });
     return { descriptor, path: `/dev/fd/${descriptor}`, sha256, bytes: byteLength };
   } finally { bytes.fill(0); }
+}
+
+function boundedChildOutput(stream, maximumBytes, signal) {
+  if (!stream || typeof stream.on !== 'function' || typeof stream.off !== 'function'
+    || typeof stream.destroy !== 'function') {
+    throw new Error('CLOUDFLARE_E_SMOKE_RUNNER_PIPE');
+  }
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let total = 0;
+    let settled = false;
+    const erase = () => { for (const chunk of chunks) chunk.fill(0); };
+    const cleanup = () => {
+      stream.off('data', onData);
+      stream.off('end', onEnd);
+      stream.off('close', onEnd);
+      stream.off('error', onError);
+      signal.removeEventListener('abort', onAbort);
+    };
+    const finish = (error = null) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) {
+        erase();
+        reject(error);
+        return;
+      }
+      const output = Buffer.concat(chunks, total);
+      erase();
+      resolve(output);
+    };
+    const onData = (value) => {
+      const chunk = Buffer.isBuffer(value) ? Buffer.from(value) : Buffer.from(String(value));
+      total += chunk.length;
+      if (total > maximumBytes) {
+        chunk.fill(0);
+        try { stream.destroy(); } catch { /* best effort */ }
+        finish(new Error('CLOUDFLARE_E_SMOKE_RUNNER_OUTPUT_LIMIT'));
+        return;
+      }
+      chunks.push(chunk);
+    };
+    const onEnd = () => finish();
+    const onError = () => finish(new Error('CLOUDFLARE_E_SMOKE_RUNNER_PIPE'));
+    const onAbort = () => {
+      try { stream.destroy(); } catch { /* best effort */ }
+      finish(new Error('CLOUDFLARE_E_SMOKE_RUNNER_TIMEOUT'));
+    };
+    stream.on('data', onData);
+    stream.once('end', onEnd);
+    stream.once('close', onEnd);
+    stream.once('error', onError);
+    signal.addEventListener('abort', onAbort, { once: true });
+    if (signal.aborted) onAbort();
+  });
+}
+
+function waitUntilOrTimeout(promise, milliseconds) {
+  if (milliseconds <= 0) return Promise.resolve(false);
+  let timer;
+  return Promise.race([
+    Promise.resolve(promise).then(() => true, () => true),
+    new Promise((resolve) => { timer = setTimeout(() => resolve(false), milliseconds); }),
+  ]).finally(() => { if (timer !== undefined) clearTimeout(timer); });
+}
+
+export async function runBoundedStagingSmokeChild({
+  command,
+  args,
+  cwd,
+  env,
+  tokenBytes,
+  operationDeadlineEpochMs,
+  finalDeadlineEpochMs,
+  spawnChild,
+  limits = STAGING_SMOKE_RUNNER_LIMITS,
+}) {
+  const keys = [
+    'totalTimeoutMs', 'gracefulTerminationMs', 'forcedSettleMs', 'maximumOutputBytes',
+  ];
+  if (typeof command !== 'string' || !path.isAbsolute(command)
+    || !Array.isArray(args) || args.some((value) => typeof value !== 'string')
+    || typeof cwd !== 'string' || !path.isAbsolute(cwd)
+    || !env || typeof env !== 'object' || Array.isArray(env)
+    || !Buffer.isBuffer(tokenBytes) || tokenBytes.length !== 43
+    || !Number.isSafeInteger(operationDeadlineEpochMs)
+    || !Number.isSafeInteger(finalDeadlineEpochMs)
+    || operationDeadlineEpochMs >= finalDeadlineEpochMs
+    || Date.now() >= finalDeadlineEpochMs
+    || !limits || Object.keys(limits).length !== keys.length
+    || Object.keys(limits).some((key) => !keys.includes(key))
+    || !keys.every((key) => Number.isSafeInteger(limits[key]) && limits[key] >= 1)
+    || limits.gracefulTerminationMs + limits.forcedSettleMs >= limits.totalTimeoutMs
+    || limits.maximumOutputBytes > 16 * 1024 * 1024
+    || spawnChild !== undefined && typeof spawnChild !== 'function') {
+    throw new Error('CLOUDFLARE_E_SMOKE_RUNNER_BOUNDARY');
+  }
+  if (spawnChild === undefined
+    && Object.hasOwn(globalThis, STAGING_SMOKE_NATIVE_CHILD_GUARD)) {
+    const observer = globalThis[STAGING_SMOKE_NATIVE_CHILD_GUARD];
+    if (typeof observer === 'function') observer();
+    throw new Error('CLOUDFLARE_E_SMOKE_NATIVE_CHILD_GUARD');
+  }
+  const child = (spawnChild ?? spawn)(command, args, {
+    cwd,
+    env,
+    stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
+  });
+  if (!child || typeof child.once !== 'function' || typeof child.kill !== 'function'
+    || !Array.isArray(child.stdio) || !child.stdio[1] || !child.stdio[2] || !child.stdio[3]) {
+    try { child?.kill?.('SIGKILL'); } catch { /* best effort */ }
+    throw new Error('CLOUDFLARE_E_SMOKE_RUNNER_CHILD');
+  }
+  const controller = new AbortController();
+  let operationTimer;
+  let closed = false;
+  const closePromise = new Promise((resolve, reject) => {
+    child.once('error', () => reject(new Error('CLOUDFLARE_E_SMOKE_RUNNER_CHILD')));
+    child.once('close', (code, signal) => {
+      closed = true;
+      resolve({ code, signal });
+    });
+  });
+  const operationRemaining = operationDeadlineEpochMs - Date.now();
+  if (operationRemaining <= 0) controller.abort('CLOUDFLARE_E_SMOKE_RUNNER_TIMEOUT');
+  else operationTimer = setTimeout(() => {
+    controller.abort('CLOUDFLARE_E_SMOKE_RUNNER_TIMEOUT');
+  }, operationRemaining);
+  let stdout;
+  let stderr;
+  const terminate = async () => {
+    if (!closed) {
+      try { child.kill('SIGTERM'); } catch { /* best effort */ }
+      await waitUntilOrTimeout(closePromise,
+        Math.min(limits.gracefulTerminationMs, Math.max(0, finalDeadlineEpochMs - Date.now())));
+    }
+    if (!closed) {
+      try { child.kill('SIGKILL'); } catch { /* best effort */ }
+      await waitUntilOrTimeout(closePromise,
+        Math.min(limits.forcedSettleMs, Math.max(0, finalDeadlineEpochMs - Date.now())));
+    }
+  };
+  try {
+    const inputWrite = writeAnonymousInheritedInput(child.stdio[3], tokenBytes, {
+      descriptor: 3,
+      maximumBytes: 43,
+      signal: controller.signal,
+    });
+    const stdoutRead = boundedChildOutput(
+      child.stdio[1], limits.maximumOutputBytes, controller.signal,
+    );
+    const stderrRead = boundedChildOutput(
+      child.stdio[2], limits.maximumOutputBytes, controller.signal,
+    );
+    const result = await Promise.all([closePromise, inputWrite, stdoutRead, stderrRead]);
+    const [{ code, signal }, , stdoutBytes, stderrBytes] = result;
+    stdout = stdoutBytes;
+    stderr = stderrBytes;
+    if (controller.signal.aborted) throw new Error('CLOUDFLARE_E_SMOKE_RUNNER_TIMEOUT');
+    if (signal !== null) throw new Error('CLOUDFLARE_E_SMOKE_RUNNER_CHILD_SIGNAL');
+    if (code !== 0) throw new Error('CLOUDFLARE_E_SMOKE_RUNNER_CHILD');
+    if (stdout.indexOf(tokenBytes) !== -1 || stderr.indexOf(tokenBytes) !== -1) {
+      throw new Error('CLOUDFLARE_E_SMOKE_RUNNER_SECRET_OUTPUT');
+    }
+    return { stdout: Buffer.from(stdout), stderr: Buffer.from(stderr) };
+  } catch (error) {
+    if (!controller.signal.aborted) controller.abort('CLOUDFLARE_E_SMOKE_RUNNER_FAILURE');
+    await terminate();
+    if (Date.now() >= operationDeadlineEpochMs
+      || controller.signal.reason === 'CLOUDFLARE_E_SMOKE_RUNNER_TIMEOUT') {
+      throw new Error('CLOUDFLARE_E_SMOKE_RUNNER_TIMEOUT');
+    }
+    throw error;
+  } finally {
+    if (operationTimer !== undefined) clearTimeout(operationTimer);
+    for (const stream of child.stdio.slice(1, 4)) {
+      try { stream?.destroy?.(); } catch { /* best effort */ }
+    }
+    stdout?.fill(0);
+    stderr?.fill(0);
+  }
 }
 
 export async function runCheckedWithAnonymousInput(command, args, input, {

@@ -1,8 +1,15 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import { generateKeyPairSync, sign } from 'node:crypto';
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { EventEmitter } from 'node:events';
+import {
+  chmod, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, writeFile,
+} from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { PassThrough, Writable } from 'node:stream';
+import edgeRedirectManifest from '../docs/EDGE_REDIRECTS_V1.json' with { type: 'json' };
+import publicSequence from '../src/data/public-sequence-v1.json' with { type: 'json' };
 import {
   createPreuploadArtifact,
   createStagingPreuploadArtifact,
@@ -10,6 +17,13 @@ import {
   validateStagingArtifactDirectory,
   validateStagingUploadArtifactDirectory,
 } from './lib/cloudflare-artifact.mjs';
+import { renderCloudflareRedirects } from './lib/cloudflare-redirects.mjs';
+import {
+  STAGING_SMOKE_NATIVE_CHILD_GUARD,
+  STAGING_SMOKE_SECRET_READ_OBSERVER,
+} from './lib/cloudflare-process.mjs';
+import { runStagingSmokeTokenRunner } from './run-with-staging-smoke-token.mjs';
+import { readSecureFile } from './lib/cloudflare-signing-key.mjs';
 import {
   canonicalRemoteReceiptPayload,
   loadTrackedPublicMediaReleasePolicy,
@@ -25,15 +39,32 @@ async function unlock(directory) {
     else await chmod(path.join(directory, entry.name), 0o600).catch(() => undefined);
   }
 }
+async function lock(directory) {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const target = path.join(directory, entry.name);
+    if (entry.isDirectory()) await lock(target);
+    else await chmod(target, 0o400);
+  }
+  await chmod(directory, 0o500);
+}
 try {
   const sourceRoot = path.join(temporary, 'source');
   const bundleDirectory = path.join(temporary, 'bundle');
-  await mkdir(path.join(sourceRoot, 'dist'), { recursive: true });
+  await mkdir(path.join(sourceRoot, 'dist/about'), { recursive: true });
   await mkdir(path.join(sourceRoot, 'public'), { recursive: true });
+  await mkdir(path.join(sourceRoot, 'docs'), { recursive: true });
+  await mkdir(path.join(sourceRoot, 'src/data'), { recursive: true });
   await mkdir(bundleDirectory);
   await writeFile(path.join(sourceRoot, 'dist/index.html'), 'static');
+  await writeFile(path.join(sourceRoot, 'dist/about/index.html'), 'fixture-about');
   await writeFile(path.join(sourceRoot, 'dist/.assetsignore'), 'media/\n*.map\n');
-  await writeFile(path.join(sourceRoot, 'public/_redirects'), '/old /posts/1 308\n');
+  const canonicalRedirects = renderCloudflareRedirects(edgeRedirectManifest, publicSequence);
+  await writeFile(path.join(sourceRoot, 'public/_redirects'), canonicalRedirects);
+  await writeFile(path.join(sourceRoot, 'dist/_redirects'), canonicalRedirects);
+  await writeFile(path.join(sourceRoot, 'docs/EDGE_REDIRECTS_V1.json'),
+    `${JSON.stringify(edgeRedirectManifest)}\n`);
+  await writeFile(path.join(sourceRoot, 'src/data/public-sequence-v1.json'),
+    `${JSON.stringify(publicSequence)}\n`);
   await writeFile(path.join(bundleDirectory, 'worker.js'), 'export default { fetch() {} };');
   const { privateKey, publicKey } = generateKeyPairSync('ed25519');
   const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();
@@ -109,8 +140,275 @@ try {
   assert.equal((await stat(first.directory)).mode & 0o777, 0o500);
   assert.equal((await stat(path.join(first.directory, 'worker.js'))).mode & 0o777, 0o400);
   assert.equal((await readFile(path.join(first.directory, 'worker.js'), 'utf8')).includes('fetch'), true);
-  assert.equal(first.receipt.publicRequestPaths, 1);
+  assert.equal(first.receipt.publicRequestPaths, 2);
   assert.equal(first.receipt.publicRequestSurfaceSha256.length, 64);
+  assert.deepEqual(validated.staticEntry, {
+    publicPath: '/about', size: 13,
+    sha256: first.receipt.smokeStaticSha256, contentType: 'text/html',
+  });
+  const secureRunnerDirectory = path.join(temporary, 'runner-secret');
+  await mkdir(secureRunnerDirectory, { mode: 0o700 });
+  const secureRunnerDirectoryResolved = await realpath(secureRunnerDirectory);
+  const runnerEnvironment = {
+    CLOUDFLARE_STAGING_SMOKE_SECRETS_FILE: path.join(
+      secureRunnerDirectoryResolved, 'smoke-secret.json',
+    ),
+    CLOUDFLARE_PREUPLOAD_ARTIFACT_DIR: first.directory,
+  };
+  const runnerArgv = [
+    process.execPath,
+    path.join(process.cwd(), 'scripts/run-with-staging-smoke-token.mjs'),
+    '--command=admission-smoke',
+    '--',
+  ];
+  const validSmokeSecret = Buffer.from(
+    `${JSON.stringify({ DWNC_STAGING_SMOKE_TOKEN: 'A'.repeat(43) })}\n`, 'utf8',
+  );
+  const canonicalRedirectLines = canonicalRedirects.trimEnd().split('\n');
+  const malformedRedirects = [
+    ['absolute', ['https://attacker.example/steal', ...canonicalRedirectLines[0].split(' ').slice(1)].join(' ')],
+    ['protocol-relative', ['//attacker.example/steal', ...canonicalRedirectLines[0].split(' ').slice(1)].join(' ')],
+    ['query', [`${canonicalRedirectLines[0].split(' ')[0]}?leak=1`, ...canonicalRedirectLines[0].split(' ').slice(1)].join(' ')],
+    ['backslash', [`${canonicalRedirectLines[0].split(' ')[0]}\\leak`, ...canonicalRedirectLines[0].split(' ').slice(1)].join(' ')],
+    ['duplicate', canonicalRedirectLines[1]],
+    ['extra-token', `${canonicalRedirectLines[0]} unexpected`],
+  ].map(([name, firstLine]) => [
+    name, `${[firstLine, ...canonicalRedirectLines.slice(1)].join('\n')}\n`,
+  ]);
+  for (const [, malformed] of malformedRedirects) {
+    await writeFile(path.join(sourceRoot, 'public/_redirects'), malformed);
+    let secretReadCount = 0;
+    let childStartCount = 0;
+    let requestCount = 0;
+    await assert.rejects(() => runStagingSmokeTokenRunner({
+      root: sourceRoot,
+      argv: runnerArgv,
+      environment: runnerEnvironment,
+      readSecret: async () => { secretReadCount += 1; return Buffer.from(validSmokeSecret); },
+      spawnChild: () => { childStartCount += 1; requestCount += 1; throw new Error('unexpected'); },
+      stdout: { write() {} },
+      stderr: { write() {} },
+    }), /REDIRECT_E_SMOKE_AUTHORITY/u);
+    assert.equal(secretReadCount, 0);
+    assert.equal(childStartCount, 0);
+    assert.equal(requestCount, 0);
+  }
+  await writeFile(path.join(sourceRoot, 'public/_redirects'), canonicalRedirects);
+  let nativeGuardSecretReads = 0;
+  globalThis[STAGING_SMOKE_NATIVE_CHILD_GUARD] = true;
+  try {
+    await assert.rejects(() => runStagingSmokeTokenRunner({
+      root: sourceRoot,
+      argv: runnerArgv,
+      environment: runnerEnvironment,
+      readSecret: async () => {
+        nativeGuardSecretReads += 1;
+        return Buffer.from(validSmokeSecret);
+      },
+      stdout: { write() {} },
+      stderr: { write() {} },
+    }), /CLOUDFLARE_E_SMOKE_NATIVE_CHILD_GUARD/u);
+  } finally {
+    delete globalThis[STAGING_SMOKE_NATIVE_CHILD_GUARD];
+  }
+  assert.equal(nativeGuardSecretReads, 1);
+
+  await writeFile(runnerEnvironment.CLOUDFLARE_STAGING_SMOKE_SECRETS_FILE,
+    validSmokeSecret, { mode: 0o600 });
+  const locallyReadSecret = await readSecureFile(
+    runnerEnvironment.CLOUDFLARE_STAGING_SMOKE_SECRETS_FILE, 4096,
+  );
+  assert.equal(locallyReadSecret.equals(validSmokeSecret), true);
+  locallyReadSecret.fill(0);
+  const nativeGuardPreload = path.join(temporary, 'native-child-guard.mjs');
+  const nativeSecretReadAttempts = path.join(temporary, 'native-secret-read-attempts.bin');
+  const nativeChildAttempts = path.join(temporary, 'native-child-attempts.bin');
+  const nativeRequestAttempts = path.join(temporary, 'native-request-attempts.bin');
+  await writeFile(nativeGuardPreload,
+    `import { appendFileSync } from 'node:fs';\n`
+    + `const secretMarker = ${JSON.stringify(nativeSecretReadAttempts)};\n`
+    + `const childMarker = ${JSON.stringify(nativeChildAttempts)};\n`
+    + `const requestMarker = ${JSON.stringify(nativeRequestAttempts)};\n`
+    + `globalThis[Symbol.for(${JSON.stringify(Symbol.keyFor(STAGING_SMOKE_SECRET_READ_OBSERVER))})] = () => appendFileSync(secretMarker, Buffer.from([1]));\n`
+    + `globalThis[Symbol.for(${JSON.stringify(Symbol.keyFor(STAGING_SMOKE_NATIVE_CHILD_GUARD))})] = () => appendFileSync(childMarker, Buffer.from([1]));\n`
+    + `globalThis.fetch = async () => { appendFileSync(requestMarker, Buffer.from([1])); throw new Error('fixture request blocked'); };\n`);
+  const runnerPath = path.join(process.cwd(), 'scripts/run-with-staging-smoke-token.mjs');
+  const npmPath = path.join(path.dirname(process.execPath), 'npm');
+  await writeFile(path.join(sourceRoot, 'package.json'), `${JSON.stringify({
+    private: true,
+    type: 'module',
+    scripts: {
+      'smoke-entry': `${process.execPath} ${runnerPath} --command=admission-smoke --`,
+    },
+  })}\n`);
+  const runActualEntrypoint = () => new Promise((resolve, reject) => {
+    const child = spawn(npmPath, ['run', 'smoke-entry', '--silent'], {
+      cwd: sourceRoot,
+      env: {
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
+        TMPDIR: process.env.TMPDIR,
+        NODE_OPTIONS: `--import=${nativeGuardPreload}`,
+        ...runnerEnvironment,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const stdout = [];
+    const stderr = [];
+    child.stdout.on('data', (chunk) => stdout.push(Buffer.from(chunk)));
+    child.stderr.on('data', (chunk) => stderr.push(Buffer.from(chunk)));
+    child.once('error', reject);
+    child.once('close', (code, signal) => resolve({
+      code,
+      signal,
+      stdout: Buffer.concat(stdout).toString('utf8'),
+      stderr: Buffer.concat(stderr).toString('utf8'),
+    }));
+  });
+  for (const [, malformed] of malformedRedirects) {
+    await writeFile(path.join(sourceRoot, 'public/_redirects'), malformed);
+    const result = await runActualEntrypoint();
+    assert.equal(result.code, 1);
+    assert.equal(result.signal, null);
+    assert.equal(result.stdout, '');
+    assert.equal(result.stderr.includes('REDIRECT_E_SMOKE_AUTHORITY'), true);
+    assert.equal(result.stderr.includes('CLOUDFLARE_E_STAGING_SECRET_FILE'), false);
+    assert.equal(result.stderr.includes('CLOUDFLARE_E_SMOKE_NATIVE_CHILD_GUARD'), false);
+    assert.equal((await readFile(nativeSecretReadAttempts).catch(() => Buffer.alloc(0))).length, 0);
+    assert.equal((await readFile(nativeChildAttempts).catch(() => Buffer.alloc(0))).length, 0);
+    assert.equal((await readFile(nativeRequestAttempts).catch(() => Buffer.alloc(0))).length, 0);
+  }
+  await writeFile(path.join(sourceRoot, 'public/_redirects'), canonicalRedirects);
+  const actualNormal = await runActualEntrypoint();
+  assert.equal(actualNormal.code, 1);
+  assert.equal(actualNormal.signal, null);
+  assert.equal(actualNormal.stdout, '');
+  assert.equal(actualNormal.stderr.includes('CLOUDFLARE_E_SMOKE_NATIVE_CHILD_GUARD'), true,
+    actualNormal.stderr);
+  assert.equal((await readFile(nativeSecretReadAttempts)).length, 1);
+  assert.equal((await readFile(nativeChildAttempts)).length, 1);
+  assert.equal((await readFile(nativeRequestAttempts).catch(() => Buffer.alloc(0))).length, 0);
+
+  const outputRunnerLimits = {
+    totalTimeoutMs: 1_000,
+    gracefulTerminationMs: 100,
+    forcedSettleMs: 100,
+    maximumOutputBytes: 1024 * 1024,
+  };
+  const shortOutputRunnerLimits = {
+    totalTimeoutMs: 250,
+    gracefulTerminationMs: 25,
+    forcedSettleMs: 25,
+    maximumOutputBytes: 1024 * 1024,
+  };
+  const fakeOutputChild = (output) => {
+    const child = new EventEmitter();
+    const childStdout = new PassThrough();
+    const childStderr = new PassThrough();
+    const tokenInput = new PassThrough();
+    tokenInput.resume();
+    child.stdio = ['ignore', childStdout, childStderr, tokenInput];
+    child.kill = () => true;
+    setImmediate(() => {
+      childStdout.end(output);
+      childStderr.end();
+      child.emit('close', 0, null);
+    });
+    return child;
+  };
+  const runOutputPath = (output, stdout, limits = outputRunnerLimits) =>
+    runStagingSmokeTokenRunner({
+      root: sourceRoot,
+      argv: runnerArgv,
+      environment: runnerEnvironment,
+      readSecret: async () => Buffer.from(validSmokeSecret),
+      spawnChild: () => fakeOutputChild(output),
+      stdout,
+      stderr: new PassThrough(),
+      limits,
+    });
+
+  const largeOutput = Buffer.alloc(1024 * 1024, 0x5a);
+  const deliveredOutput = [];
+  const slowOutput = new Writable({
+    highWaterMark: 64 * 1024,
+    write(chunk, _encoding, callback) {
+      setTimeout(() => {
+        deliveredOutput.push(Buffer.from(chunk));
+        callback();
+      }, 10);
+    },
+  });
+  await runOutputPath(largeOutput, slowOutput);
+  assert.equal(Buffer.concat(deliveredOutput).equals(largeOutput), true);
+  assert.equal(slowOutput.writableLength, 0);
+  assert.equal(slowOutput.listenerCount('drain'), 0);
+  assert.equal(slowOutput.listenerCount('error'), 0);
+  assert.equal(slowOutput.listenerCount('close'), 0);
+
+  let callbackErrorChunk;
+  const callbackErrorOutput = new Writable({
+    write(chunk, _encoding, callback) {
+      callbackErrorChunk = chunk;
+      setImmediate(() => callback(new Error('fixture output failure')));
+    },
+  });
+  await assert.rejects(
+    () => runOutputPath(Buffer.alloc(64 * 1024, 0x45), callbackErrorOutput),
+    /CLOUDFLARE_E_SMOKE_RUNNER_OUTPUT/u,
+  );
+  assert.equal(callbackErrorOutput.destroyed, true);
+  assert.equal(callbackErrorChunk.every((value) => value === 0), true);
+  assert.equal(callbackErrorOutput.listenerCount('drain'), 0);
+  assert.equal(callbackErrorOutput.listenerCount('error'), 0);
+  assert.equal(callbackErrorOutput.listenerCount('close'), 0);
+
+  let hangingOutputChunk;
+  let pendingOutputWrites = 0;
+  const hangingOutput = new Writable({
+    highWaterMark: 1,
+    write(chunk) {
+      hangingOutputChunk = chunk;
+      pendingOutputWrites += 1;
+    },
+    destroy(_error, callback) {
+      pendingOutputWrites = 0;
+      callback();
+    },
+  });
+  const hangingOutputStartedAt = Date.now();
+  await assert.rejects(
+    () => runOutputPath(Buffer.alloc(64 * 1024, 0x48), hangingOutput, shortOutputRunnerLimits),
+    /CLOUDFLARE_E_SMOKE_RUNNER_TIMEOUT/u,
+  );
+  assert.equal(Date.now() - hangingOutputStartedAt < 1_000, true);
+  assert.equal(hangingOutput.destroyed, true);
+  assert.equal(pendingOutputWrites, 0);
+  assert.equal(hangingOutputChunk.every((value) => value === 0), true);
+  assert.equal(hangingOutput.listenerCount('drain'), 0);
+  assert.equal(hangingOutput.listenerCount('error'), 0);
+  assert.equal(hangingOutput.listenerCount('close'), 0);
+
+  await validateArtifactDirectory(second.directory);
+  await unlock(second.directory);
+  await writeFile(path.join(second.directory, 'static/about/index.html'), 'fixture-abouu');
+  await lock(second.directory);
+  let replacedSecretReads = 0;
+  let replacedChildStarts = 0;
+  await assert.rejects(() => runStagingSmokeTokenRunner({
+    root: sourceRoot,
+    argv: runnerArgv,
+    environment: {
+      ...runnerEnvironment,
+      CLOUDFLARE_PREUPLOAD_ARTIFACT_DIR: second.directory,
+    },
+    readSecret: async () => { replacedSecretReads += 1; return Buffer.from(validSmokeSecret); },
+    spawnChild: () => { replacedChildStarts += 1; throw new Error('unexpected'); },
+    stdout: { write() {} },
+    stderr: { write() {} },
+  }), /CLOUDFLARE_E_ARTIFACT_DRIFT/u);
+  assert.equal(replacedSecretReads, 0);
+  assert.equal(replacedChildStarts, 0);
   const stagingInput = {
     sourceRoot,
     bundleDirectory,
@@ -201,7 +499,7 @@ try {
   });
   await assert.rejects(() => validateStagingArtifactDirectory(orphaned.directory, stagingAuthority));
   console.log(JSON.stringify({
-    suite: 'cloudflare-preupload-artifact', assertions: 27,
+    suite: 'cloudflare-preupload-artifact', assertions: 138,
     repeatedArtifactDigestStable: true, timestampInCore: false, buildUuidInCore: false,
     versionIdInCore: false, stagingPayloadComparable: true,
     productionValidatorRejectsStagingArtifact: true,

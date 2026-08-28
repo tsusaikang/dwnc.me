@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash, timingSafeEqual } from 'node:crypto';
+import edgeRedirectManifest from '../docs/EDGE_REDIRECTS_V1.json' with { type: 'json' };
 import { createMediaWorker } from '../src/lib/media-worker.ts';
 import { publicMediaEntryManifestSha256 } from './lib/public-media-manifest.mjs';
 
@@ -26,12 +27,16 @@ const entry = {
   cacheControl: 'public, max-age=31536000, immutable',
 };
 const pathHash = (value) => createHash('sha256').update(value).digest('hex');
+const publicPaths = [
+  '/', '/about', '/asset-fixture',
+  ...edgeRedirectManifest.redirects.map((redirect) => redirect.from),
+];
 const publicSurface = {
   schemaVersion: 1,
   contract: 'dwnc-public-request-surface-v1',
-  pathCount: 3,
+  pathCount: publicPaths.length,
   surfaceSha256: 'c'.repeat(64),
-  allowedPathHashes: [pathHash('/'), pathHash('/about'), pathHash('/1')].sort(),
+  allowedPathHashes: publicPaths.map(pathHash).sort(),
 };
 
 function object(body = bytes) {
@@ -114,7 +119,9 @@ function environment({
   };
 }
 
-const handle = createMediaWorker([entry], manifestSha256, publicSurface);
+const handle = createMediaWorker(
+  [entry], manifestSha256, publicSurface, edgeRedirectManifest,
+);
 let assertions = 0;
 const equal = (actual, expected) => { assert.equal(actual, expected); assertions += 1; };
 
@@ -258,10 +265,67 @@ const equal = (actual, expected) => { assert.equal(actual, expected); assertions
 }
 {
   const { env, calls } = environment();
-  const response = await handle(new Request('https://dwnc.me/1'), env);
+  const response = await handle(new Request('https://dwnc.me/asset-fixture'), env);
   equal(response.status, 200);
   equal(calls.assets.length, 1);
   equal(calls.cacheMatch.length, 0);
+}
+{
+  let redirectRequests = 0;
+  for (const [index, edgeRedirect] of edgeRedirectManifest.redirects.entries()) {
+    for (const method of ['GET', 'HEAD']) {
+      const { env, calls } = environment();
+      const query = index === 0 && method === 'GET' ? '?discarded=incoming' : '';
+      const response = await handle(new Request(
+        `https://dwnc.me${edgeRedirect.from}${query}`, { method },
+      ), env);
+      equal(response.status, 308);
+      equal(response.headers.get('location'), edgeRedirect.to);
+      equal((await response.arrayBuffer()).byteLength, 0);
+      equal(calls.assets.length, 0);
+      equal(calls.head.length, 0);
+      equal(calls.get.length, 0);
+      equal(calls.cacheMatch.length, 0);
+      equal(calls.cachePut.length, 0);
+      redirectRequests += 1;
+    }
+  }
+  equal(redirectRequests, 698);
+}
+for (const method of ['GET', 'HEAD']) {
+  const { env, calls } = environment();
+  const response = await handle(new Request('https://dwnc.me/404.html', { method }), env);
+  equal(response.status, 404);
+  equal(response.headers.get('cache-control'), 'no-store');
+  equal(calls.assets.length, 0);
+  equal(calls.head.length, 0);
+  equal(calls.get.length, 0);
+  equal(calls.cacheMatch.length, 0);
+  if (method === 'HEAD') equal((await response.arrayBuffer()).byteLength, 0);
+}
+
+const invalidRedirectManifestFixtures = [
+  (manifest) => { manifest.schemaVersion = 2; },
+  (manifest) => { manifest.canonicalOrigin = 'https://example.invalid'; },
+  (manifest) => { manifest.redirects.pop(); },
+  (manifest) => { manifest.unexpected = true; },
+  (manifest) => { manifest.redirects[0].status = 307; },
+  (manifest) => { manifest.redirects[0].unexpected = true; },
+  (manifest) => { manifest.redirects[1].from = manifest.redirects[0].from; },
+  (manifest) => { manifest.redirects[1].to = manifest.redirects[0].to; },
+  (manifest) => { manifest.redirects[0].from = '/media/legacy'; },
+  (manifest) => { manifest.redirects[0].to = '/media/collision'; },
+  (manifest) => { manifest.redirects[0].from = '/naver/../unsafe'; },
+  (manifest) => { manifest.redirects[0].to = '/posts/1?unsafe=1'; },
+];
+for (const mutate of invalidRedirectManifestFixtures) {
+  const invalid = structuredClone(edgeRedirectManifest);
+  mutate(invalid);
+  assert.throws(
+    () => createMediaWorker([entry], manifestSha256, publicSurface, invalid),
+    /MEDIA_E_WORKER_REDIRECTS/u,
+  );
+  assertions += 1;
 }
 for (const url of [
   'https://dwnc.me/withdrawn-post',
@@ -458,6 +522,28 @@ for (const mutateGet of [
   const response = await productionWorker.fetch(new Request('https://dwnc.me/about'), env, context);
   equal(response.status, 200);
   equal(calls.assets.length, 1);
+
+  const productionRedirect = environment();
+  const firstRedirect = edgeRedirectManifest.redirects[0];
+  const redirectResponse = await productionWorker.fetch(new Request(
+    `https://dwnc.me${firstRedirect.from}?source=query`, { method: 'HEAD' },
+  ), productionRedirect.env, productionRedirect.context);
+  equal(redirectResponse.status, 308);
+  equal(redirectResponse.headers.get('location'), firstRedirect.to);
+  equal((await redirectResponse.arrayBuffer()).byteLength, 0);
+  equal(productionRedirect.calls.assets.length, 0);
+  equal(productionRedirect.calls.head.length, 0);
+  equal(productionRedirect.calls.get.length, 0);
+  equal(productionRedirect.calls.cacheMatch.length, 0);
+
+  const productionNotFound = environment();
+  const notFoundResponse = await productionWorker.fetch(new Request(
+    'https://dwnc.me/404.html', { method: 'HEAD' },
+  ), productionNotFound.env, productionNotFound.context);
+  equal(notFoundResponse.status, 404);
+  equal(notFoundResponse.headers.get('cache-control'), 'no-store');
+  equal((await notFoundResponse.arrayBuffer()).byteLength, 0);
+  equal(productionNotFound.calls.assets.length, 0);
 }
 
 {

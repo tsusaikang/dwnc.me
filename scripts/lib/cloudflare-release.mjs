@@ -13,6 +13,7 @@ const PREUPLOAD_KEYS = Object.freeze([
   'workerName', 'accountIdSha256', 'stagingAccountIdSha256',
   'workerScriptSha256', 'workerScriptBytes', 'payloadSha256',
   'staticTreeSha256', 'staticFiles', 'publicRequestSurfaceSha256', 'publicRequestPaths',
+  'smokeStaticPath', 'smokeStaticBytes', 'smokeStaticSha256', 'smokeStaticMime',
   'uploadConfigSha256', 'stagingUploadConfigSha256', 'promotionConfigSha256', 'redirectsSha256',
   'stagingPromotionConfigSha256',
   'environmentFileSha256',
@@ -26,6 +27,7 @@ const STAGING_PREUPLOAD_KEYS = Object.freeze([
   'workerName', 'stagingAccountIdSha256',
   'workerScriptSha256', 'workerScriptBytes', 'payloadSha256',
   'staticTreeSha256', 'staticFiles', 'publicRequestSurfaceSha256', 'publicRequestPaths',
+  'smokeStaticPath', 'smokeStaticBytes', 'smokeStaticSha256', 'smokeStaticMime',
   'stagingUploadConfigSha256', 'stagingPromotionConfigSha256', 'environmentFileSha256',
   'redirectsSha256', 'mediaManifestSha256', 'mediaRemoteReceiptSha256',
   'mediaRemoteSignatureSha256', 'mediaRemotePublicKeySpkiSha256',
@@ -43,8 +45,12 @@ const SMOKE_KEYS = Object.freeze([
   'stagingVersionAttestationSha256', 'stagingDeploymentStatusSha256', 'rawProbeEvidenceSha256',
   'stagingMediaProbeSha256',
   'syntheticNonAccessOrigin', 'get200', 'head200', 'notModified304', 'range206',
-  'range416', 'mimeVerified', 'etagVerified', 'static200', 'redirects308',
-  'redirectCount', 'cachePathVerified', 'stagingDeployment100', 'unauthenticatedDenied',
+  'range416', 'mimeVerified', 'etagVerified', 'static200', 'notFound404', 'redirects308',
+  'redirectBodiesEmpty', 'redirectQueryDiscarded', 'redirectCount',
+  'redirectGetRequestCount', 'redirectHeadRequestCount', 'redirectRequestCount',
+  'mediaRequestCount', 'staticRequestCount', 'notFoundRequestCount',
+  'cacheProbeRequestCount', 'authenticatedRequestCount', 'unauthenticatedRequestCount',
+  'totalRequestCount', 'cachePathVerified', 'stagingDeployment100', 'unauthenticatedDenied',
   'versionMarkerVerified',
   'observedAt', 'expiresAt',
 ]);
@@ -150,6 +156,10 @@ export function validatePreuploadArtifact(receipt, expected = {}) {
     || !Number.isSafeInteger(receipt.staticFiles) || receipt.staticFiles <= 0
     || !SHA256.test(receipt.publicRequestSurfaceSha256 ?? '')
     || !Number.isSafeInteger(receipt.publicRequestPaths) || receipt.publicRequestPaths <= 0
+    || receipt.smokeStaticPath !== '/about'
+    || !Number.isSafeInteger(receipt.smokeStaticBytes) || receipt.smokeStaticBytes <= 0
+    || !SHA256.test(receipt.smokeStaticSha256 ?? '')
+    || receipt.smokeStaticMime !== 'text/html'
     || !SHA256.test(receipt.uploadConfigSha256 ?? '')
     || !SHA256.test(receipt.stagingUploadConfigSha256 ?? '')
     || !SHA256.test(receipt.environmentFileSha256 ?? '')
@@ -191,6 +201,10 @@ export function validateStagingPreuploadArtifact(receipt, expected = {}) {
     || !Number.isSafeInteger(receipt.staticFiles) || receipt.staticFiles <= 0
     || !SHA256.test(receipt.publicRequestSurfaceSha256 ?? '')
     || !Number.isSafeInteger(receipt.publicRequestPaths) || receipt.publicRequestPaths <= 0
+    || receipt.smokeStaticPath !== '/about'
+    || !Number.isSafeInteger(receipt.smokeStaticBytes) || receipt.smokeStaticBytes <= 0
+    || !SHA256.test(receipt.smokeStaticSha256 ?? '')
+    || receipt.smokeStaticMime !== 'text/html'
     || !SHA256.test(receipt.stagingUploadConfigSha256 ?? '')
     || !SHA256.test(receipt.stagingPromotionConfigSha256 ?? '')
     || !SHA256.test(receipt.environmentFileSha256 ?? '')
@@ -516,10 +530,20 @@ export function validateStagingSmokeReceipt(receipt, {
     || !SHA256.test(receipt.stagingMediaProbeSha256 ?? '')
     || receipt.syntheticNonAccessOrigin !== true
     || !['get200', 'head200', 'notModified304', 'range206', 'range416', 'mimeVerified',
-      'etagVerified', 'static200', 'redirects308', 'cachePathVerified',
+      'etagVerified', 'static200', 'notFound404', 'redirects308', 'redirectBodiesEmpty',
+      'redirectQueryDiscarded', 'cachePathVerified',
       'versionMarkerVerified'].every((key) => receipt[key] === true)
     || receipt.stagingDeployment100 !== true || receipt.unauthenticatedDenied !== true
-    || receipt.redirectCount !== 349 || Number.isNaN(Date.parse(receipt.observedAt ?? ''))
+    || receipt.redirectCount !== 349
+    || receipt.redirectGetRequestCount !== 349 || receipt.redirectHeadRequestCount !== 349
+    || receipt.redirectRequestCount !== 698 || receipt.mediaRequestCount !== 5
+    || receipt.staticRequestCount !== 2 || receipt.notFoundRequestCount !== 2
+    || !Number.isSafeInteger(receipt.cacheProbeRequestCount)
+    || receipt.cacheProbeRequestCount < 1 || receipt.cacheProbeRequestCount > 3
+    || receipt.authenticatedRequestCount !== 707 + receipt.cacheProbeRequestCount
+    || receipt.unauthenticatedRequestCount !== 1
+    || receipt.totalRequestCount !== 708 + receipt.cacheProbeRequestCount
+    || Number.isNaN(Date.parse(receipt.observedAt ?? ''))
     || Number.isNaN(Date.parse(receipt.expiresAt ?? ''))) fail('CLOUDFLARE_E_STAGING_SMOKE');
   for (const [key, value] of Object.entries(expected)) {
     if (!SMOKE_KEYS.includes(key) || receipt[key] !== value) fail('CLOUDFLARE_E_STAGING_SMOKE_EXPECTED');

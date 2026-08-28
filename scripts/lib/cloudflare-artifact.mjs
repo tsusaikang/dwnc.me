@@ -24,6 +24,15 @@ const fail = (code) => { throw new Error(code); };
 const WRANGLER_VERSION = '4.125.0';
 const COMPATIBILITY_DATE = '2026-08-24';
 
+function smokeStaticEntryFromReceipt(receipt) {
+  return Object.freeze({
+    publicPath: receipt.smokeStaticPath,
+    size: receipt.smokeStaticBytes,
+    sha256: receipt.smokeStaticSha256,
+    contentType: receipt.smokeStaticMime,
+  });
+}
+
 export function productionUploadConfig(bucket) {
   if (typeof bucket !== 'string' || !/^dwnc-me-public-media-production$/u.test(bucket)) {
     fail('CLOUDFLARE_E_ARTIFACT_TARGET');
@@ -263,6 +272,12 @@ export async function createPreuploadArtifact({
     await cp(mediaReceiptFiles.publicKeyPath, path.join(pending, 'media-remote-public-key.pem'));
     const staticTree = await directoryArtifactSha256(path.join(pending, 'static'));
     const publicSurface = await collectPublicRequestSurface(path.join(pending, 'static'));
+    const [sourceRedirects, staticRedirects, smokeStaticBytes] = await Promise.all([
+      readFile(path.join(sourceRoot, 'public/_redirects')),
+      readFile(path.join(pending, 'static/_redirects')),
+      readFile(path.join(pending, 'static/about/index.html')),
+    ]);
+    if (!sourceRedirects.equals(staticRedirects)) fail('CLOUDFLARE_E_ARTIFACT_REDIRECTS');
     const receipt = {
       schemaVersion: 1,
       contract: 'dwnc-cloudflare-preupload-artifact-v1',
@@ -279,12 +294,16 @@ export async function createPreuploadArtifact({
       staticFiles: staticTree.files,
       publicRequestSurfaceSha256: publicSurface.surfaceSha256,
       publicRequestPaths: publicSurface.pathCount,
+      smokeStaticPath: '/about',
+      smokeStaticBytes: smokeStaticBytes.length,
+      smokeStaticSha256: sha256Hex(smokeStaticBytes),
+      smokeStaticMime: 'text/html',
       uploadConfigSha256: sha256Hex(canonicalJson(uploadConfig)),
       stagingUploadConfigSha256: sha256Hex(canonicalJson(stagingConfig)),
       environmentFileSha256: sha256Hex(''),
       promotionConfigSha256: sha256Hex(canonicalJson(promotionConfig)),
       stagingPromotionConfigSha256: sha256Hex(canonicalJson(stagingPromotion)),
-      redirectsSha256: sha256Hex(await readFile(path.join(sourceRoot, 'public/_redirects'))),
+      redirectsSha256: sha256Hex(staticRedirects),
       mediaManifestSha256: mediaManifest.manifestSha256,
       mediaRemoteReceiptSha256: sha256Hex(canonicalRemoteReceiptPayload(mediaRemoteReceipt)),
       mediaRemoteSignatureSha256: sha256Hex(mediaSignatureBytes),
@@ -376,6 +395,12 @@ export async function createStagingPreuploadArtifact({
     await cp(mediaReceiptFiles.publicKeyPath, path.join(pending, 'media-remote-public-key.pem'));
     const staticTree = await directoryArtifactSha256(path.join(pending, 'static'));
     const publicSurface = await collectPublicRequestSurface(path.join(pending, 'static'));
+    const [sourceRedirects, staticRedirects, smokeStaticBytes] = await Promise.all([
+      readFile(path.join(sourceRoot, 'public/_redirects')),
+      readFile(path.join(pending, 'static/_redirects')),
+      readFile(path.join(pending, 'static/about/index.html')),
+    ]);
+    if (!sourceRedirects.equals(staticRedirects)) fail('CLOUDFLARE_E_ARTIFACT_REDIRECTS');
     const receipt = {
       schemaVersion: 1,
       contract: 'dwnc-cloudflare-staging-preupload-artifact-v1',
@@ -391,10 +416,14 @@ export async function createStagingPreuploadArtifact({
       staticFiles: staticTree.files,
       publicRequestSurfaceSha256: publicSurface.surfaceSha256,
       publicRequestPaths: publicSurface.pathCount,
+      smokeStaticPath: '/about',
+      smokeStaticBytes: smokeStaticBytes.length,
+      smokeStaticSha256: sha256Hex(smokeStaticBytes),
+      smokeStaticMime: 'text/html',
       stagingUploadConfigSha256: sha256Hex(canonicalJson(stagingConfig)),
       stagingPromotionConfigSha256: sha256Hex(canonicalJson(stagingPromotion)),
       environmentFileSha256: sha256Hex(''),
-      redirectsSha256: sha256Hex(await readFile(path.join(sourceRoot, 'public/_redirects'))),
+      redirectsSha256: sha256Hex(staticRedirects),
       mediaManifestSha256: mediaManifest.manifestSha256,
       mediaRemoteReceiptSha256: sha256Hex(canonicalRemoteReceiptPayload(mediaRemoteReceipt)),
       mediaRemoteSignatureSha256: sha256Hex(mediaSignatureBytes),
@@ -430,6 +459,8 @@ export async function validateArtifactDirectory(directory) {
   const worker = await readFile(path.join(directory, 'worker.js'));
   const staticTree = await directoryArtifactSha256(path.join(directory, 'static'));
   const publicSurface = await collectPublicRequestSurface(path.join(directory, 'static'));
+  const staticRedirects = await readFile(path.join(directory, 'static/_redirects'));
+  const smokeStaticBytes = await readFile(path.join(directory, 'static/about/index.html'));
   const uploadConfig = await readFile(path.join(directory, 'wrangler-upload.jsonc'), 'utf8');
   const stagingConfig = await readFile(path.join(directory, 'wrangler-staging-upload.jsonc'), 'utf8');
   const environmentFile = await readFile(path.join(directory, 'wrangler-empty.env'));
@@ -448,6 +479,9 @@ export async function validateArtifactDirectory(directory) {
     || staticTree.sha256 !== receipt.staticTreeSha256 || staticTree.files !== receipt.staticFiles
     || publicSurface.surfaceSha256 !== receipt.publicRequestSurfaceSha256
     || publicSurface.pathCount !== receipt.publicRequestPaths
+    || sha256Hex(staticRedirects) !== receipt.redirectsSha256
+    || smokeStaticBytes.length !== receipt.smokeStaticBytes
+    || sha256Hex(smokeStaticBytes) !== receipt.smokeStaticSha256
     || sha256Hex(uploadConfig.trim()) !== receipt.uploadConfigSha256
     || sha256Hex(stagingConfig.trim()) !== receipt.stagingUploadConfigSha256
     || sha256Hex(environmentFile) !== receipt.environmentFileSha256 || environmentFile.length !== 0
@@ -459,7 +493,11 @@ export async function validateArtifactDirectory(directory) {
     || publicKeySpkiSha256(mediaPublicKeyPem) !== receipt.mediaRemotePublicKeySpkiSha256) {
     fail('CLOUDFLARE_E_ARTIFACT_DRIFT');
   }
-  return { receipt, artifactSha256: preuploadArtifactSha256(receipt) };
+  return {
+    receipt,
+    artifactSha256: preuploadArtifactSha256(receipt),
+    staticEntry: smokeStaticEntryFromReceipt(receipt),
+  };
 }
 
 function validateStagingArtifactAuthority({
@@ -500,6 +538,8 @@ export async function validateStagingArtifactDirectory(directory, { policy, mani
   const worker = await readFile(path.join(directory, 'worker.js'));
   const staticTree = await directoryArtifactSha256(path.join(directory, 'static'));
   const publicSurface = await collectPublicRequestSurface(path.join(directory, 'static'));
+  const staticRedirects = await readFile(path.join(directory, 'static/_redirects'));
+  const smokeStaticBytes = await readFile(path.join(directory, 'static/about/index.html'));
   const stagingConfig = await readFile(path.join(directory, 'wrangler-staging-upload.jsonc'), 'utf8');
   const environmentFile = await readFile(path.join(directory, 'wrangler-empty.env'));
   const stagingPromotion = await readFile(
@@ -520,6 +560,9 @@ export async function validateStagingArtifactDirectory(directory, { policy, mani
     || staticTree.sha256 !== receipt.staticTreeSha256 || staticTree.files !== receipt.staticFiles
     || publicSurface.surfaceSha256 !== receipt.publicRequestSurfaceSha256
     || publicSurface.pathCount !== receipt.publicRequestPaths
+    || sha256Hex(staticRedirects) !== receipt.redirectsSha256
+    || smokeStaticBytes.length !== receipt.smokeStaticBytes
+    || sha256Hex(smokeStaticBytes) !== receipt.smokeStaticSha256
     || sha256Hex(stagingConfig.trim()) !== receipt.stagingUploadConfigSha256
     || sha256Hex(environmentFile) !== receipt.environmentFileSha256 || environmentFile.length !== 0
     || sha256Hex(stagingPromotion.trim()) !== receipt.stagingPromotionConfigSha256
@@ -531,7 +574,11 @@ export async function validateStagingArtifactDirectory(directory, { policy, mani
     || publicKeySpkiSha256(mediaPublicKeyPem) !== receipt.mediaRemotePublicKeySpkiSha256) {
     fail('CLOUDFLARE_E_ARTIFACT_DRIFT');
   }
-  return { receipt, artifactSha256: stagingPreuploadArtifactSha256(receipt) };
+  return {
+    receipt,
+    artifactSha256: stagingPreuploadArtifactSha256(receipt),
+    staticEntry: smokeStaticEntryFromReceipt(receipt),
+  };
 }
 
 export async function validateStagingUploadArtifactDirectory(directory, stagingAuthority = {}) {
