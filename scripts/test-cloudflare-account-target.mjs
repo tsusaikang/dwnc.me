@@ -37,6 +37,7 @@ import { runCloudflareStagingControl } from './run-cloudflare-staging-control.mj
 
 const accountId = 'a'.repeat(32);
 const wrongAccountId = 'b'.repeat(32);
+const clipboardClearedMarker = 'dwnc.me clipboard cleared';
 const accountIdSha256 = cloudflareAccountIdSha256(accountId);
 const accountSecret = (value) => Buffer.from(Buffer.from(canonicalJson({
   schemaVersion: 1,
@@ -456,9 +457,11 @@ await expectTrackedFailure(() => new MacOSSingleReadClipboard({
 equal(clipboardSpawnFailure.calls.length, 1);
 
 const legacyReadChunks = [Buffer.from('synthetic-'), Buffer.from('token-value')];
+const legacyClearVerificationChunks = [Buffer.from(clipboardClearedMarker, 'ascii')];
 const legacyClipboardSpawn = nativeSpawnQueue([
   { stdoutChunks: legacyReadChunks },
   {},
+  { stdoutChunks: legacyClearVerificationChunks },
 ]);
 const legacyClipboardRead = new MacOSSingleReadClipboard({
   accessFile: async () => undefined,
@@ -469,10 +472,30 @@ equal(await legacyClipboardRead.readOnceAndClear(), 'synthetic-token-value');
 equal(legacyClipboardSpawn.calls.map((call) => [call.file, call.args, call.options.stdio]), [
   ['/usr/bin/pbpaste', [], ['ignore', 'pipe', 'pipe']],
   ['/usr/bin/pbcopy', [], ['pipe', 'pipe', 'pipe']],
+  ['/usr/bin/pbpaste', [], ['ignore', 'pipe', 'pipe']],
 ]);
 equal(legacyReadChunks.every(isZeroed), true);
-equal(legacyClipboardSpawn.records[1].input.length, 0);
+equal(legacyClearVerificationChunks.every(isZeroed), true);
+equal(legacyClipboardSpawn.records[1].inputSnapshot.toString('ascii'), clipboardClearedMarker);
+legacyClipboardSpawn.records[1].inputSnapshot.fill(0);
+equal(legacyClipboardSpawn.records[1].input.length, clipboardClearedMarker.length);
 equal(isZeroed(legacyClipboardSpawn.records[1].input), true);
+
+const staleSensitiveClipboardChunks = [Buffer.from(accountId, 'ascii')];
+const staleSensitiveClipboardSpawn = nativeSpawnQueue([
+  {},
+  { stdoutChunks: staleSensitiveClipboardChunks },
+]);
+await expectTrackedFailure(() => new MacOSSingleReadClipboard({
+  accessFile: async () => undefined,
+  spawnChild: staleSensitiveClipboardSpawn.spawnChild,
+  ...shortNativeLifecycle,
+}).clear(), 'CLOUDFLARE_E_ACCOUNT_CLIPBOARD_CLEAR');
+equal(staleSensitiveClipboardSpawn.calls.map(({ file }) => file), [
+  '/usr/bin/pbcopy', '/usr/bin/pbpaste',
+]);
+equal(allScenarioBuffers(staleSensitiveClipboardSpawn.records).every(isZeroed), true);
+staleSensitiveClipboardSpawn.records[0].inputSnapshot.fill(0);
 
 for (const [name, scenario] of [
   ['stdin-error', { stdinError: true, writeCallback: false }],
@@ -705,6 +728,7 @@ try {
   const poisonedClipboardSpawn = nativeSpawnQueue([
     { stdoutChunks: poisonedClipboardChunks },
     {},
+    { stdoutChunks: [Buffer.from(clipboardClearedMarker, 'ascii')] },
   ]);
   const poisonedClipboard = new MacOSSingleReadClipboard({
     accessFile: async () => undefined,

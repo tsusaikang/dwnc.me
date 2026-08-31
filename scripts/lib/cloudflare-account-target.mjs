@@ -33,6 +33,7 @@ const CHILD_TIMEOUT_MS = 15_000;
 const CHILD_TERMINATE_GRACE_MS = 250;
 const CHILD_KILL_GRACE_MS = 250;
 const CHILD_STDERR_MAX_BYTES = 4096;
+const CLIPBOARD_CLEARED_MARKER = 'dwnc.me clipboard cleared';
 const NATIVE_SPAWN_GUARD = Symbol.for('dwnc.cloudflare.account-target.native-spawn-guard.v1');
 const TEST_NATIVE_SPAWN_ERROR = 'CLOUDFLARE_E_ACCOUNT_TEST_NATIVE_SPAWN';
 const NATIVE_PATH = '/usr/bin:/bin:/usr/sbin:/sbin';
@@ -641,12 +642,15 @@ export class MacOSSingleReadClipboard {
 
   async clear() {
     let result;
+    let verification;
+    let marker;
     try {
+      marker = Buffer.from(CLIPBOARD_CLEARED_MARKER, 'ascii');
       result = await runBoundedChild({
         spawnChild: this.spawnChild,
         file: '/usr/bin/pbcopy',
         args: [],
-        input: Buffer.alloc(0),
+        input: marker,
         maxStdoutBytes: 0,
         maxStderrBytes: CHILD_STDERR_MAX_BYTES,
         errorCode: 'CLOUDFLARE_E_ACCOUNT_CLIPBOARD_CLEAR',
@@ -657,6 +661,22 @@ export class MacOSSingleReadClipboard {
         || result.stdout.length !== 0 || result.stderr.length !== 0) {
         fail('CLOUDFLARE_E_ACCOUNT_CLIPBOARD_CLEAR');
       }
+      marker = Buffer.from(CLIPBOARD_CLEARED_MARKER, 'ascii');
+      verification = await runBoundedChild({
+        spawnChild: this.spawnChild,
+        file: '/usr/bin/pbpaste',
+        args: [],
+        maxStdoutBytes: marker.length,
+        maxStderrBytes: CHILD_STDERR_MAX_BYTES,
+        errorCode: 'CLOUDFLARE_E_ACCOUNT_CLIPBOARD_CLEAR',
+        lifecycle: this.lifecycle,
+        environment: this.environment,
+      });
+      if (verification.code !== 0 || verification.signal !== null
+        || verification.stderr.length !== 0 || verification.stdout.length !== marker.length
+        || !timingSafeEqual(verification.stdout, marker)) {
+        fail('CLOUDFLARE_E_ACCOUNT_CLIPBOARD_CLEAR');
+      }
     } catch (error) {
       if (['CLOUDFLARE_E_ACCOUNT_CLIPBOARD_CLEAR', TEST_NATIVE_SPAWN_ERROR]
         .includes(error?.message)) throw error;
@@ -664,6 +684,9 @@ export class MacOSSingleReadClipboard {
     } finally {
       zeroBuffer(result?.stdout);
       zeroBuffer(result?.stderr);
+      zeroBuffer(verification?.stdout);
+      zeroBuffer(verification?.stderr);
+      zeroBuffer(marker);
     }
   }
 
