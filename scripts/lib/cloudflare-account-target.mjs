@@ -15,9 +15,12 @@ import {
 export const CLOUDFLARE_ACCOUNT_TARGET_SERVICE = 'me.dwnc.cloudflare-account-target.v1';
 export const CLOUDFLARE_ACCOUNT_TARGET_ACCOUNT = 'dwnc:staging:account-id';
 export const CLOUDFLARE_ACCOUNT_TARGET_PURPOSE = 'staging-cloudflare-read-target';
+export const CLOUDFLARE_ACCOUNT_ID_SOURCE_KIND =
+  'in-app-browser-visible-account-id-buffer-v1';
 
 const PAYLOAD_CONTRACT = 'dwnc-cloudflare-account-target-v1';
 const METADATA_CONTRACT = 'dwnc-cloudflare-account-target-metadata-v1';
+const SOURCE_EVIDENCE_CONTRACT = 'dwnc-cloudflare-account-id-source-evidence-v1';
 const ACCOUNT_ID = /^[a-f0-9]{32}$/u;
 const SHA256 = /^[a-f0-9]{64}$/u;
 const ACCOUNT_ID_BYTES = 32;
@@ -439,6 +442,74 @@ function assertAccountIdBytes(accountIdBytes, code = 'CLOUDFLARE_E_ACCOUNT_STORE
     fail(code);
   }
   return accountIdBytes;
+}
+
+export class InAppBrowserAccountIdBufferSource {
+  #accountIdBytes = null;
+  #preflightCount = 0;
+  #readCount = 0;
+  #cleanupComplete = false;
+
+  constructor(accountIdBytes) {
+    let owned;
+    try {
+      assertAccountIdBytes(accountIdBytes);
+      owned = Buffer.from(accountIdBytes);
+    } finally {
+      zeroBuffer(accountIdBytes);
+    }
+    this.#accountIdBytes = owned;
+    Object.freeze(this);
+  }
+
+  get kind() { return CLOUDFLARE_ACCOUNT_ID_SOURCE_KIND; }
+
+  async preflight() {
+    if (this.#cleanupComplete || this.#readCount !== 0 || this.#accountIdBytes === null) {
+      fail('CLOUDFLARE_E_ACCOUNT_SOURCE_REUSED');
+    }
+    assertAccountIdBytes(this.#accountIdBytes);
+    this.#preflightCount += 1;
+  }
+
+  async readOnce() {
+    if (this.#cleanupComplete || this.#readCount !== 0 || this.#accountIdBytes === null) {
+      fail('CLOUDFLARE_E_ACCOUNT_SOURCE_REUSED');
+    }
+    try { assertAccountIdBytes(this.#accountIdBytes); }
+    catch (error) {
+      zeroBuffer(this.#accountIdBytes);
+      this.#accountIdBytes = null;
+      this.#cleanupComplete = true;
+      throw error;
+    }
+    const transferred = this.#accountIdBytes;
+    this.#accountIdBytes = null;
+    this.#readCount = 1;
+    return transferred;
+  }
+
+  async cleanup() {
+    if (this.#cleanupComplete) return;
+    zeroBuffer(this.#accountIdBytes);
+    this.#accountIdBytes = null;
+    this.#cleanupComplete = true;
+  }
+
+  evidence() {
+    return Object.freeze({
+      schemaVersion: 1,
+      contract: SOURCE_EVIDENCE_CONTRACT,
+      kind: CLOUDFLARE_ACCOUNT_ID_SOURCE_KIND,
+      preflightCount: this.#preflightCount,
+      readCount: this.#readCount,
+      ownershipTransferred: this.#readCount === 1,
+      sourceRetainedBytes: this.#accountIdBytes?.length ?? 0,
+      cleanupComplete: this.#cleanupComplete,
+      clipboardRead: false,
+      clipboardCleared: false,
+    });
+  }
 }
 
 function accountIdBytesSha256(accountIdBytes) {
@@ -1009,21 +1080,44 @@ function fixedRecoveryPath(metadataOutput, recoveryMetadataOutput) {
   return fixed;
 }
 
+function selectAccountIdSource({ clipboard, accountIdSource } = {}) {
+  if (clipboard !== undefined && accountIdSource !== undefined) {
+    fail('CLOUDFLARE_E_ACCOUNT_STORE_IMPLEMENTATION');
+  }
+  if (accountIdSource !== undefined) {
+    if (!(accountIdSource instanceof InAppBrowserAccountIdBufferSource)) {
+      fail('CLOUDFLARE_E_ACCOUNT_STORE_IMPLEMENTATION');
+    }
+    return Object.freeze({ kind: CLOUDFLARE_ACCOUNT_ID_SOURCE_KIND, source: accountIdSource });
+  }
+  const selectedClipboard = clipboard ?? new MacOSSingleReadClipboard();
+  if (typeof selectedClipboard?.preflight !== 'function'
+    || typeof selectedClipboard?.readOnce !== 'function'
+    || typeof selectedClipboard?.clear !== 'function') {
+    fail('CLOUDFLARE_E_ACCOUNT_STORE_IMPLEMENTATION');
+  }
+  return Object.freeze({ kind: 'macos-clipboard-v1', source: selectedClipboard });
+}
+
 export async function preflightCloudflareAccountTargetInitialization({
   metadataOutput = defaultCloudflareAccountTargetMetadataPath(),
   recoveryMetadataOutput,
   expectedAccountIdSha256,
-  clipboard = new MacOSSingleReadClipboard(),
+  clipboard,
+  accountIdSource,
   store = new MacOSAccountTargetKeychainStore(),
   assertDestination = assertSecureCreateOnlyDestination,
   readFile = readSecureFile,
 } = {}) {
   validateExpectedFingerprint(expectedAccountIdSha256);
   const recovery = fixedRecoveryPath(metadataOutput, recoveryMetadataOutput);
-  if (typeof clipboard?.preflight !== 'function' || typeof clipboard?.readOnce !== 'function'
-    || typeof clipboard?.clear !== 'function' || typeof store?.get !== 'function'
+  const selectedSource = selectAccountIdSource({ clipboard, accountIdSource });
+  if (typeof store?.get !== 'function'
     || typeof assertDestination !== 'function' || typeof readFile !== 'function') {
     fail('CLOUDFLARE_E_ACCOUNT_STORE_IMPLEMENTATION');
+  }
+  if (selectedSource.kind === CLOUDFLARE_ACCOUNT_ID_SOURCE_KIND) {
+    await selectedSource.source.preflight();
   }
   const inspected = await inspectInitializationState({
     metadataOutput,
@@ -1033,7 +1127,9 @@ export async function preflightCloudflareAccountTargetInitialization({
     assertDestination,
     readFile,
   });
-  await clipboard.preflight();
+  if (selectedSource.kind === 'macos-clipboard-v1') {
+    await selectedSource.source.preflight();
+  }
   return Object.freeze({
     purpose: CLOUDFLARE_ACCOUNT_TARGET_PURPOSE,
     accountIdSha256: expectedAccountIdSha256,
@@ -1044,41 +1140,58 @@ export async function preflightCloudflareAccountTargetInitialization({
     clipboardRead: false,
     clipboardCleared: false,
     readyForInitialize: inspected.state === 'ready',
+    ...(selectedSource.kind === CLOUDFLARE_ACCOUNT_ID_SOURCE_KIND ? {
+      sourceKind: selectedSource.kind,
+      sourceEvidence: selectedSource.source.evidence(),
+    } : {}),
   });
 }
 
 export async function initializeCloudflareAccountTarget({
-  metadataOutput = defaultCloudflareAccountTargetMetadataPath(),
+  metadataOutput,
   recoveryMetadataOutput,
   expectedAccountIdSha256,
-  clipboard = new MacOSSingleReadClipboard(),
-  store = new MacOSAccountTargetKeychainStore(),
-  now = new Date(),
+  clipboard,
+  accountIdSource,
+  store,
+  now,
   assertDestination = assertSecureCreateOnlyDestination,
   readFile = readSecureFile,
   writeMetadata = writeCanonicalEvidenceCreateOnly,
 } = {}) {
-  if (!(now instanceof Date) || Number.isNaN(now.getTime())) {
-    fail('CLOUDFLARE_E_ACCOUNT_STORE_METADATA');
-  }
-  if (typeof store?.putCreateOnly !== 'function' || typeof writeMetadata !== 'function') {
-    fail('CLOUDFLARE_E_ACCOUNT_STORE_IMPLEMENTATION');
-  }
   let raw;
   let accountIdBytes;
   let secret;
   let verifiedSecret;
   let clipboardTouched = false;
   let clipboardCleared = false;
-  const recovery = fixedRecoveryPath(metadataOutput, recoveryMetadataOutput);
-  const identity = cloudflareAccountTargetIdentity();
+  let selectedSource;
+  const directSourceForCleanup = accountIdSource instanceof InAppBrowserAccountIdBufferSource
+    ? accountIdSource : null;
   try {
+    selectedSource = selectAccountIdSource({ clipboard, accountIdSource });
+    const selectedMetadataOutput = metadataOutput === undefined
+      ? defaultCloudflareAccountTargetMetadataPath() : metadataOutput;
+    const selectedStore = store === undefined
+      ? new MacOSAccountTargetKeychainStore() : store;
+    const selectedNow = now === undefined ? new Date() : now;
+    if (!(selectedNow instanceof Date) || Number.isNaN(selectedNow.getTime())) {
+      fail('CLOUDFLARE_E_ACCOUNT_STORE_METADATA');
+    }
+    if (typeof selectedStore?.putCreateOnly !== 'function'
+      || typeof writeMetadata !== 'function') {
+      fail('CLOUDFLARE_E_ACCOUNT_STORE_IMPLEMENTATION');
+    }
+    const recovery = fixedRecoveryPath(selectedMetadataOutput, recoveryMetadataOutput);
+    const identity = cloudflareAccountTargetIdentity();
     const initial = await preflightCloudflareAccountTargetInitialization({
-      metadataOutput,
+      metadataOutput: selectedMetadataOutput,
       recoveryMetadataOutput: recovery,
       expectedAccountIdSha256,
-      clipboard,
-      store,
+      ...(selectedSource.kind === CLOUDFLARE_ACCOUNT_ID_SOURCE_KIND
+        ? { accountIdSource: selectedSource.source }
+        : { clipboard: selectedSource.source }),
+      store: selectedStore,
       assertDestination,
       readFile,
     });
@@ -1086,26 +1199,28 @@ export async function initializeCloudflareAccountTarget({
       fail(initial.keychainState === 'matching'
         ? 'CLOUDFLARE_E_ACCOUNT_STORE_EXISTS' : 'CLOUDFLARE_E_ACCOUNT_STORE_STATE');
     }
-    clipboardTouched = true;
-    raw = await clipboard.readOnce();
-    await clipboard.clear();
-    clipboardCleared = true;
+    clipboardTouched = selectedSource.kind === 'macos-clipboard-v1';
+    raw = await selectedSource.source.readOnce();
+    if (clipboardTouched) {
+      await selectedSource.source.clear();
+      clipboardCleared = true;
+    }
     assertAccountIdBytes(raw);
     assertAccountTargetBytes(raw, expectedAccountIdSha256);
     accountIdBytes = raw;
     raw = null;
     const beforeCreate = await inspectInitializationState({
-      metadataOutput,
+      metadataOutput: selectedMetadataOutput,
       recoveryMetadataOutput: recovery,
       expectedAccountIdSha256,
-      store,
+      store: selectedStore,
       assertDestination,
       readFile,
     });
     if (beforeCreate.state !== 'ready') fail('CLOUDFLARE_E_ACCOUNT_STORE_STATE');
     secret = encodeAccountTarget(accountIdBytes);
     try {
-      try { await store.putCreateOnly(identity.service, identity.account, secret); }
+      try { await selectedStore.putCreateOnly(identity.service, identity.account, secret); }
       finally { zeroBuffer(secret); secret = null; }
     }
     catch (error) {
@@ -1114,27 +1229,27 @@ export async function initializeCloudflareAccountTarget({
       throw error;
     }
     secret = encodeAccountTarget(accountIdBytes);
-    verifiedSecret = await store.get(identity.service, identity.account);
+    verifiedSecret = await selectedStore.get(identity.service, identity.account);
     if (!exactSecretMatch(verifiedSecret, secret)) {
       fail('CLOUDFLARE_E_ACCOUNT_STORE_KEYCHAIN');
     }
     verifiedSecret.fill(0);
     verifiedSecret = null;
     const beforeMetadata = await inspectMetadataLayout({
-      metadataOutput,
+      metadataOutput: selectedMetadataOutput,
       recoveryMetadataOutput: recovery,
       expectedAccountIdSha256,
       assertDestination,
       readFile,
     });
     if (beforeMetadata.state !== 'empty') fail('CLOUDFLARE_E_ACCOUNT_STORE_STATE');
-    const metadata = createMetadata(accountIdBytes, now);
-    await writeMetadata(metadataOutput, metadata);
+    const metadata = createMetadata(accountIdBytes, selectedNow);
+    await writeMetadata(selectedMetadataOutput, metadata);
     const completed = await inspectInitializationState({
-      metadataOutput,
+      metadataOutput: selectedMetadataOutput,
       recoveryMetadataOutput: recovery,
       expectedAccountIdSha256,
-      store,
+      store: selectedStore,
       assertDestination,
       readFile,
     });
@@ -1149,7 +1264,10 @@ export async function initializeCloudflareAccountTarget({
     zeroBuffer(accountIdBytes);
     zeroBuffer(secret);
     zeroBuffer(verifiedSecret);
-    if (clipboardTouched && !clipboardCleared) await clipboard.clear();
+    if (clipboardTouched && !clipboardCleared) await selectedSource.source.clear();
+    const directSource = selectedSource?.kind === CLOUDFLARE_ACCOUNT_ID_SOURCE_KIND
+      ? selectedSource.source : directSourceForCleanup;
+    if (directSource !== null) await directSource.cleanup();
   }
 }
 

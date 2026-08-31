@@ -7,8 +7,10 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   CLOUDFLARE_ACCOUNT_TARGET_ACCOUNT,
+  CLOUDFLARE_ACCOUNT_ID_SOURCE_KIND,
   CLOUDFLARE_ACCOUNT_TARGET_PURPOSE,
   CLOUDFLARE_ACCOUNT_TARGET_SERVICE,
+  InAppBrowserAccountIdBufferSource,
   MacOSAccountTargetKeychainStore,
   MacOSSingleReadClipboard,
   assertCloudflareAccountTargetOutsideRepository,
@@ -45,6 +47,17 @@ const accountSecret = (value) => Buffer.from(Buffer.from(canonicalJson({
   accountId: value,
 })).toString('base64url'), 'ascii');
 const isZeroed = (value) => Buffer.isBuffer(value) && value.every((byte) => byte === 0);
+const observedDirectSource = (value) => {
+  const returnedBuffers = [];
+  class ObservedDirectSource extends InAppBrowserAccountIdBufferSource {
+    async readOnce() {
+      const returned = await super.readOnce();
+      returnedBuffers.push(returned);
+      return returned;
+    }
+  }
+  return { source: new ObservedDirectSource(value), returnedBuffers };
+};
 let assertions = 0;
 const equal = (actual, expected) => { assert.deepEqual(actual, expected); assertions += 1; };
 const rejects = async (action, code) => {
@@ -296,6 +309,17 @@ equal(identity, {
   service: CLOUDFLARE_ACCOUNT_TARGET_SERVICE,
   account: CLOUDFLARE_ACCOUNT_TARGET_ACCOUNT,
 });
+throws(() => new InAppBrowserAccountIdBufferSource(accountId),
+  'CLOUDFLARE_E_ACCOUNT_STORE_PAYLOAD');
+for (const invalidSourceValue of [
+  Buffer.from('a'.repeat(31), 'ascii'),
+  Buffer.from('A'.repeat(32), 'ascii'),
+  Buffer.from(`${accountId}\n`, 'ascii'),
+]) {
+  throws(() => new InAppBrowserAccountIdBufferSource(invalidSourceValue),
+    'CLOUDFLARE_E_ACCOUNT_STORE_PAYLOAD');
+  equal(isZeroed(invalidSourceValue), true);
+}
 equal(defaultCloudflareAccountTargetMetadataPath('/synthetic/home'),
   '/synthetic/home/Library/Application Support/dwnc.me/stage3/staging-cloudflare-account-target.json');
 const originalHome = process.env.HOME;
@@ -901,6 +925,176 @@ try {
   equal(preflightToolFailureClipboard.readCount, 0);
   equal(preflightToolFailureClipboard.clearCount, 0);
   equal(preflightToolFailureClipboard.value, 'preserve-tool-failure');
+
+  const directPreflightInput = Buffer.from(accountId, 'ascii');
+  const directPreflightSource = new InAppBrowserAccountIdBufferSource(directPreflightInput);
+  equal(isZeroed(directPreflightInput), true);
+  const directPreflightStore = new MemoryKeychainStore();
+  const directPreflight = await preflightCloudflareAccountTargetInitialization({
+    metadataOutput: path.join(directory, 'direct-preflight.json'),
+    expectedAccountIdSha256: accountIdSha256,
+    accountIdSource: directPreflightSource,
+    store: directPreflightStore,
+  });
+  equal(directPreflight.sourceKind, CLOUDFLARE_ACCOUNT_ID_SOURCE_KIND);
+  equal(directPreflight.sourceEvidence, {
+    schemaVersion: 1,
+    contract: 'dwnc-cloudflare-account-id-source-evidence-v1',
+    kind: CLOUDFLARE_ACCOUNT_ID_SOURCE_KIND,
+    preflightCount: 1,
+    readCount: 0,
+    ownershipTransferred: false,
+    sourceRetainedBytes: 32,
+    cleanupComplete: false,
+    clipboardRead: false,
+    clipboardCleared: false,
+  });
+  equal(directPreflight.clipboardRead, false);
+  equal(directPreflight.clipboardCleared, false);
+  await directPreflightSource.cleanup();
+  equal(directPreflightSource.evidence().cleanupComplete, true);
+  equal(directPreflightSource.evidence().sourceRetainedBytes, 0);
+
+  const directInput = Buffer.from(accountId, 'ascii');
+  const directObserved = observedDirectSource(directInput);
+  const directSource = directObserved.source;
+  equal(isZeroed(directInput), true);
+  const directStore = new MemoryKeychainStore();
+  const directPath = path.join(directory, 'direct-initialize.json');
+  const directMetadata = await initializeCloudflareAccountTarget({
+    metadataOutput: directPath,
+    expectedAccountIdSha256: accountIdSha256,
+    accountIdSource: directSource,
+    store: directStore,
+    now: new Date('2026-08-28T00:00:10.000Z'),
+  });
+  equal(directMetadata.accountIdSha256, accountIdSha256);
+  equal(directSource.evidence(), {
+    schemaVersion: 1,
+    contract: 'dwnc-cloudflare-account-id-source-evidence-v1',
+    kind: CLOUDFLARE_ACCOUNT_ID_SOURCE_KIND,
+    preflightCount: 1,
+    readCount: 1,
+    ownershipTransferred: true,
+    sourceRetainedBytes: 0,
+    cleanupComplete: true,
+    clipboardRead: false,
+    clipboardCleared: false,
+  });
+  equal(directObserved.returnedBuffers.length, 1);
+  equal(directObserved.returnedBuffers.every(isZeroed), true);
+  equal(directStore.calls.some((call) => call.operation === 'putCreateOnly'), true);
+  equal(directStore.putBuffers.every(isZeroed), true);
+  equal(directStore.returnedBuffers.every(isZeroed), true);
+  equal((await lstat(directPath)).mode & 0o777, 0o600);
+  equal((await readFile(directPath, 'utf8')).includes(accountId), false);
+
+  const reusedStore = new MemoryKeychainStore();
+  await rejects(() => preflightCloudflareAccountTargetInitialization({
+    metadataOutput: path.join(directory, 'direct-reused.json'),
+    expectedAccountIdSha256: accountIdSha256,
+    accountIdSource: directSource,
+    store: reusedStore,
+  }), 'CLOUDFLARE_E_ACCOUNT_SOURCE_REUSED');
+  equal(reusedStore.calls.length, 0);
+
+  const mismatchInput = Buffer.from(wrongAccountId, 'ascii');
+  const mismatchObserved = observedDirectSource(mismatchInput);
+  const mismatchSource = mismatchObserved.source;
+  equal(isZeroed(mismatchInput), true);
+  const mismatchStore = new MemoryKeychainStore();
+  const mismatchPath = path.join(directory, 'direct-mismatch.json');
+  await rejects(() => initializeCloudflareAccountTarget({
+    metadataOutput: mismatchPath,
+    expectedAccountIdSha256: accountIdSha256,
+    accountIdSource: mismatchSource,
+    store: mismatchStore,
+  }), 'CLOUDFLARE_E_ACCOUNT_STORE_TARGET');
+  equal(mismatchStore.calls.some((call) => call.operation === 'putCreateOnly'), false);
+  equal(await lstat(mismatchPath).catch((error) => error?.code), 'ENOENT');
+  equal(mismatchSource.evidence().readCount, 1);
+  equal(mismatchSource.evidence().cleanupComplete, true);
+  equal(mismatchSource.evidence().sourceRetainedBytes, 0);
+  equal(mismatchObserved.returnedBuffers.length, 1);
+  equal(mismatchObserved.returnedBuffers.every(isZeroed), true);
+
+  const metadataFailureInput = Buffer.from(accountId, 'ascii');
+  const metadataFailureObserved = observedDirectSource(metadataFailureInput);
+  const metadataFailureStore = new MemoryKeychainStore();
+  const metadataFailurePath = path.join(directory, 'direct-metadata-failure.json');
+  await rejects(() => initializeCloudflareAccountTarget({
+    metadataOutput: metadataFailurePath,
+    expectedAccountIdSha256: accountIdSha256,
+    accountIdSource: metadataFailureObserved.source,
+    store: metadataFailureStore,
+    writeMetadata: async () => { throw new Error('CLOUDFLARE_E_SIGNING_FILE'); },
+  }), 'CLOUDFLARE_E_SIGNING_FILE');
+  equal(isZeroed(metadataFailureInput), true);
+  equal(metadataFailureObserved.returnedBuffers.length, 1);
+  equal(metadataFailureObserved.returnedBuffers.every(isZeroed), true);
+  equal(metadataFailureStore.putBuffers.every(isZeroed), true);
+  equal(metadataFailureStore.returnedBuffers.every(isZeroed), true);
+  equal(metadataFailureObserved.source.evidence().cleanupComplete, true);
+  equal(metadataFailureObserved.source.evidence().sourceRetainedBytes, 0);
+  equal(await lstat(metadataFailurePath).catch((error) => error?.code), 'ENOENT');
+
+  const cleanupPath = path.join(directory, 'direct-cleanup-before-read.json');
+  await writeFile(cleanupPath, '{}', { mode: 0o600 });
+  const cleanupInput = Buffer.from(accountId, 'ascii');
+  const cleanupSource = new InAppBrowserAccountIdBufferSource(cleanupInput);
+  const cleanupStore = new MemoryKeychainStore();
+  await rejects(() => initializeCloudflareAccountTarget({
+    metadataOutput: cleanupPath,
+    expectedAccountIdSha256: accountIdSha256,
+    accountIdSource: cleanupSource,
+    store: cleanupStore,
+  }), 'CLOUDFLARE_E_ACCOUNT_STORE_STATE');
+  equal(isZeroed(cleanupInput), true);
+  equal(cleanupSource.evidence().readCount, 0);
+  equal(cleanupSource.evidence().cleanupComplete, true);
+  equal(cleanupSource.evidence().sourceRetainedBytes, 0);
+
+  for (const [label, options, expectedError] of [
+    ['invalid-now', { now: new Date(Number.NaN), store: new MemoryKeychainStore() },
+      'CLOUDFLARE_E_ACCOUNT_STORE_METADATA'],
+    ['invalid-store', { store: {} }, 'CLOUDFLARE_E_ACCOUNT_STORE_IMPLEMENTATION'],
+    ['invalid-writer', { store: new MemoryKeychainStore(), writeMetadata: null },
+      'CLOUDFLARE_E_ACCOUNT_STORE_IMPLEMENTATION'],
+    ['invalid-recovery', {
+      store: new MemoryKeychainStore(),
+      recoveryMetadataOutput: path.join(directory, 'not-the-fixed-recovery.json'),
+    }, 'CLOUDFLARE_E_ACCOUNT_STORE_PATH'],
+  ]) {
+    const earlyInput = Buffer.from(accountId, 'ascii');
+    const earlySource = new InAppBrowserAccountIdBufferSource(earlyInput);
+    await rejects(() => initializeCloudflareAccountTarget({
+      metadataOutput: path.join(directory, `direct-${label}.json`),
+      expectedAccountIdSha256: accountIdSha256,
+      accountIdSource: earlySource,
+      ...options,
+    }), expectedError);
+    equal(isZeroed(earlyInput), true);
+    equal(earlySource.evidence().readCount, 0);
+    equal(earlySource.evidence().cleanupComplete, true);
+    equal(earlySource.evidence().sourceRetainedBytes, 0);
+  }
+
+  const ambiguousInput = Buffer.from(accountId, 'ascii');
+  const ambiguousSource = new InAppBrowserAccountIdBufferSource(ambiguousInput);
+  const ambiguousClipboard = new MemoryClipboard(accountId);
+  await rejects(() => initializeCloudflareAccountTarget({
+    metadataOutput: path.join(directory, 'direct-ambiguous.json'),
+    expectedAccountIdSha256: accountIdSha256,
+    clipboard: ambiguousClipboard,
+    accountIdSource: ambiguousSource,
+    store: new MemoryKeychainStore(),
+  }), 'CLOUDFLARE_E_ACCOUNT_STORE_IMPLEMENTATION');
+  equal(isZeroed(ambiguousInput), true);
+  equal(ambiguousSource.evidence().readCount, 0);
+  equal(ambiguousSource.evidence().cleanupComplete, true);
+  equal(ambiguousSource.evidence().sourceRetainedBytes, 0);
+  equal(ambiguousClipboard.readCount, 0);
+  equal(ambiguousClipboard.clearCount, 0);
 
   const store = new MemoryKeychainStore();
   const clipboard = new MemoryClipboard(accountId);
