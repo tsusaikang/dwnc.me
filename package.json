@@ -66,6 +66,7 @@
     "cloudflare:signing:sign": "node scripts/sign-cloudflare-evidence.mjs",
     "cloudflare:account-target:preflight": "node scripts/manage-cloudflare-account-target.mjs --mode=preflight",
     "cloudflare:account-target:init": "node scripts/manage-cloudflare-account-target.mjs --mode=initialize",
+    "cloudflare:account-target:loopback:init": "node scripts/run-cloudflare-account-target-loopback.mjs",
     "cloudflare:account-target:inspect": "node scripts/manage-cloudflare-account-target.mjs --mode=inspect",
     "cloudflare:account-target:recover": "node scripts/manage-cloudflare-account-target.mjs --mode=recover",
     "cloudflare:staging:control-token:init": "node scripts/manage-cloudflare-staging-control-token.mjs --mode=initialize",
