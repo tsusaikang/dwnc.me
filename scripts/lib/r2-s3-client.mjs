@@ -307,21 +307,92 @@ export class R2S3Client {
     delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
     maxAttempts = 5,
     timeoutMilliseconds = 30_000,
+    deadlineMilliseconds = null,
   }) {
     if (typeof fetchImpl !== 'function' || typeof now !== 'function' || typeof delay !== 'function'
       || !Number.isSafeInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 8
       || !Number.isSafeInteger(timeoutMilliseconds)
-      || timeoutMilliseconds < 1 || timeoutMilliseconds > 120_000) fail('MEDIA_E_R2_CONFIG');
+      || timeoutMilliseconds < 1 || timeoutMilliseconds > 120_000
+      || deadlineMilliseconds !== null
+        && (!Number.isSafeInteger(deadlineMilliseconds) || deadlineMilliseconds < 1)) {
+      fail('MEDIA_E_R2_CONFIG');
+    }
     this.config = { accountId, bucket, accessKeyId, secretAccessKey };
     this.fetchImpl = fetchImpl;
     this.now = now;
     this.delay = delay;
     this.maxAttempts = maxAttempts;
     this.timeoutMilliseconds = timeoutMilliseconds;
+    this.deadlineMilliseconds = deadlineMilliseconds;
     this.requestCounts = new Map();
     this.operationCounts = new Map();
     this.conditionalIfNoneMatchPutRequests = 0;
     signR2S3Request({ ...this.config, method: 'HEAD', now: this.now() });
+  }
+
+  remainingTimeoutMilliseconds() {
+    if (this.deadlineMilliseconds === null) return this.timeoutMilliseconds;
+    const remaining = this.deadlineMilliseconds - Date.now();
+    if (!Number.isSafeInteger(remaining) || remaining < 1) {
+      fail('MEDIA_E_R2_TIMEOUT', { retryable: false });
+    }
+    return Math.min(this.timeoutMilliseconds, remaining);
+  }
+
+  assertBeforeDeadline() {
+    this.remainingTimeoutMilliseconds();
+    return true;
+  }
+
+  async consumeResponseBody(response, consumeChunk, errorCode) {
+    if (typeof consumeChunk !== 'function' || typeof errorCode !== 'string') {
+      fail('MEDIA_E_R2_CONFIG');
+    }
+    const reader = response?.body?.getReader();
+    if (!reader) fail(errorCode);
+    let timeout;
+    let timeoutReject;
+    let timeoutError = null;
+    let completed = false;
+    let cancelRequested = false;
+    const timeoutPromise = new Promise((_resolve, reject) => { timeoutReject = reject; });
+    const cancelReader = () => {
+      if (cancelRequested) return;
+      cancelRequested = true;
+      try {
+        const cancellation = reader.cancel('MEDIA_E_R2_TIMEOUT');
+        if (cancellation && typeof cancellation.catch === 'function') {
+          cancellation.catch(() => undefined);
+        }
+      } catch { /* The timeout remains authoritative. */ }
+    };
+    try {
+      timeout = setTimeout(() => {
+        timeoutError = new R2S3Error('MEDIA_E_R2_TIMEOUT', { retryable: false });
+        timeoutReject(timeoutError);
+        cancelReader();
+      }, this.remainingTimeoutMilliseconds());
+      while (true) {
+        const pendingRead = reader.read();
+        pendingRead.catch(() => undefined);
+        const { done, value } = await Promise.race([pendingRead, timeoutPromise]);
+        if (timeoutError) throw timeoutError;
+        if (done) {
+          completed = true;
+          break;
+        }
+        if (!(value instanceof Uint8Array) || value.byteLength === 0) fail(errorCode);
+        consumeChunk(value, cancelReader);
+      }
+    } catch (error) {
+      if (error instanceof R2S3Error) throw error;
+      fail(errorCode);
+    } finally {
+      clearTimeout(timeout);
+      if (!completed) cancelReader();
+      try { reader.releaseLock(); }
+      catch { /* A cancelled pending read owns the lock until it settles. */ }
+    }
   }
 
   requestMethodCounts() {
@@ -355,11 +426,14 @@ export class R2S3Client {
       && Object.entries(headers).some(([name, value]) => name.toLowerCase() === 'if-none-match'
         && value === '*');
     for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
+      const requestTimeoutMilliseconds = this.remainingTimeoutMilliseconds();
       const signed = signR2S3Request({
         ...this.config, method, key, query, headers, payloadSha256, now: this.now(),
       });
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort('MEDIA_E_R2_TIMEOUT'), this.timeoutMilliseconds);
+      const timeout = setTimeout(
+        () => controller.abort('MEDIA_E_R2_TIMEOUT'), requestTimeoutMilliseconds,
+      );
       try {
         this.requestCounts.set(method, (this.requestCounts.get(method) ?? 0) + 1);
         this.operationCounts.set(operation, (this.operationCounts.get(operation) ?? 0) + 1);
@@ -372,7 +446,10 @@ export class R2S3Client {
           signal: controller.signal,
         });
         if (!RETRYABLE_STATUS.has(response.status) || attempt === this.maxAttempts) return response;
-        await response.arrayBuffer().catch(() => undefined);
+        const cancellation = response.body?.cancel('MEDIA_E_R2_RETRY');
+        if (cancellation && typeof cancellation.catch === 'function') {
+          cancellation.catch(() => undefined);
+        }
         lastError = new R2S3Error('MEDIA_E_R2_RETRY', { status: response.status, retryable: true });
       } catch (error) {
         lastError = controller.signal.aborted
@@ -384,7 +461,13 @@ export class R2S3Client {
       } finally {
         clearTimeout(timeout);
       }
-      await this.delay(Math.min(2_000, 100 * (2 ** (attempt - 1))) + ((attempt * 37) % 83));
+      const delayMilliseconds = Math.min(2_000, 100 * (2 ** (attempt - 1)))
+        + ((attempt * 37) % 83);
+      if (this.deadlineMilliseconds !== null
+        && Date.now() + delayMilliseconds >= this.deadlineMilliseconds) {
+        fail('MEDIA_E_R2_TIMEOUT', { retryable: false });
+      }
+      await this.delay(delayMilliseconds);
     }
     throw lastError ?? new R2S3Error('MEDIA_E_R2_NETWORK');
   }
@@ -400,7 +483,19 @@ export class R2S3Client {
       if (continuationToken) query.push(['continuation-token', continuationToken]);
       const response = await this.request({ method: 'GET', query });
       if (response.status !== 200) fail('MEDIA_E_R2_LIST', { status: response.status });
-      const page = parseR2ListObjectsV2(await response.text());
+      const chunks = [];
+      let total = 0;
+      await this.consumeResponseBody(response, (value, cancelReader) => {
+        total += value.byteLength;
+        if (!Number.isSafeInteger(total) || total > 16 * 1024 * 1024) {
+          cancelReader();
+          fail('MEDIA_E_R2_LIST');
+        }
+        chunks.push(Buffer.from(value));
+      }, 'MEDIA_E_R2_LIST');
+      let page;
+      try { page = parseR2ListObjectsV2(Buffer.concat(chunks, total).toString('utf8')); }
+      finally { for (const chunk of chunks) chunk.fill(0); }
       for (const object of page.objects) {
         if (seen.has(object.key)) fail('MEDIA_E_R2_LIST_DUPLICATE');
         seen.add(object.key);
@@ -430,28 +525,14 @@ export class R2S3Client {
     const metadata = parseR2Head(response, key);
     const digest = createHash('sha256');
     let bodyBytes = 0;
-    const reader = response.body?.getReader();
-    if (!reader) fail('MEDIA_E_R2_GET_BODY');
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        if (!(value instanceof Uint8Array) || value.byteLength === 0) {
-          fail('MEDIA_E_R2_GET_BODY');
-        }
-        bodyBytes += value.byteLength;
-        if (!Number.isSafeInteger(bodyBytes) || bodyBytes > metadata.size) {
-          await reader.cancel().catch(() => undefined);
-          fail('MEDIA_E_R2_GET_BODY');
-        }
-        digest.update(value);
+    await this.consumeResponseBody(response, (value, cancelReader) => {
+      bodyBytes += value.byteLength;
+      if (!Number.isSafeInteger(bodyBytes) || bodyBytes > metadata.size) {
+        cancelReader();
+        fail('MEDIA_E_R2_GET_BODY');
       }
-    } catch (error) {
-      if (error instanceof R2S3Error) throw error;
-      fail('MEDIA_E_R2_GET_BODY');
-    } finally {
-      reader.releaseLock();
-    }
+      digest.update(value);
+    }, 'MEDIA_E_R2_GET_BODY');
     if (bodyBytes !== metadata.size) fail('MEDIA_E_R2_GET_BODY');
     return {
       ...metadata,

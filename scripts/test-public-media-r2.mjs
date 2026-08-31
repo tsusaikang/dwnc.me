@@ -660,6 +660,79 @@ function headFor(entry, overrides = {}) {
   equal(attempts, 2);
 }
 
+{
+  const bytes = Buffer.from('abc');
+  const entry = {
+    ...manifest.entries[0],
+    size: bytes.length,
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+  };
+  const headers = {
+    'content-length': String(entry.size),
+    'content-type': entry.contentType,
+    'cache-control': entry.cacheControl,
+    etag: '"streaming-etag"',
+    'x-amz-meta-sha256': entry.sha256,
+    'x-amz-meta-contract': 'dwnc-public-media-r2-v1',
+    'x-amz-meta-manifest-entry-sha256': publicMediaEntryManifestSha256(entry),
+    'x-amz-checksum-sha256': Buffer.from(entry.sha256, 'hex').toString('base64'),
+    'last-modified': 'Thu, 27 Aug 2026 00:00:00 GMT',
+  };
+  const streamingClient = new R2S3Client({
+    ...credentials,
+    fetchImpl: async () => new Response(new ReadableStream({
+      start(controller) {
+        controller.enqueue(bytes.subarray(0, 1));
+        controller.enqueue(bytes.subarray(1));
+        controller.close();
+      },
+    }), { status: 200, headers }),
+    now: () => now,
+    maxAttempts: 1,
+  });
+  const remote = await streamingClient.getFull(entry.key);
+  equal(remote.bodyBytes, entry.size);
+  equal(remote.bodySha256, entry.sha256);
+  equal(streamingClient.requestOperationCounts().GET, 1);
+  equal(streamingClient.requestOperationCounts().PUT, 0);
+  equal(streamingClient.requestOperationCounts().DELETE, 0);
+
+  let cancellationCount = 0;
+  const stalledClient = new R2S3Client({
+    ...credentials,
+    fetchImpl: async () => new Response(new ReadableStream({
+      start(controller) { controller.enqueue(bytes.subarray(0, 1)); },
+      cancel() { cancellationCount += 1; },
+    }), { status: 200, headers }),
+    now: () => now,
+    maxAttempts: 1,
+    timeoutMilliseconds: 5_000,
+    deadlineMilliseconds: Date.now() + 500,
+  });
+  await rejectsCode(() => stalledClient.getFull(entry.key), 'MEDIA_E_R2_TIMEOUT');
+  equal(cancellationCount, 1);
+  equal(stalledClient.requestOperationCounts().GET, 1);
+  equal(stalledClient.requestOperationCounts().PUT, 0);
+  equal(stalledClient.requestOperationCounts().DELETE, 0);
+
+  let afterDeadlineFetches = 0;
+  const afterDeadlineClient = new R2S3Client({
+    ...credentials,
+    fetchImpl: async () => {
+      afterDeadlineFetches += 1;
+      return new Response(null, { status: 404 });
+    },
+    now: () => now,
+    maxAttempts: 1,
+    deadlineMilliseconds: Date.now() - 1,
+  });
+  await rejectsCode(() => afterDeadlineClient.getFull(entry.key), 'MEDIA_E_R2_TIMEOUT');
+  equal(afterDeadlineFetches, 0);
+  equal(afterDeadlineClient.requestOperationCounts().GET, 0);
+  equal(afterDeadlineClient.requestOperationCounts().PUT, 0);
+  equal(afterDeadlineClient.requestOperationCounts().DELETE, 0);
+}
+
 await rejectsCode(
   () => Promise.resolve(r2ClientFromEnvironment({})),
   'MEDIA_E_R2_CREDENTIALS_FD_REQUIRED',

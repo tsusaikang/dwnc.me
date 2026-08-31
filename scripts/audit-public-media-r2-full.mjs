@@ -14,7 +14,8 @@ import {
   r2OperationDelta,
 } from './lib/public-media-remote.mjs';
 import {
-  r2ClientContextFromEnvironment,
+  r2ClientFromCredentials,
+  r2CredentialsFromEnvironment,
 } from './lib/r2-s3-client.mjs';
 import {
   STAGING_R2_EXPOSURE_PURPOSE,
@@ -35,6 +36,7 @@ import {
 
 const ROOT = process.cwd();
 const OFFLINE_BOUNDARY_SYMBOL = Symbol.for('dwnc.r2-full-audit.offline-boundary.v1');
+const AUDIT_COMPLETION_RESERVE_MILLISECONDS = 30_000;
 installStructuredErrorHandler('media-r2-full-audit');
 
 function parseArguments(argv) {
@@ -88,7 +90,7 @@ await assertSecureCreateOnlyDestination(options.receiptOutput);
 await assertExactCleanPublicMediaGit(
   ROOT, options.expectedGitCommit, options.expectedGitTree,
 );
-const { credentials: r2Credentials, client } = r2ClientContextFromEnvironment(process.env);
+const r2Credentials = r2CredentialsFromEnvironment(process.env);
 const manifest = await loadTrackedPublicMediaManifest(ROOT);
 if (manifest.manifestSha256 !== options.expectedManifestSha256) throw new Error('MEDIA_E_EXPECTED_MANIFEST');
 const wranglerConfig = JSON.parse(await readFile(path.join(ROOT, 'wrangler.jsonc'), 'utf8'));
@@ -136,6 +138,15 @@ validateR2ExposureCapture(exposureCapture, {
   maxLifetimeSeconds: targetPolicy.maxBucketExposureAgeSeconds,
   maxFutureSkewSeconds: targetPolicy.maxBucketExposureFutureSkewSeconds,
 });
+const auditDeadlineMilliseconds = Date.parse(exposureCapture.evidence.expiresAt)
+  - AUDIT_COMPLETION_RESERVE_MILLISECONDS;
+if (!Number.isSafeInteger(auditDeadlineMilliseconds)
+  || auditStartedAt.getTime() >= auditDeadlineMilliseconds) {
+  throw new Error('MEDIA_E_FULL_AUDIT_DEADLINE');
+}
+const client = r2ClientFromCredentials(r2Credentials, {
+  deadlineMilliseconds: auditDeadlineMilliseconds,
+});
 if (options.expectedOrphanCount !== targetPolicy.approvedOrphanCount) {
   throw new Error('MEDIA_E_ORPHAN_APPROVAL');
 }
@@ -145,15 +156,18 @@ if (options.expectedOrphanCount !== targetPolicy.approvedOrphanCount) {
 const requestCountsBefore = client.requestOperationCounts();
 const startedAt = auditStartedAt.toISOString();
 const inspection = await inspectRemotePublicMedia(client, manifest, { concurrency: options.concurrency });
+client.assertBeforeDeadline();
 if (inspection.missing.length || inspection.mismatch.length) throw new Error('MEDIA_E_REMOTE_VALIDATION');
 if (inspection.orphanCount !== options.expectedOrphanCount) throw new Error('MEDIA_E_ORPHAN_APPROVAL');
 const fullAudit = await auditRemotePublicMediaFull(client, manifest, {
   concurrency: options.concurrency,
   expectedHeads: inspection.heads,
 });
+client.assertBeforeDeadline();
 await assertExactCleanPublicMediaGit(
   ROOT, options.expectedGitCommit, options.expectedGitTree,
 );
+client.assertBeforeDeadline();
 const requestCounts = r2OperationDelta(requestCountsBefore, client.requestOperationCounts());
 const receiptVerifiedAt = new Date();
 const receipt = createUnsignedRemoteReceipt(manifest, fullAudit.objects, {
@@ -189,9 +203,11 @@ const receipt = createUnsignedRemoteReceipt(manifest, fullAudit.objects, {
   },
   verifiedAt: receiptVerifiedAt.toISOString(),
 });
+client.assertBeforeDeadline();
 await assertExactCleanPublicMediaGit(
   ROOT, options.expectedGitCommit, options.expectedGitTree,
 );
+client.assertBeforeDeadline();
 await writeCanonicalEvidenceCreateOnly(
   options.receiptOutput, receipt, canonicalRemoteReceiptPayload,
 );
