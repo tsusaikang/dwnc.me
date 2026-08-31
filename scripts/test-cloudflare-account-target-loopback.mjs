@@ -324,13 +324,13 @@ await invalidFrameScenario((frame) => { frame[FRAME_ACCOUNT_OFFSET] = 0x41; },
   equal(replay, 'rejected');
 }
 
-// The 15-second handshake timer fails closed without touching the initializer.
+// The 60-second handshake timer fails closed without touching the initializer.
 {
   let fireHandshake;
   const cleared = [];
   const opened = await openHarness({
     setTimeoutImpl(callback, delay) {
-      equal(delay, 15_000);
+      equal(delay, 60_000);
       fireHandshake = callback;
       return Object.freeze({ kind: 'handshake-timer' });
     },
@@ -477,7 +477,7 @@ function fakeClientSocket({ responseByte = false, neverConnect = false } = {}) {
     nonceEncoding: 'base64url',
     nonceBase64url: Buffer.alloc(32, 0x31).toString('base64url'),
     policySha256,
-    expiresInMs: 15_000,
+    expiresInMs: 60_000,
   });
   const serialized = serializeCloudflareAccountTargetLoopbackMessage(ready);
   equal(serialized.endsWith('\n'), true);
@@ -547,7 +547,7 @@ function readyMessage() {
     nonceEncoding: 'base64url',
     nonceBase64url: Buffer.alloc(32, 0x32).toString('base64url'),
     policySha256,
-    expiresInMs: 15_000,
+    expiresInMs: 60_000,
   });
 }
 
