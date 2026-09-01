@@ -310,7 +310,7 @@ private-exposure 설정 확인에 쓰려고 만든 읽기 전용 API token 두 �
 
 현재 자체 브라우저의 계정은 이 프로젝트의 staging 확인값과 정확히 일치함을 이미 한 번 확인했고, 같은 세션과 탭에서는 반복 확인하지 않는다.
 
-연결 대기를 15초에서 60초로 늘린 최소 변경은 commit `5a49c79fbd1e4d76d22fe736f6d22940aa6c856e`·tree `f246b062473f5544d3ea432dbd7d2864a2d63086`에 기록했다. 전용 시험·기존 회귀시험·독립 검토를 통과했고 push는 0회다. 이 기준에서 실제 새 연결을 정확히 한 번 실행했지만 host가 ready를 출력하기 전 `BRIDGE_E_BIND`로 종료됐다. listener bind·accepted connection·browser payload send·account initialization·Keychain write·metadata write는 모두 0회이고, 지시대로 retry·recover·delete도 0회다. 후속 읽기 전용 account-target preflight는 `ready`, primary·recovery·Keychain 항목 없음, clipboard read·clear 0회를 확인했다. 실제 계정 번호 저장·초기화, 새 token 생성·API 조회, R2 private-exposure capture·full audit, 기타 Cloudflare 원격 변경은 0회다. `PLAN-05`는 진행 중이며 이 종료 원인과 새 연결 재실행 여부를 확인하기 전까지 후속을 중단한다.
+연결 대기를 15초에서 60초로 늘린 최소 변경은 commit `5a49c79fbd1e4d76d22fe736f6d22940aa6c856e`·tree `f246b062473f5544d3ea432dbd7d2864a2d63086`에 기록했다. 전용 시험·기존 회귀시험·독립 검토를 통과했고 push는 0회다. 이번 새 브라우저 탭의 title·URL 확인 과정에서는 계정 식별자가 포함된 Cloudflare URL이 내부 도구 출력에 1회 표시됐다. 원문 값과 URL은 프로젝트 문서에 기록하지 않았고 프로젝트 파일·argv·명령줄·환경변수에도 들어가지 않았으므로, 이번 전체 과정의 별도 출력 0회는 주장하지 않는다. 이 기준에서 실제 새 연결을 정확히 한 번 실행했지만 host가 ready를 출력하기 전 `BRIDGE_E_BIND`로 종료됐다. listener bind·accepted connection·browser payload send·account initialization·Keychain write·metadata write는 모두 0회이고, 지시대로 retry·recover·delete도 0회다. 후속 읽기 전용 account-target preflight는 `ready`, primary·recovery·Keychain 항목 없음, clipboard read·clear 0회를 확인했다. 실제 계정 번호 저장·초기화, 새 token 생성·API 조회, R2 private-exposure capture·full audit, 기타 Cloudflare 원격 변경은 0회다. `PLAN-05`는 진행 중이며 이 종료 원인과 새 연결 재실행 여부를 확인하기 전까지 후속을 중단한다.
 
 다음은 현재 수행하지 않았다.
 
