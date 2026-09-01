@@ -1,6 +1,6 @@
 # dwnc.me 프로젝트 공식 상태
 
-최종 갱신: 2026-09-01 KST — Cloudflare 계정 일치 확인 완료, Mac 보관함 연결 대기 시간 조정 여부 결정 대기, 실제 2,758개 파일 내용 전수 비교 대기
+최종 갱신: 2026-09-01 KST — Mac 보관함 연결 60초 변경과 로컬 검사는 완료, 단일 실행은 연결 대기 전 종료되어 안전하게 중단, 실제 2,758개 파일 내용 전수 비교 대기
 
 사용자가 확인할 현재 목표·결정·진행을 막는 조건·다음 단계와 stable requirement ID는 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)를 기준으로 한다. 이 문서는 구현 세부사항, 검증 수치, Git·Cloudflare 상태 재확인 결과와 인수인계를 보존하는 기술 기준점이다. 완료 이력은 요구사항 원장의 보관 정책에 따라 [`docs/REQUIREMENTS_ARCHIVE.md`](docs/REQUIREMENTS_ARCHIVE.md)로 이동하되 이 기술 증거를 삭제하지 않는다.
 
@@ -8,7 +8,7 @@
 
 네이버 블로그 `blog.naver.com/tsusai`와 티스토리 기반 `dwnc.me`의 직접 작성 콘텐츠를 소유자가 통제하는 새 블로그로 이전한다. 원문, 이미지, 게시일, 카테고리, 태그, 기존 주소, 공개 범위를 보존하며 이후 새 글도 지속해서 작성할 수 있어야 한다.
 
-비개발자용 현재 요약: 공개할 사진과 GIF 2,758개를 시험용 비공개 저장소에 모두 올렸고, 업로드 뒤 목록·크기·저장정보를 확인한 결과 빠진 항목과 불필요한 항목은 없었다. 현재 열린 Codex 자체 브라우저의 Cloudflare 계정도 이 프로젝트 계정과 정확히 일치함을 확인했다. 계정 번호를 별도 일반 출력이나 프로젝트 파일에 남기지 않았다. 자체 브라우저에서 Mac 보관함 저장 절차를 시작하려 한 두 차례는 각각 15초 안에 연결되지 않아 중단됐고, 보관함과 확인 파일에는 아무것도 새로 생기지 않았다. 다음 선택은 대기 시간을 60초로 늘리는 최소 수정과 검사를 로컬에 저장한 뒤 실제 연결을 정확히 한 번만 다시 시도할지 여부다. 성공하면 저장소 비공개 상태 확인과 실제 2,758개 내용 전수 비교를 이어간다. 실제 `dwnc.me` 주소는 아직 Cloudflare에 연결되지 않았고 사용자가 연결을 결정하기 전에는 주소 설정을 바꾸지 않는다. Git push도 하지 않는다.
+비개발자용 현재 요약: 공개할 사진과 GIF 2,758개를 시험용 비공개 저장소에 모두 올렸고, 업로드 뒤 목록·크기·저장정보를 확인한 결과 빠진 항목과 불필요한 항목은 없었다. Codex 자체 브라우저의 Cloudflare 계정도 이 프로젝트 계정과 정확히 일치함을 확인했고, 계정 번호를 별도 일반 출력이나 프로젝트 파일에 남기지 않았다. 연결 대기 시간을 15초에서 60초로 늘리는 최소 수정은 전용 시험·기존 회귀시험·독립 검토를 거쳐 로컬 commit으로 저장했다. 그 뒤 새 연결을 정확히 한 번 실행했지만 연결 대기를 시작했다는 안내가 나오기 전 `BRIDGE_E_BIND`로 종료됐다. 연결 수락·브라우저 내용 전송·계정 초기화·Mac 보관함 저장·확인 파일 작성은 모두 0회이고, 지시대로 재시도·복구·삭제도 하지 않았다. 이후 읽기 전용 사전검사에서 시작 가능 상태이고 원래·복구 확인 파일과 전용 보관함 항목이 없음을 확인했다. 저장소 비공개 상태와 실제 2,758개 내용 전수 비교는 아직 하지 않았다. 실제 `dwnc.me` 주소 설정·트래픽·Git 원격 저장소도 바꾸지 않았다.
 
 전체 프로젝트 완료 조건은 다음과 같다.
 
@@ -48,7 +48,7 @@
 - Cloudflare source-only build: **fresh Git-style checkout에서 private/raw/local media 0, local media read/download 0, `dist/media` 0, HTML 1,404·sitemap 1,054·canonical/alias 349/349와 기존 검증 PASS**
 - Cloudflare Stage 3 preflight·Builds guard: **account·Worker·repo 식별과 raw deploy 제거·exact version-only wrapper readback 완료**
 - Cloudflare Stage 3 로컬 안전장치: **commit `ccec8bb855e45ef679a4b99faf0f0633a99e089e`·tree `241a654acc387233d4e2d5e076754b345619e9ac`로 업로드·사후 확인·전체 내용 감사의 보호 절차를 기록했고 push는 0**
-- Cloudflare 계정 선택 안전장치: **자체 브라우저 화면의 계정 번호 항목이 하나뿐이며 staging 확인값과 정확히 일치함을 확인했고, 계정 번호를 별도 일반 출력이나 프로젝트 파일에 남기지 않았다. 브라우저의 임시 내용을 일반 실행 환경으로 옮기는 경로는 commit `b66798ff3ad7907e3fd43bdcb62328f2319cf5fe`에서 계정 검사 698개, 한 번만 여는 연결은 commit `bb0a250344d3c2f8d991b73bab11e2fd3a281833`·tree `edb439b2bfb33cf9940a07c9883c057f40191f6c`에서 연결 검사 212개와 계정 검사 698개를 통과했고 독립 검토 결과도 진행 가능이었다. 자체 브라우저에서 Mac 보관함 저장 절차를 시작하려 한 두 차례는 각각 15초 안에 연결되지 않아 초기화 전에 중단됐으며, 임시 내용은 지워졌고 Mac 보관함·확인 파일 생성은 0이다. 자동 재시도는 중단했다.**
+- Cloudflare 계정 선택 안전장치: **자체 브라우저 화면의 계정 번호 항목이 하나뿐이며 staging 확인값과 정확히 일치함을 확인했고, 계정 번호를 별도 일반 출력이나 프로젝트 파일에 남기지 않았다. 브라우저의 임시 내용을 일반 실행 환경으로 옮기는 경로는 commit `b66798ff3ad7907e3fd43bdcb62328f2319cf5fe`에서 계정 검사 698개, 한 번만 여는 연결은 commit `bb0a250344d3c2f8d991b73bab11e2fd3a281833`·tree `edb439b2bfb33cf9940a07c9883c057f40191f6c`에서 연결 검사 212개와 계정 검사 698개를 통과했고 독립 검토 결과도 진행 가능이었다. 연결 대기를 60초로 늘린 최소 변경은 commit `5a49c79fbd1e4d76d22fe736f6d22940aa6c856e`·tree `f246b062473f5544d3ea432dbd7d2864a2d63086`에 저장했고 전용·회귀 시험과 독립 검토를 통과했으며 push는 0회다. 이 기준에서 실제 새 연결 한 번은 ready 출력 전 `BRIDGE_E_BIND`로 종료됐다. listener bind·연결 수락·브라우저 내용 전송·계정 초기화·Mac 보관함 저장·확인 파일 작성은 모두 0회이고 재시도·복구·삭제도 0회다. 후속 읽기 전용 사전검사는 `ready`, primary·recovery·Keychain 항목은 없음, clipboard read·clear는 0회를 확인했다.**
 - Cloudflare Stage 3 staging R2 상태: **최종 2,758개 업로드 완료. 기존 exact 1개를 건너뛰고 missing 2,757개만 조건부 생성했으며 사후 확인 exact 2,758·missing 0·mismatch 0·orphan 0·overwrite 0·delete 0. 실제 감사 프로그램의 인터넷 없는 전량 성공 시험은 로컬 원본 2,758개·2,346,220,246바이트를 LIST 3→HEAD 2,758→GET 2,758로 읽어 PUT·DELETE·retry·overwrite 0과 create-only 결과 기록을 확인했다. 실제 staging R2 전체 full GET/SHA-256 감사와 그 직전 비공개 설정 재확인은 대기. Worker·version·activation 0**
 - Cloudflare Stage 3 staging signing trust: **media public fingerprint `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`, release public fingerprint `2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2` policy 고정 / private key는 macOS Keychain에만 보관·export 0 / production fingerprint `null` 유지**
 - Cloudflare Stage 3 deny-only Worker 로컬 검사: **생성 전후 account `workers.dev=dwnc`, 생성 뒤 공개·미리보기 주소 꺼짐, 전체 로그·trace 설정, `content/v2`의 정확히 한 module 바이트·SHA-256, deploy 가능한 version 정확히 1개와 deployment 정확히 1개·100%, 연속 두 현재 상태의 일치를 함께 강제한다. 인터넷·외부 프로그램 차단 보강 전 전체 Cloudflare 모의시험 27개·15,076 assertions PASS, 보강 뒤 R2 전량 예행연습 194 assertions·차단 경계 전용 152 assertions·영향 범위 829 assertions PASS / 금지 시도 24종은 연결·실행 직전에 차단하고, 허용한 읽기 전용 Git 15회·격리 Python 5회만 원래 프로그램을 실행 / 계정 보관함 read command 사고 1, second read·저장·변경 0, guard 뒤 추가 native spawn 0 / 최소 권한 열쇠 전달과 생성 중단 복구의 로컬 안전장치 완료**
@@ -64,7 +64,7 @@
 - `PLAN-02` 공개·비공개 분리와 변환: 완료
 - `PLAN-03` 독립 사이트와 주소 체계: 완료
 - `PLAN-04` 공개 미디어 정리: 완료
-- `PLAN-05` 시험용 R2 실제 내용 확인과 열쇠 정리: **진행 중**. 올바른 계정 확인은 완료했다. 현재는 계정 번호 보관 연결의 대기 시간을 15초에서 60초로 늘리고 실제 연결을 한 번 더 시도할지 사용자 결정 대기다. 승인되면 최소 수정·관련 검사·로컬 저장 → 실제 연결 정확히 1회 → 저장소 비공개 확인 1회 → 실제 2,758개 GET/SHA-256 비교 1회 → 이번 작업용·사용 불가능한 활성 열쇠 정리 순서다. 같은 세션과 탭에서는 계정을 반복 확인하지 않는다.
+- `PLAN-05` 시험용 R2 실제 내용 확인과 열쇠 정리: **진행 중**. 올바른 계정 확인과 연결 대기 60초 변경·검사·로컬 commit은 완료했다. 승인된 새 연결은 정확히 1회 실행했지만 ready 출력 전 `BRIDGE_E_BIND`로 종료됐고, 상태 확인 뒤 재시도 없이 중단했다. 계정 보관·저장소 비공개 확인·실제 2,758개 GET/SHA-256 비교·열쇠 정리는 수행하지 않았다. 다음에는 이 종료 원인을 범위 내에서 확인하고 새 연결 재실행 여부를 먼저 결정한다. 그전에는 재실행·복구·삭제를 하지 않고, 같은 세션과 탭에서 계정도 반복 확인하지 않는다.
 - `PLAN-06` 시험용 사이트 프로그램·버전·사이트 점검: **대기**. 프로그램이 없을 때만 최소 차단용 프로그램을 만들고, 확정된 Git 기록 기준 관련 빌드·검사 한 묶음 → version-only upload → staging-only activation과 시험용 주소 활성화 → 정적 대표 페이지, 예전 주소 GET·HEAD 698회, media GET·HEAD·304·206·416 확인 → 정확한 Git SHA와 version ID 기록 순서다.
 - `PLAN-07` 운영용 이름의 Cloudflare 자원·버전 준비: 대기. `PLAN-06` 통과 뒤 최종 운영에 실제 필요한 자원만 준비하며 새 보조 도구·모의훈련·반복 검증은 추가하지 않는다.
 - `PLAN-08` 실제 도메인 연결과 운영 전환 검증: 사용자 결정 필요
@@ -497,7 +497,7 @@
 ## 미해결 문제
 
 - 콘텐츠 이전 정확성·완전성 측면의 알려진 문제는 없다. Stage 3 R2 전체 2,758개 업로드와 사후 목록 확인, 실제 감사 프로그램의 로컬 원본 전량 예행연습은 완료됐다. 다음 무결성 단계는 새 private-exposure capture를 수집한 직후 실제 staging R2에서 수행하는 전체 2,758개 GET/SHA-256 감사다.
-- 현재 Cloudflare 계정은 이 프로젝트의 staging 확인값과 정확히 일치한다. 남은 막힘은 계정 번호를 Mac 보관함에 넘기는 연결이 15초 안에 시작되지 않는 문제다. 자체 브라우저에서 Mac 보관함 저장 절차를 시작하려 한 두 차례는 각각 15초 안에 연결되지 않아 초기화 전에 중단됐고, 남은 상태·Mac 보관함 항목·확인 파일은 0이며 임시 내용도 지웠다. 자동 재시도는 중단했다. 이번 진행에서 Cloudflare 설정 변경과 R2 쓰기·업로드는 0회다. 다음 사용자 결정은 대기 시간을 60초로 늘리는 최소 수정·관련 검사·로컬 저장 뒤 실제 연결을 정확히 한 번 더 시도할지 여부다. macOS 접근 허용 창이 나타나면 사용자의 클릭이 필요할 수 있다.
+- 현재 Cloudflare 계정은 이 프로젝트의 staging 확인값과 정확히 일치한다. 연결 대기를 15초에서 60초로 늘린 변경과 전용·기존 회귀시험·독립 검토는 완료했다. 이후 새 연결을 정확히 한 번 실행했지만 host가 ready를 출력하기 전 `BRIDGE_E_BIND`로 종료됐다. listener bind·accepted connection·browser payload send·account initialization·Keychain write·metadata write는 모두 0회고, 지시대로 retry·recover·delete도 0회다. 후속 읽기 전용 account-target preflight는 `ready`, primary·recovery·Keychain 항목 없음, clipboard read·clear 0회를 확인했다. 이번 진행에서 R2 private exposure/API/full audit와 Cloudflare 원격 변경은 0회이다. 따라서 `PLAN-05`는 진행 중이며 원인 확인과 재실행 여부 결정 전까지 후속을 중단한다.
 - 현재 전체 Cloudflare 검사 묶음에는 `scripts/test-r2-client-entrypoints.mjs` 343행의 감사 진입점 불일치로 실패하는 기존 항목 하나가 있다. 이번 연결 변경보다 먼저 존재한 별도 문제이며, 연결 전용 212개와 계정 전용 698개 검사는 모두 통과했다. 이번에는 범위를 넓혀 고치지 않았다.
 - HTTP→HTTPS, www→apex, trailing slash와 `/index.html` 정규화는 현재 로컬 소스가 아니라 운영 edge의 승인 항목이다. `docs/URL_CONTRACT.md` 체크리스트에 따라 배포·호스팅 승인 뒤 301/308 단일 hop, chain·loop 0을 검증해야 한다.
 - 현재 imported 공개 349글의 다른 글 fragment 링크는 0건이다. 알려진 Naver 플랫폼 fragment와 향후 native deep link fragment는 target rendered ID map을 production 빌드에서 전수 생성·검증하기 전까지 버린다. fragment 보존 map 구현은 사용자가 요청할 때만 진행하는 P2 후속이며 현재 완료조건과 Stage 3를 막지 않는다.
@@ -526,7 +526,7 @@
 
 ## 다음 단계
 
-1. 사용자가 대기 시간 연장을 선택하면 15초를 60초로 바꾸는 최소 수정과 관련 검사만 수행해 로컬 commit으로 남기고, 확인된 계정 번호를 Mac 보관함에 넣는 연결을 정확히 한 번 다시 시도한다. 성공하면 최소 권한·짧은 수명 열쇠로 시험용 저장소의 비공개 상태를 한 번 읽고, 실제 파일 2,758개를 한 번 전수 GET해 개별 SHA-256과 총 2,346,220,246바이트를 원본과 비교한다. 통과 뒤 이번 작업용 열쇠와 사용 불가능한 기존 활성 열쇠를 정확히 식별해 정리한다. 60초 안에 연결되지 않거나 결과가 분명하지 않으면 자동으로 반복하지 않는다.
+1. 연결 host가 ready 전 `BRIDGE_E_BIND`로 종료된 원인을 안전한 범위에서 확인하고, 새 연결을 다시 실행할지 결정한다. 결정 전에는 연결·복구·삭제를 실행하지 않는다. 재실행이 별도로 확정되고 성공한 경우에만 최소 권한·짧은 수명 열쇠로 시험용 저장소의 비공개 상태를 한 번 읽고, 실제 파일 2,758개를 한 번 전수 GET해 개별 SHA-256과 총 2,346,220,246바이트를 원본과 비교한다. 통과 뒤 이번 작업용 열쇠와 사용 불가능한 기존 활성 열쇠를 정확히 식별해 정리한다.
 2. 전수 비교가 통과하면 `dwnc-me-staging`이 없을 때만 외부 요청을 모두 거부하는 최소 차단용 프로그램을 한 번 만든다. 확정된 Git 기록 기준 관련 빌드·검사 한 묶음, version-only upload, staging-only activation과 시험용 주소 활성화, 대표 정적 페이지, 예전 주소 GET·HEAD 698회 및 media GET·HEAD·304·206·416 확인을 이어서 수행하고 정확한 Git SHA와 version ID를 기록한다.
 3. 시험용 확인이 통과하면 최종 운영에 실제 필요한 Cloudflare 자원만 같은 방식으로 준비한다. 새 보조 도구·복구 체계·서명·영수증·장애주입·모의훈련·반복 독립감사는 추가하지 않는다. 새 글 작성 방식과 비공개 백업은 최종 운영 전에 정하되 Stage 3를 막지 않으며, 공유 글 10개·댓글·추가 개선은 사용자가 원할 때만 진행한다. 실제 `dwnc.me` 도메인·DNS·route 연결은 사용자가 결정할 때만 수행한다.
 
