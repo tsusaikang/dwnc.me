@@ -147,7 +147,7 @@
 57. 이미 승인된 작업 순서는 앞 단계의 기술적 조건이 통과하면 직전 사전점검 후 계속하며, 단순히 추가 승인을 받기 위해 임의로 중단하지 않는다. Git push·실제 도메인/DNS 변경·보호 절차 없는 `wrangler deploy`·덮어쓰기·삭제·비밀값 기록은 여전히 하지 않는다.
 58. Cloudflare R2의 S3 `x-amz-version-id`는 Workers binding의 `R2Object.version`과 같은 필수값으로 간주하지 않는다. 현재 공식 호환표에서 bucket versioning API는 미지원이므로 S3 HEAD/GET에서 없으면 canonical `null`로 기록한다. 양쪽 모두 있으면 exact 일치, 양쪽 모두 없으면 ETag·Last-Modified와 전체 integrity metadata exact 일치, 한쪽에만 있거나 값이 다르면 generation mismatch로 거부한다.
 59. bulk `dwnc-public-media-r2-bulk-sync-v1` receipt는 업로드·재시도·post-HEAD 운영 증거일 뿐 `media-receipt` signer나 release artifact 입력이 아니다. `dwnc-public-media-r2-receipt-v1`의 `full-get-sha256` 결과만 별도 서명할 수 있다. staging receipt·서명은 staging에만 유효하며 향후 production은 별도 bucket/account 전수 감사와 production 전용 신뢰값이 필요하다.
-60. 업로드 전 bucket 설정 확인 capture와 full audit capture를 분리한다. bulk와 strict post-inspection 뒤 새 900초 capture를 수집해 곧바로 전수 감사를 시작하고, 감사 `startedAt`과 receipt `verifiedAt`을 모두 `expiresAt` 전으로 강제한다. 만료되면 새 capture와 아직 쓰지 않은 새 receipt 경로로 2,758개 GET/SHA-256 감사를 처음부터 다시 실행한다.
+60. 업로드 전 bucket 설정 확인 capture와 full audit capture를 분리한다. bulk와 strict post-inspection 뒤 새 900초 capture를 수집해 곧바로 전수 감사를 시작하고, 첫 원격 요청 전에 capture가 fresh·private이며 exact account/Git/bucket에 결속됐는지 강제한다. 이 시작 검사를 통과한 단일 실행은 2,758개 GET/SHA-256 처리 중 capture가 만료돼도 완료할 수 있지만, 만료된 capture로 새 실행은 시작하지 않는다.
 61. 사용자용 진행 설명은 비개발자가 이해할 수 있는 일상적인 한국어를 우선한다. 먼저 무엇을 확인하거나 완료했는지, 사용자에게 어떤 의미인지, 다음에 무엇을 하는지 설명한다. 기술 정보는 요청받았거나 검증에 꼭 필요한 경우에만 `기술 참고`로 분리하고 쉬운 뜻을 함께 적으며, 번역투와 조직 내부 용어를 그대로 사용하지 않는다. 이 결정은 상시 요구사항 `DWNC-OPS-004`로 관리한다.
 62. `PLAN-00`은 실행 단계가 아니라 경량 기록 원칙이다. 최종 결과·명시적 완료조건·범위·순서·승인 범위가 실제로 달라질 때만 요구사항 번호·계획 ID·우선순위와 현재 위치를 갱신한다. 단순 질문·설명·진행 확인·이미 기록된 작업의 계속 지시는 새 번호를 만들지 않는다. 대화만 공식 상태로 삼지 않고 이 규칙을 상시 요구사항 `DWNC-OPS-005`로 관리한다.
 63. 앞으로 이 프로젝트의 모든 브라우저 작업은 Codex 자체 브라우저에서만 하고 Chrome과 Edge를 사용하지 않는다. 자체 브라우저의 로그인 상태가 프로젝트·작업마다 분리된다고 가정하지 않는다. Cloudflare 작업을 시작할 때 이 프로젝트 계정인지 한 번 확인하고 같은 세션과 탭에서는 반복하지 않으며, 브라우저 세션·탭·프로젝트가 바뀌거나 계정 상태가 달라졌을 때만 다시 확인한다. 다르거나 확인할 수 없으면 설정 조회·변경과 열쇠 생성 전에 멈추고 사용자가 직접 로그아웃·로그인한다. 로그인 정보와 비밀번호는 저장하지 않는다. 이 결정은 상시 요구사항 `DWNC-OPS-006`으로 관리한다.
@@ -383,7 +383,7 @@
 - `scripts/lib/public-media-git.mjs`: 명시한 commit/tree/clean 상태를 `HEAD→status→HEAD`로 확인하고 검사 중 HEAD/tree 이동을 거부하는 공통 Git 결속
 - `scripts/sync-public-media-r2.mjs`: 기존 exact 객체를 건너뛰고 missing만 `If-None-Match:*`로 만드는 bulk apply, 엄격한 post-inspection과 실제 요청·생성·412 복구 수를 담는 create-only receipt
 - `scripts/inspect-public-media-r2.mjs`: exact·missing·mismatch·orphan 기대값 네 개와 실제 요청 수를 강제하는 staging validator-only v2 inspection
-- `scripts/audit-public-media-r2-full.mjs`: 2.3GB GET 전에 receipt 목적지와 Git 상태를 검사하고 전체 object-set SHA·실제 요청 수·900초 이내 exposure capture SHA를 결속하는 full audit
+- `scripts/audit-public-media-r2-full.mjs`: 2.3GB GET 전에 receipt 목적지와 Git 상태를 검사하고, 시작 시 fresh·private·account/Git/bucket 결속을 통과한 900초 exposure capture SHA와 전체 object-set SHA·실제 요청 수를 결속하는 단일 full audit. 시작 뒤 해시 중 capture가 만료되어도 같은 실행은 완료할 수 있지만 만료된 capture로 새 실행은 시작하지 않는다.
 - `scripts/test-r2-bulk-hardening.mjs`: 혼합 원격 상태, 안전 재실행, 412 복구, orphan/Git/output 경계, 최종 receipt 경합과 비밀값 비노출을 실제 entrypoint로 검증하는 142 assertions fixture
 
 ## 현재 검증 결과
@@ -496,6 +496,7 @@
 
 ## 미해결 문제
 
+- full audit start-only freshness 변경의 추가 negative fixture와 `PLAN-06` 소비 gate의 같은 규칙 반영 여부는 이번 최소 수정 범위에서 다루지 않았으며 후속 확인 사항이다.
 - 콘텐츠 이전 정확성·완전성 측면의 알려진 문제는 없다. Stage 3 R2 전체 2,758개 업로드와 사후 목록 확인, 실제 감사 프로그램의 로컬 원본 전량 예행연습은 완료됐다. 다음 무결성 단계는 새 private-exposure capture를 수집한 직후 실제 staging R2에서 수행하는 전체 2,758개 GET/SHA-256 감사다.
 - 현재 Cloudflare 계정은 이 프로젝트의 staging 확인값과 정확히 일치하지만, 자체 브라우저에서 Mac 로컬로 계정 번호를 옮길 지원 경로가 없다. 비민감 clipboard probe는 browser write 1·macOS `pbpaste` read 1·match false·system clipboard write 0이었고, 설치 구현의 자체 브라우저는 시스템 공유가 보장되지 않는 virtual clipboard를 쓴다. secure non-echo stdin receiver는 commit `4467a7e468a6aa72f3f26c4e12e9ce3b8d5c9779`·tree `9c6505ef46393b139c923ad5a43f0605c4b14611`에 구현했으며 stdin 112·account-target 698·diff 검사 PASS, 독립 지적 0, push 0이다. 비민감 Terminal 시험은 receiver `READY` 뒤 Computer Use가 `com.apple.Terminal`로 값을 넘기기 전에 차단되어 local paste 0·receiver input 0, receiverStopped·echoRestored true였고 브라우저 시험 clipboard를 비웠다. 재시도·대체 앱 우회는 0회다. 이번 stdin/Terminal 경로의 Account ID copy·read·paste·initialize는 모두 0회다. 앞선 localhost 경로의 누계는 browser memory 처리·client send 시도 1회, host accepted·success 0회이며 Keychain·metadata 작성은 전체 0회다. Cloudflare·R2·API·full audit도 0회다. 따라서 `PLAN-05`는 중단하며, 제품이 허용하는 안전한 로컬 receiver target이나 사용자가 원문을 도구 출력 없이 non-echo receiver에 직접 입력하는 명시적 handoff가 있을 때만 재개한다.
 - 별도 로컬 진단 실수로 loopback 회귀시험을 한 번 잘못 호출했다. sandbox에서 bind를 1회 시도한 뒤 `BRIDGE_E_BIND`로 즉시 끝났고 accepted connection·payload·initialize·Keychain·Cloudflare는 모두 0회였다. 재시도는 하지 않았다.

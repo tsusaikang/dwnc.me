@@ -20,7 +20,6 @@ import {
 import {
   STAGING_R2_EXPOSURE_PURPOSE,
   remoteReceiptBucketExposure,
-  validateR2ExposureCapture,
 } from './lib/cloudflare-r2-exposure.mjs';
 import {
   assertSecureCreateOnlyDestination,
@@ -36,7 +35,6 @@ import {
 
 const ROOT = process.cwd();
 const OFFLINE_BOUNDARY_SYMBOL = Symbol.for('dwnc.r2-full-audit.offline-boundary.v1');
-const AUDIT_COMPLETION_RESERVE_MILLISECONDS = 30_000;
 installStructuredErrorHandler('media-r2-full-audit');
 
 function parseArguments(argv) {
@@ -123,7 +121,7 @@ try {
   throw new Error('CLOUDFLARE_E_R2_EXPOSURE_CAPTURE');
 }
 const auditStartedAt = new Date();
-validateR2ExposureCapture(exposureCapture, {
+const bucketExposure = remoteReceiptBucketExposure(exposureCapture, {
   expected: {
     purpose: STAGING_R2_EXPOSURE_PURPOSE,
     environment: options.environment,
@@ -138,15 +136,7 @@ validateR2ExposureCapture(exposureCapture, {
   maxLifetimeSeconds: targetPolicy.maxBucketExposureAgeSeconds,
   maxFutureSkewSeconds: targetPolicy.maxBucketExposureFutureSkewSeconds,
 });
-const auditDeadlineMilliseconds = Date.parse(exposureCapture.evidence.expiresAt)
-  - AUDIT_COMPLETION_RESERVE_MILLISECONDS;
-if (!Number.isSafeInteger(auditDeadlineMilliseconds)
-  || auditStartedAt.getTime() >= auditDeadlineMilliseconds) {
-  throw new Error('MEDIA_E_FULL_AUDIT_DEADLINE');
-}
-const client = r2ClientFromCredentials(r2Credentials, {
-  deadlineMilliseconds: auditDeadlineMilliseconds,
-});
+const client = r2ClientFromCredentials(r2Credentials);
 if (options.expectedOrphanCount !== targetPolicy.approvedOrphanCount) {
   throw new Error('MEDIA_E_ORPHAN_APPROVAL');
 }
@@ -156,18 +146,15 @@ if (options.expectedOrphanCount !== targetPolicy.approvedOrphanCount) {
 const requestCountsBefore = client.requestOperationCounts();
 const startedAt = auditStartedAt.toISOString();
 const inspection = await inspectRemotePublicMedia(client, manifest, { concurrency: options.concurrency });
-client.assertBeforeDeadline();
 if (inspection.missing.length || inspection.mismatch.length) throw new Error('MEDIA_E_REMOTE_VALIDATION');
 if (inspection.orphanCount !== options.expectedOrphanCount) throw new Error('MEDIA_E_ORPHAN_APPROVAL');
 const fullAudit = await auditRemotePublicMediaFull(client, manifest, {
   concurrency: options.concurrency,
   expectedHeads: inspection.heads,
 });
-client.assertBeforeDeadline();
 await assertExactCleanPublicMediaGit(
   ROOT, options.expectedGitCommit, options.expectedGitTree,
 );
-client.assertBeforeDeadline();
 const requestCounts = r2OperationDelta(requestCountsBefore, client.requestOperationCounts());
 const receiptVerifiedAt = new Date();
 const receipt = createUnsignedRemoteReceipt(manifest, fullAudit.objects, {
@@ -178,21 +165,7 @@ const receipt = createUnsignedRemoteReceipt(manifest, fullAudit.objects, {
   },
   verificationLevel: 'full-get-sha256',
   orphanCount: inspection.orphanCount,
-  bucketExposure: remoteReceiptBucketExposure(exposureCapture, {
-    expected: {
-      environment: options.environment,
-      bucket: targetPolicy.bucket,
-      accountIdSha256: targetPolicy.accountIdSha256,
-      jurisdiction: 'default',
-      purpose: STAGING_R2_EXPOSURE_PURPOSE,
-      sourceCommit: options.expectedGitCommit,
-      sourceTree: options.expectedGitTree,
-    },
-    now: receiptVerifiedAt,
-    requirePrivate: true,
-    maxLifetimeSeconds: targetPolicy.maxBucketExposureAgeSeconds,
-    maxFutureSkewSeconds: targetPolicy.maxBucketExposureFutureSkewSeconds,
-  }),
+  bucketExposure,
   fullAuditEvidence: {
     requestCounts,
     sourceCommit: options.expectedGitCommit,
@@ -203,11 +176,9 @@ const receipt = createUnsignedRemoteReceipt(manifest, fullAudit.objects, {
   },
   verifiedAt: receiptVerifiedAt.toISOString(),
 });
-client.assertBeforeDeadline();
 await assertExactCleanPublicMediaGit(
   ROOT, options.expectedGitCommit, options.expectedGitTree,
 );
-client.assertBeforeDeadline();
 await writeCanonicalEvidenceCreateOnly(
   options.receiptOutput, receipt, canonicalRemoteReceiptPayload,
 );

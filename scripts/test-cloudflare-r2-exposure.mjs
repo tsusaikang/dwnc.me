@@ -170,6 +170,15 @@ const canonicalEvidence = canonicalR2ExposureEvidencePayload(capture.evidence);
 equal(canonicalEvidence.includes(accountId), false);
 equal(canonicalEvidence.includes(apiToken), false);
 equal(canonicalEvidence.includes('api.cloudflare.com'), false);
+const exposureBoundAtAuditStart = remoteReceiptBucketExposure(capture, {
+  expected: { environment, bucket, accountIdSha256 },
+  now: new Date(Date.parse(capture.evidence.expiresAt) - 1),
+});
+equal(exposureBoundAtAuditStart.evidenceSha256, exposure.evidenceSha256);
+throws(() => remoteReceiptBucketExposure(capture, {
+  expected: { environment, bucket, accountIdSha256 },
+  now: new Date(capture.evidence.expiresAt),
+}), 'CLOUDFLARE_E_R2_EXPOSURE_EXPIRED');
 
 for (const [overrides, code] of [
   [{ purpose: 'production-r2-private-exposure-read' }, 'CLOUDFLARE_E_R2_EXPOSURE_REQUEST'],

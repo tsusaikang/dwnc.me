@@ -149,7 +149,7 @@ npm run media:r2:staging:audit:full:offline:test
 
 bulk apply와 full audit는 어떤 `LIST`·`HEAD`·`PUT` 또는 대용량 `GET`보다 먼저 receipt 목적지를 완전히 검사한다. 부모 디렉터리는 현재 사용자 소유 mode 700이어야 하고, 대상이 이미 있거나 symlink·hardlink·안전하지 않은 상위 경로·쓰기 불가 상태이면 원격 요청 0·receipt 0으로 중단한다. 최종 기록도 같은 canonical create-only writer만 사용한다. 두 명령은 명시한 Git commit/tree와 clean 상태를 `HEAD→status→HEAD` 순서로 원격 요청 전, 원격 검사 뒤, receipt 기록 직전에 총 세 번 확인한다. tracked drift나 HEAD/tree 이동이 있으면 receipt를 만들지 않는다.
 
-업로드 전 bucket 설정 확인용 capture와 full audit에 결속하는 capture는 서로 다른 증거다. 설정 확인 capture를 만든 뒤 bulk upload를 먼저 수행하고 그 파일을 감사에 재사용하지 않는다. bulk upload와 exact 2,758·missing/mismatch/orphan 0 post-inspection을 마친 뒤 새 900초 capture를 수집하고 곧바로 full audit를 시작한다. 감사 `startedAt`과 receipt 후보의 `verifiedAt`은 모두 그 capture의 `expiresAt` 전이어야 한다. 도중에 만료되면 receipt를 만들지 않으며, 새 capture와 아직 쓰지 않은 새 receipt 경로를 준비해 2,758개 전체 GET/SHA-256 감사를 처음부터 다시 실행한다.
+업로드 전 bucket 설정 확인용 capture와 full audit에 결속하는 capture는 서로 다른 증거다. 설정 확인 capture를 만든 뒤 bulk upload를 먼저 수행하고 그 파일을 감사에 재사용하지 않는다. bulk upload와 exact 2,758·missing/mismatch/orphan 0 post-inspection을 마친 뒤 새 900초 capture를 수집하고 곧바로 full audit를 시작한다. 첫 원격 요청 전에 capture가 fresh·private이며 exact account/Git/bucket에 결속됐는지 검사하고, 만료된 capture로는 새 감사를 시작하지 않는다. 이 검사를 통과해 시작한 단일 감사는 2,758개 전체 GET/SHA-256 처리 중 capture가 만료되어도 같은 실행의 receipt 후보를 만들 수 있다.
 
 단일 객체 검증 명령도 staging·validator 역할에 고정한다. clean HEAD와 명시한 full Git SHA, tracked manifest의 exact key, account fingerprint와 private bucket을 첫 요청 전에 결속한다. `HEAD→status→HEAD`를 순서대로 읽는 Git 검사를 원격 요청 전, HEAD+GET 후, create-only receipt 기록 직전에 반복해 tracked file이나 HEAD가 중간에 바뀌면 기록을 만들지 않는다. R2 client의 `maxAttempts=1`로 자동 재시도를 끄고 HEAD와 status 200의 전체 GET을 각각 정확히 한 번만 허용하며, receipt 요청 수도 HEAD 1·GET 1·PUT 0·DELETE 0이어야 한다. body는 메모리에 전부 쌓지 않고 streaming SHA-256으로 확인한다. `206`, `Content-Range`, 짧거나 긴 body, metadata/checksum/ETag/Last-Modified drift, HEAD↔GET 세대 차이와 한쪽에만 있는 version ID를 거부한다. 기록은 Git SHA·manifest/entry SHA·key·bytes/SHA·MIME/cache·platform checksum·ETag·Last-Modified·nullable version을 담는다.
 
@@ -209,7 +209,7 @@ npm run cloudflare:verify:production
 
 exact Wrangler `4.125.0`은 로컬 dependency와 lock에 설치·고정됐지만, 현재 실제 production receipt·signature·credential·trust fingerprint가 없으므로 위 production gate는 의도적으로 fail closed한다. 합성 Ed25519 fixture만 저장소 안에서 target 결속과 signature를 검증하며 실제 서명을 만들어 내지 않는다.
 
-서명 receipt만으로 이후 원격 삭제를 증명할 수 없으므로 production gate는 봉인된 최종 manifest 전체의 HEAD를 매번 수행한다. 최초 upload 뒤에는 validator 역할에 고정된 `media:r2:staging:audit:full:secure`로 최종 manifest 전체 원격 GET·SHA-256·총 바이트를 감사하고 그 결과만 `full-get-sha256` receipt 후보로 발급한다. 감사 전에 secure receipt 목적지와 exact Git commit/tree/clean 상태를 검사한다. bulk와 post-inspection 뒤 새로 수집한 900초 canonical private-exposure capture를 exact SHA-256으로 결속하고, 감사 시작과 receipt 후보 생성 시각을 모두 capture 만료 전으로 강제한다. 만료되면 새 capture·새 receipt 경로로 전수 감사를 처음부터 다시 한다. receipt는 실제 `LIST/HEAD/GET/PUT/DELETE` 수, 전체 object/byte 수, key·size·SHA를 정렬해 계산한 full object-set SHA-256, 감사 `startedAt`, Git commit/tree와 세 번의 Git 검사, exposure capture SHA-256을 담는다. 역사 기준선 2,889개를 최종으로 간주하지 않으며, 실제 서명은 보호 환경에서 별도로 수행한다.
+서명 receipt만으로 이후 원격 삭제를 증명할 수 없으므로 production gate는 봉인된 최종 manifest 전체의 HEAD를 매번 수행한다. 최초 upload 뒤에는 validator 역할에 고정된 `media:r2:staging:audit:full:secure`로 최종 manifest 전체 원격 GET·SHA-256·총 바이트를 감사하고 그 결과만 `full-get-sha256` receipt 후보로 발급한다. 감사 전에 secure receipt 목적지와 exact Git commit/tree/clean 상태를 검사한다. bulk와 post-inspection 뒤 새로 수집한 900초 canonical private-exposure capture를 exact SHA-256으로 결속하고, 첫 원격 요청 전에 capture가 fresh·private이며 exact account/Git/bucket에 결속됐는지 검사한다. 이 검사를 통과해 시작한 단일 감사 실행은 전수 HEAD/GET 해시 도중 capture가 만료되어도 완료할 수 있지만, 만료된 capture로 새 감사 실행을 시작하거나 재사용할 수는 없다. receipt는 실제 `LIST/HEAD/GET/PUT/DELETE` 수, 전체 object/byte 수, key·size·SHA를 정렬해 계산한 full object-set SHA-256, 감사 `startedAt`, Git commit/tree와 세 번의 Git 검사, exposure capture SHA-256을 담는다. 역사 기준선 2,889개를 최종으로 간주하지 않으며, 실제 서명은 보호 환경에서 별도로 수행한다.
 
 ## 5. 빌드 모드
 
@@ -318,7 +318,7 @@ private-exposure 설정 확인에 쓰려고 만든 읽기 전용 API token 두 �
 
 - Cloudflare 화면에서 올바른 계정의 계정 번호를 한 번 복사해 전용 macOS 보관함에 저장하고, 원래 번호를 표시하지 않는 일치 검사 통과
 - 짧은 수명의 최소 권한 token으로 bucket 비공개 설정 GET 3회 증거를 남기고 즉시 token 폐기
-- 새 900초 capture를 수집해 즉시 2,758개 원격 full GET/SHA-256 검증. 만료되면 새 capture·새 receipt 경로로 전수 감사 재실행
+- 새 900초 capture를 수집해 fresh/private/account/Git/bucket 결속을 확인한 뒤 즉시 2,758개 원격 full GET/SHA-256 검증 시작. 시작 전에 만료되면 새 capture·새 receipt 경로가 필요하며, 시작 검사를 통과한 단일 실행은 해시 중 만료 후에도 완료 가능
 - 새 자격증명 작동 확인 뒤 2026-08-25의 사용 불가능한 Active token 두 개 정리
 - production receipt의 보호 환경 full-GET/SHA 감사·서명과 account/public-key fingerprint 확정
 - staging·production bucket의 `r2.dev` 비활성·custom domain 0 canonical control-plane 감사 증거 확정. staging dashboard 관측은 완료됐지만 API 원본·canonical receipt는 아직 없음

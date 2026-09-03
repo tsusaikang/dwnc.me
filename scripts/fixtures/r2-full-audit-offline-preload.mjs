@@ -468,6 +468,7 @@ const requiredEnvironment = (name) => {
 const manifestPath = requiredEnvironment('R2_OFFLINE_MANIFEST_PATH');
 const mediaRoot = realpathSync(requiredEnvironment('R2_OFFLINE_MEDIA_ROOT'));
 const summaryPath = requiredEnvironment('R2_OFFLINE_SUMMARY_PATH');
+const capturePath = requiredEnvironment('R2_OFFLINE_CAPTURE_PATH');
 const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 if (manifest.objectCount !== 2_758 || manifest.totalBytes !== 2_346_220_246
   || manifest.manifestSha256
@@ -489,6 +490,7 @@ let phaseViolations = 0;
 let unauthorizedRequests = 0;
 let invariantFailures = 0;
 const failureCodes = [];
+let firstApprovedRemoteRequest = true;
 
 function fail(code) {
   invariantFailures += 1;
@@ -605,6 +607,18 @@ const offlineFetch = async (input, init = {}) => {
     || !authorization.startsWith(
       `AWS4-HMAC-SHA256 Credential=${EXPECTED_ACCESS_KEY_ID}/`,
     )) fail('R2_OFFLINE_E_SIGNED_REQUEST');
+
+  if (firstApprovedRemoteRequest) {
+    firstApprovedRemoteRequest = false;
+    const captureExpiresAt = Date.parse(
+      JSON.parse(readFileSync(capturePath, 'utf8')).evidence?.expiresAt ?? '',
+    );
+    if (!Number.isSafeInteger(captureExpiresAt)) fail('R2_OFFLINE_E_CAPTURE');
+    const delayMilliseconds = Math.max(0, captureExpiresAt - Date.now() + 25);
+    if (delayMilliseconds > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMilliseconds));
+    }
+  }
 
   if (method === 'PUT' || method === 'DELETE') {
     operations[method] += 1;

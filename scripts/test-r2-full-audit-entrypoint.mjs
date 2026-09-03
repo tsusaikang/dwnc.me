@@ -497,7 +497,7 @@ function createPrivateExposureCapture({ accountIdSha256, sourceCommit, sourceTre
     managedDomainSha256: sha256Hex(managedRawBody),
     customDomainsSha256: sha256Hex(customRawBody),
     observedAt: observed.toISOString(),
-    expiresAt: new Date(observed.getTime() + 15 * 60 * 1000).toISOString(),
+    expiresAt: new Date(observed.getTime() + 6_000).toISOString(),
   };
   const capture = {
     schemaVersion: 1,
@@ -649,6 +649,21 @@ try {
   const sourceSnapshot = await productionSourceSnapshot(ROOT);
   const fixtureSourceSnapshot = await productionSourceSnapshot(fixtureRoot);
   equal(fixtureSourceSnapshot, sourceSnapshot);
+  const auditEntrypointSource = await readFile(
+    path.join(fixtureRoot, 'scripts/audit-public-media-r2-full.mjs'), 'utf8',
+  );
+  const exposureBindingIndex = auditEntrypointSource.indexOf(
+    'const bucketExposure = remoteReceiptBucketExposure(exposureCapture,',
+  );
+  const firstRemoteInspectionIndex = auditEntrypointSource.indexOf(
+    'const inspection = await inspectRemotePublicMedia(',
+  );
+  equal(exposureBindingIndex >= 0, true);
+  equal(exposureBindingIndex < firstRemoteInspectionIndex, true);
+  equal((auditEntrypointSource.match(/remoteReceiptBucketExposure\(/gu) ?? []).length, 1);
+  equal(auditEntrypointSource.includes('deadlineMilliseconds'), false);
+  equal(auditEntrypointSource.includes('assertBeforeDeadline'), false);
+  equal(auditEntrypointSource.includes('now: receiptVerifiedAt'), false);
   await git(fixtureRoot, gitEnvironment, ['init', '-q', `--template=${gitTemplate}`]);
   await git(fixtureRoot, gitEnvironment, ['config', 'user.name', 'dwnc offline fixture']);
   await git(fixtureRoot, gitEnvironment, ['config', 'user.email', 'fixture@invalid.example']);
@@ -895,6 +910,7 @@ try {
   equal(receipt.audit.gitCheckCount, 3);
   equal(receipt.audit.fullGetObjects, PUBLIC_MEDIA_BASELINE_OBJECTS);
   equal(receipt.audit.fullGetBytes, PUBLIC_MEDIA_BASELINE_BYTES);
+  equal(Date.parse(receipt.verifiedAt) >= Date.parse(capture.evidence.expiresAt), true);
   equal(receipt.target, {
     environment: 'staging', bucket: credentials.bucket, accountIdSha256,
   });
