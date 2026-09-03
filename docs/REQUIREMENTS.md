@@ -194,7 +194,7 @@
   - 새 자격증명, bucket, 객체, Worker, domain·DNS에는 다른 변경을 하지 않는다.
 - **Evidence:**
   - 이번 full audit에 쓴 짧은 수명 validator token은 Cloudflare 화면에서 삭제·목록 부재를 확인했다. 대응하는 고정 Keychain 항목 하나도 비밀값 read 0·exact delete 1 뒤 부재를 확인했다. v3/v3b metadata·dashboard evidence와 모든 capture·receipt는 보존했다.
-  - 기존 validator token 하나는 Cloudflare 화면에서 Inactive임을 확인했다. 나머지 사용 불가능한 기존 원격 token의 정확한 상태 확인과 정리만 남아 있다.
+  - 2026-09-04 현재 열린 Cloudflare R2 API token 표에서 알려진 이름 후보 `dwnc-me-public-media-staging-uploader-v3-20260827`, `dwnc-me-public-media-staging-validator-v2-20260827`, `dwnc-me-stage3-staging-uploader-v2-20260827`, `dwnc-me-stage3-staging-validator-v2-20260827`는 모두 보이지 않았고 pagination control이나 안내 문구도 없었다. 삭제는 0회다. 이 이름들을 2026-08-25의 이름이 기록되지 않은 두 token과 같다고 추정하지 않으며, exact identity 결속과 명시적 삭제 대상이 풀릴 때까지 이 요구사항은 진행 중이다. 추가 browser/API 작업은 하지 않는다.
   - 새 validator는 대표 객체를 HEAD 1·full GET 1·PUT 0·DELETE 0으로 검증했고 receipt SHA-256은 `fa72b1849496a9b6e4697721cfef9d4fcd17b8f463b41dcacd714c5f9bb2352a`다.
 
 ### `DWNC-OPS-001` — 공유·스크랩 추정 10개 처리 결정
