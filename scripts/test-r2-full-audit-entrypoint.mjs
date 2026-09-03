@@ -42,6 +42,7 @@ import {
   loadTrackedPublicMediaReleasePolicy,
   publicMediaFullGetObjectSetSha256,
   publicMediaManifestDigest,
+  summarizePublicMediaFullAuditRequests,
   validatePublicMediaManifest,
   validateRemoteReceipt,
 } from './lib/public-media-manifest.mjs';
@@ -666,7 +667,7 @@ try {
   equal(auditEntrypointSource.includes('now: receiptVerifiedAt'), false);
   equal(auditEntrypointSource.includes([
     'r2ClientFromCredentials(r2Credentials, {',
-    '  maxAttempts: 1,',
+    '  maxAttempts: 3,',
     '  timeoutMilliseconds: 120_000,',
     '})',
   ].join('\n')), true);
@@ -865,7 +866,10 @@ try {
     objects: entrypointSummary.objects,
     bytes: entrypointSummary.bytes,
     orphan: entrypointSummary.orphan,
+    logicalRequestCounts: entrypointSummary.logicalRequestCounts,
     requestCounts: entrypointSummary.requestCounts,
+    retryCounts: entrypointSummary.retryCounts,
+    retryCount: entrypointSummary.retryCount,
     fullObjectSetSha256: entrypointSummary.fullObjectSetSha256,
     receiptWritten: entrypointSummary.receiptWritten,
     receiptSigned: entrypointSummary.receiptSigned,
@@ -878,7 +882,10 @@ try {
     objects: PUBLIC_MEDIA_BASELINE_OBJECTS,
     bytes: PUBLIC_MEDIA_BASELINE_BYTES,
     orphan: 0,
+    logicalRequestCounts: EXPECTED_REQUEST_COUNTS,
     requestCounts: EXPECTED_REQUEST_COUNTS,
+    retryCounts: { LIST: 0, HEAD: 0, GET: 0 },
+    retryCount: 0,
     fullObjectSetSha256: PUBLIC_MEDIA_BASELINE_FULL_OBJECT_SET_SHA256,
     receiptWritten: true,
     receiptSigned: false,
@@ -907,10 +914,18 @@ try {
   const receiptSha256 = sha256Hex(receiptBytes);
   const receipt = JSON.parse(receiptBytes.toString('utf8'));
   validateRemoteReceipt(receipt, manifest);
+  for (const operation of ['LIST', 'HEAD', 'GET']) {
+    const retriedReceipt = structuredClone(receipt);
+    retriedReceipt.audit.requestCounts[operation] += 1;
+    validateRemoteReceipt(retriedReceipt, manifest);
+  }
   for (const [operation, value] of [
-    ['LIST', receipt.audit.requestCounts.LIST + 1],
-    ['HEAD', receipt.audit.requestCounts.HEAD + 1],
-    ['GET', receipt.audit.requestCounts.GET + 1],
+    ['LIST', receipt.audit.requestCounts.LIST - 1],
+    ['HEAD', receipt.audit.requestCounts.HEAD - 1],
+    ['GET', receipt.audit.requestCounts.GET - 1],
+    ['LIST', receipt.audit.requestCounts.LIST * 3 + 1],
+    ['HEAD', receipt.audit.requestCounts.HEAD * 3 + 1],
+    ['GET', receipt.audit.requestCounts.GET * 3 + 1],
     ['PUT', 1],
     ['DELETE', 1],
   ]) {
@@ -921,6 +936,15 @@ try {
   equal(receiptBytes.toString('utf8'), `${canonicalRemoteReceiptPayload(receipt)}\n`);
   equal(receipt.verificationLevel, 'full-get-sha256');
   equal(receipt.audit.requestCounts, EXPECTED_REQUEST_COUNTS);
+  equal(summarizePublicMediaFullAuditRequests(receipt.audit.requestCounts, {
+    objectCount: manifest.objectCount,
+    orphanCount: receipt.audit.orphanCount,
+    maxAttempts: 3,
+  }), {
+    logicalRequestCounts: EXPECTED_REQUEST_COUNTS,
+    retryCounts: { LIST: 0, HEAD: 0, GET: 0 },
+    retryCount: 0,
+  });
   equal(receipt.audit.fullObjectSetSha256, PUBLIC_MEDIA_BASELINE_FULL_OBJECT_SET_SHA256);
   equal(receipt.audit.sourceCommit, fixtureGitCommit);
   equal(receipt.audit.sourceTree, fixtureGitTree);

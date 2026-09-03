@@ -5,6 +5,7 @@ import {
   loadTrackedPublicMediaManifest,
   loadTrackedPublicMediaReleasePolicy,
   canonicalRemoteReceiptPayload,
+  summarizePublicMediaFullAuditRequests,
   validateConfiguredReleaseTarget,
 } from './lib/public-media-manifest.mjs';
 import {
@@ -137,7 +138,7 @@ const bucketExposure = remoteReceiptBucketExposure(exposureCapture, {
   maxFutureSkewSeconds: targetPolicy.maxBucketExposureFutureSkewSeconds,
 });
 const client = r2ClientFromCredentials(r2Credentials, {
-  maxAttempts: 1,
+  maxAttempts: 3,
   timeoutMilliseconds: 120_000,
 });
 if (options.expectedOrphanCount !== targetPolicy.approvedOrphanCount) {
@@ -159,6 +160,11 @@ await assertExactCleanPublicMediaGit(
   ROOT, options.expectedGitCommit, options.expectedGitTree,
 );
 const requestCounts = r2OperationDelta(requestCountsBefore, client.requestOperationCounts());
+const requestSummary = summarizePublicMediaFullAuditRequests(requestCounts, {
+  objectCount: manifest.objectCount,
+  orphanCount: inspection.orphanCount,
+  maxAttempts: 3,
+});
 const receiptVerifiedAt = new Date();
 const receipt = createUnsignedRemoteReceipt(manifest, fullAudit.objects, {
   target: {
@@ -195,7 +201,10 @@ console.log(JSON.stringify({
   objects: fullAudit.objectCount,
   bytes: fullAudit.totalBytes,
   orphan: inspection.orphanCount,
+  logicalRequestCounts: requestSummary.logicalRequestCounts,
   requestCounts,
+  retryCounts: requestSummary.retryCounts,
+  retryCount: requestSummary.retryCount,
   fullObjectSetSha256: receipt.audit.fullObjectSetSha256,
   exposureCaptureSha256,
   receiptWritten: true,

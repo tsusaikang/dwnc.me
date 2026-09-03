@@ -42,9 +42,9 @@
 
 ### 현재 위치
 
-**진행 중인 계획은 `PLAN-05` 하나다.** 현재 실행은 중단 상태다. 공개 미디어 2,758개 업로드와 업로드 뒤 목록·크기·저장정보 확인은 끝났고, Codex 자체 브라우저의 Cloudflare 계정도 이 프로젝트 확인값과 일치한다. 그러나 localhost 전달은 실패했고, 비민감 clipboard probe도 browser write 1·macOS read 1·match false·system clipboard write 0이었다. 설치 구현의 자체 브라우저는 시스템 공유가 보장되지 않는 virtual clipboard를 쓴다. secure non-echo stdin receiver는 commit `4467a7e468a6aa72f3f26c4e12e9ce3b8d5c9779`·tree `9c6505ef46393b139c923ad5a43f0605c4b14611`에 구현했고 stdin 112·account-target 698·diff 검사 PASS, 독립 지적 0, push 0이다. 하지만 비민감 Terminal 시험은 receiver `READY` 뒤 Computer Use가 `com.apple.Terminal`로 값을 넘기기 전에 안전 정책으로 차단됐다. local paste·receiver input은 0, receiverStopped·echoRestored는 true였고 브라우저 시험 clipboard는 비웠으며 재시도·대체 앱 우회는 0이었다. 이번 stdin/Terminal 경로의 Account ID copy·read·paste·initialize는 모두 0회다. 앞선 localhost 경로의 누계는 browser memory 처리·client send 시도 1회, host accepted·success 0회이며 Keychain·metadata 작성은 전체 0회다. Cloudflare·R2·API·full audit도 0회다. 현재 지원되는 자동 전달 경로가 없으며 저장소 비공개 상태와 실제 파일 2,758개 내용 전수 비교는 아직 하지 않았다.
+**진행 중인 계획은 `PLAN-05` 하나다.** 올바른 Cloudflare 계정 결속과 staging 저장소 비공개 확인을 마쳤고, 보존된 실제 full audit receipt를 현재 manifest와 bounded-read-retry 계약으로 다시 검증했다. 객체 2,758개·2,346,220,246바이트·orphan 0과 전체 object-set SHA-256이 원본과 일치한다. 논리 작업 수는 LIST 3·HEAD 2,758·GET 2,758이고 실제 전송 시도 수는 LIST 3·HEAD 2,760·GET 2,758이어서 HEAD retry 2·전체 retry 2이며 PUT·DELETE는 0이다. 이 실제 시도 수는 작업별 논리 수 이상·3배 이하인 현재 허용 범위를 통과해 receipt는 실제 staging 전수 비교의 권위 근거다. 새 감사 실행은 각 읽기를 최대 3회로 제한한다. 이후 exact-count/no-retry 실행과 120초 실행은 각각 timeout과 network 오류로 receipt 없이 중단됐으므로 근거로 채택하지 않는다. 이번 validator token은 원격에서 삭제했고 대응 Keychain 항목 하나도 비밀값을 읽지 않고 정확히 한 번 삭제해 부재를 확인했다. `PLAN-05`에는 사용 불가능한 기존 원격 token의 정확한 상태 확인과 정리만 남았다. 다음에는 그 항목만 확인하고 시험용 사이트 확인으로 넘어간다.
 
-사용자에게 이는 **파일 목록은 맞지만 실제 저장된 내용까지 원본과 같은지는 아직 마지막 확인이 남았다는 뜻**이다. 이미 충분히 확인한 로컬 안전장치는 더 확장하지 않는다. 다음에는 실제 저장소 확인과 시험용 사이트 프로그램 점검으로 진행하고, 실제 실행에서 완료를 막는 문제가 발견될 때만 그 문제를 해결하는 최소 수정과 관련 검사 한 묶음을 수행한다.
+사용자에게 이는 **시험용 저장소의 실제 파일 내용까지 원본과 모두 같음이 확인됐고, 이제 임시 작업 열쇠만 정리하면 된다는 뜻**이다. 보존 receipt와 capture는 수정하지 않는다.
 
 ### 미디어 정리 결과
 
@@ -61,18 +61,18 @@
 
 ### 아직 결정할 일과 진행을 막는 조건
 
-1. 현재 제품이 허용하는 자체 브라우저→Mac 자동 전달 경로가 없다. localhost 재시도나 대체 앱 우회 없이 중단하며, 안전한 로컬 receiver target이 제품에서 허용되거나 사용자가 원문을 도구 출력 없이 non-echo receiver에 직접 입력하는 명시적 handoff가 있을 때만 재개한다.
-2. 계정 번호 보관이 끝나면 저장소가 외부에 공개되지 않았는지 읽기만 해서 확인하고 실제 파일 2,758개를 전수 비교해야 한다.
+1. 이번 validator 원격·로컬 정리는 완료됐다. 사용 불가능한 기존 원격 token만 정확히 식별해 상태를 확인하고 정리해야 한다. 보존 receipt·capture, bucket과 객체는 변경하지 않는다.
+2. 보존 receipt는 아직 unsigned이고, `PLAN-06` 적용 검사가 비공개 확인의 유효시각을 같은 시작시점 기준으로 판단할지는 별도 후속 확인 사항이다.
 3. 파일을 방문자에게 보여 줄 시험용 사이트 프로그램은 아직 만들지 않았다. 실제 파일 내용 전수 비교를 마친 뒤, 프로그램이 없을 때만 최소 차단용 프로그램을 한 번 만든다.
 4. 새 글 작성 방식과 비공개 자료의 백업·복구 방식은 최종 운영 전에 결정해야 한다. 공유·스크랩 글 10개, 과거 댓글과 추가 개선은 사용자가 원할 때 정하는 후속 선택이며 Stage 3를 막지 않는다.
 
 ### 바로 다음 작업
 
-1. 제품이 허용하는 안전한 로컬 receiver target이 생기거나 사용자가 계정 번호 원문을 도구 출력 없이 준비된 non-echo receiver에 직접 입력하겠다는 명시적 handoff를 제공할 때만 `PLAN-05`를 재개한다. 전달이 성공한 경우에만 저장소 비공개 상태를 읽기만 해서 확인하고, 실제 파일 2,758개를 한 번 전수 비교한 뒤 이번 작업에 쓴 짧은 수명 열쇠와 사용 불가능한 기존 활성 열쇠를 정리한다.
+1. 보존된 비공개 확인과 실제 2,758개 전수 감사 근거를 유지한 채, 사용 불가능한 기존 원격 token만 정확히 확인·정리해 `PLAN-05`를 닫는다.
 2. 전수 비교가 통과하면 시험용 사이트 프로그램이 없는 경우에만 최소 차단용 프로그램을 만들고, 확정된 Git 기록 기준 빌드·검사 한 묶음과 새 버전만 올려 시험용으로 적용한다. 대표 정적 페이지, 예전 주소 GET·HEAD 698회, 사진의 일반 요청·머리정보 요청·변경 없음 응답·부분 전송·범위를 벗어난 요청을 확인하고 정확한 Git SHA와 버전 번호를 기록한다.
 3. 시험용 확인이 통과하면 최종 운영에 실제 필요한 Cloudflare 자원만 같은 방식으로 준비한다. 새 보조 도구·복구 체계·서명 체계·영수증 체계·장애주입·모의훈련·반복 독립검토는 추가하지 않으며, 실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하지 않는다.
 
-현재는 지원되는 자동 전달 경로가 없어 `PLAN-05`를 중단한 상태다. localhost 재시도와 대체 앱 우회는 하지 않는다. Chrome과 Edge는 사용하지 않고, 실제 `dwnc.me` 주소 연결은 `PLAN-08`에서 사용자가 결정할 때만 진행한다.
+현재 `PLAN-05`의 원격 무결성 확인과 이번 validator 정리는 완료됐고, 사용 불가능한 기존 원격 token 확인·정리만 남았다. 실제 `dwnc.me` 주소 연결은 `PLAN-08`에서 사용자가 결정할 때만 진행한다.
 
 ### 최근 완료
 
@@ -115,28 +115,12 @@
 - 일괄 업로드 기록 SHA-256은 `2974384ff720326830f5f3dcd9e2439dc56af4ec96c813bade88a2d0b7815444`, 업로드 뒤 전수 목록 확인 기록 SHA-256은 `f562129e14a65918bfebac26de313ff5e461ad3067774f9084a0e0514def0d84`다. 이 값은 결과 파일이 나중에 바뀌지 않았는지 확인하는 긴 확인 번호다.
 - 업로드는 기존 1개를 그대로 두고 빠진 2,757개만 새로 만들었다. 최종 확인은 exact 2,758·missing 0·mismatch 0·orphan 0, overwrite 0·delete 0이다.
 - 실제 감사 진입점의 마지막 인터넷 없는 전량 시험은 고정된 프로그램 원본 157개·SHA-256 `b67874a204d71b05da4678847c7bf56acce2a3ee5eb5ce532f6a3ee77cfad9db`에서 2026-08-28 19:14:54.924 KST에 완료됐다. 로컬 원본 2,758개·약 2.35GB로 목록 3회와 각 파일 정보·내용 1회씩, 모두 5,519회 읽기를 확인했다. 파일 추가·변경·삭제·재시도는 0회였고 전량 시험 194개·차단 경계 152개·영향 범위 829개 확인을 통과했다. 실행 전후 프로그램 원본 확인값도 같았다. 이 예행연습은 실제 Cloudflare 파일을 읽은 결과가 아니다.
-- 아직 남은 `full GET/SHA-256` 검사는 실제 저장소의 파일 내용을 모두 다시 내려받아 로컬 원본과 한 개씩 비교하는 절차다.
+- 실제 staging `full GET/SHA-256`는 2,758개·2,346,220,246바이트와 전체 object-set SHA-256 일치로 완료했다. 영수증의 실제 HEAD 시도 2,760회에는 bounded retry 2회가 투명하게 포함되고 PUT·DELETE는 0이다.
 - 계정 번호 전용 사전검사·보관·복구 시험 610개, 읽기 전용 열쇠 전달 시험 81개와 시험용 Worker 관리 열쇠 시험 378개를 통과했다. 인터넷·외부 프로그램 차단 보강 전 전체 Cloudflare 회귀시험은 27개 묶음·15,076개 확인을 통과했고, 현재 원본으로 R2 전량 예행연습 194개·차단 경계 전용 152개·영향 범위 829개 확인을 통과했다. 금지 시도 24종은 원래 연결·실행 함수 전에 차단됐고, 성공 경로에서는 읽기 전용 Git 15회와 격리된 파일 도우미 5회만 허용됐다. 개발 중 가짜 연결 누락으로 Mac 보관함 읽기 명령이 실제 1회 실행됐지만 두 번째 읽기·저장·변경·클립보드·Cloudflare·R2 접근은 0회였고, 감시 보강 뒤 추가 실제 시스템 프로그램 실행은 0회였다.
 - 자체 브라우저에서 받은 계정 번호를 별도 일반 출력이나 프로젝트 파일에 남기지 않고 메모리 통로로 넘기는 변경은 commit `b66798ff3ad7907e3fd43bdcb62328f2319cf5fe`에서 계정 검사 698개를 통과했다. 한 번만 여는 연결은 commit `bb0a250344d3c2f8d991b73bab11e2fd3a281833`·tree `edb439b2bfb33cf9940a07c9883c057f40191f6c`에서 연결 검사 212개와 계정 검사 698개를 통과했다. 60초 변경은 commit `5a49c79fbd1e4d76d22fe736f6d22940aa6c856e`·tree `f246b062473f5544d3ea432dbd7d2864a2d63086`에 기록했고 push는 0회다. 첫 실제 실행의 `BRIDGE_E_BIND`는 일반 격리 환경의 localhost bind 제한이 원인으로 확인됐다. 권한 확장 host 1회는 ready까지 정상 진행했지만 자체 브라우저 client send 1회는 `BRIDGE_E_CLIENT_CONNECT`로 실패했고, host는 accepted connection 0회 후 `BRIDGE_E_TIMEOUT`·`durableState=none`으로 종료됐다. 원문은 메모리 Buffer에서만 처리했고 출력·파일·argv·환경변수로 남기지 않았다. account initialization·Keychain·metadata write·retry·recover·delete는 모두 0회고, 사후 사전검사는 `ready`, primary·recovery·Keychain 모두 없음을 확인했다. 이전 탭 확인 도구 출력에 계정 식별자가 포함된 URL이 1회 표시된 사실은 그대로 유지하되 원문과 URL을 다시 기록하지 않았다.
 - 별도 도구에 접근할 수 없는 브라우저·로그인 화면·클립보드 동작만 메인 세션이 최소한으로 직접 처리할 수 있게 한 운영 규칙은 commit `2f821cbbff3b3ddd4e48ea2457319bc5569bd986`에 기록했다. 이 예외는 삭제·구매·공개 전환·권한 변경·외부 전송의 승인 범위를 넓히지 않는다.
 
 ## 요구사항 원장
-
-### `DWNC-S3-008` — staging R2 create-only bulk upload와 full audit
-- **Status:** `in-progress`
-- **Updated-at:** `2026-08-28`
-- **Plans:** `PLAN-05`
-- **Priority:** `P0`
-- **Acceptance:**
-  - 단일 객체 admission이 exact인 final manifest만 create-only로 업로드한다.
-  - 올바른 계정을 한 번 확인하고 저장소의 비공개 상태를 한 번 확인한 뒤, overwrite·delete 없이 manifest 전체를 실제 GET해 개별 SHA-256과 총 bytes를 한 번 전수 검증한다.
-  - missing, mismatch, orphan을 각각 0 또는 명시적으로 보고한다. bulk `dwnc-public-media-r2-bulk-sync-v1` receipt는 운영 증거로만 남기고 signer·release 입력으로 쓰지 않으며, 전체 GET/SHA-256 감사가 만든 `dwnc-public-media-r2-receipt-v1`만 별도 서명 입력 후보로 만든다.
-  - 이미 통과한 로컬 예행연습은 반복하지 않는다. 실제 실행에서 이 완료조건을 막는 문제가 발견될 때만 최소 수정과 관련 검사 한 묶음을 수행한다.
-- **Evidence:**
-  - 파일 2,758개 업로드를 마쳤다. 업로드 뒤 목록·크기·저장정보를 다시 확인해 빠진 항목과 불필요한 항목이 0개이며, 기존 파일 덮어쓰기와 삭제도 0회임을 확인했다. 실제 파일 내용 전수 비교는 아직 남아 있다.
-  - 기존 1개는 그대로 두고 빠진 2,757개만 새로 만들었다. 다음에는 2,758개 전체의 실제 내용을 다시 내려받아 원본과 비교해야 하므로 이 요구사항은 아직 진행 중이다.
-  - 실제 감사 진입점·client와 최종 manifest를 결속한 마지막 인터넷 없는 성공 시험은 2026-08-28 19:14:54.924 KST에 고정 원본 SHA-256 `b67874a204d71b05da4678847c7bf56acce2a3ee5eb5ce532f6a3ee77cfad9db`로 수행했다. 로컬 원본 2,758개·약 2.35GB를 사용해 목록 3회와 각 파일 정보 2,758회, 각 파일 내용 2,758회로 모두 5,519회 읽고 추가·변경·삭제·재시도는 0회였다. full object-set SHA-256은 `9345d2f06c8bd7cda457a9d4335cdc2213e71dcd30bb9e11e6f3e1f8e11ae467`이고, 같은 결과 경로 재실행은 원격 요청 0에서 create-only로 중단했다. 인터넷·socket·DNS와 임의 외부 프로그램은 호출 전에 차단하고 읽기 전용 Git 15회와 격리된 파일 도우미 5회만 정해진 순서로 허용했다. 임시 결과는 시험 종료 때 모두 제거했고 실제 network·Cloudflare·Keychain·clipboard는 0회였다. 이는 실행 경로의 예행연습이며 실제 staging R2 full audit 완료 근거로 쓰지 않는다. 이 12개 파일 변경은 commit `fb693f3bbbab0e88b205f9de944646057bdd49ea`에 기록했고 저장 직후 파일 상태는 깨끗했으며 push는 0회다.
-  - 기술 증거: source commit `ccec8bb855e45ef679a4b99faf0f0633a99e089e`·tree `241a654acc387233d4e2d5e076754b345619e9ac`, bulk receipt SHA-256 `2974384ff720326830f5f3dcd9e2439dc56af4ec96c813bade88a2d0b7815444`, post-inspection receipt SHA-256 `f562129e14a65918bfebac26de313ff5e461ad3067774f9084a0e0514def0d84`다.
 
 ### `DWNC-S3-009` — deny-only staging Worker 최초 생성과 신뢰 정책
 - **Status:** `in-progress`
@@ -172,7 +156,7 @@
   - 통과한 정확한 Git SHA와 Cloudflare version ID를 기록하고, 새 로컬 모의시험이나 독립검토를 추가하지 않는다.
   - 실제 `dwnc.me` 도메인·DNS는 변경하지 않는다.
 - **Evidence:**
-  - 선행 요구사항 `DWNC-S3-008`과 `DWNC-S3-009`가 아직 완료되지 않았다.
+  - 선행 요구사항 `DWNC-S3-008`은 완료됐고 `DWNC-S3-009`만 아직 완료되지 않았다.
   - `docs/EDGE_REDIRECTS_V1.json`을 Worker가 직접 읽도록 연결했다. 시작할 때 기준 주소·349개·308·출발/도착 주소 중복·안전하지 않은 경로·미디어 경로 충돌을 모두 검사한다.
   - 로컬에서 349개를 GET·HEAD로 한 번씩, 총 698건 모두 확인했다. 응답은 정확한 상대 새 주소와 빈 본문을 반환하고, 들어온 query는 새 주소에 붙이지 않는다. 이 698건에서 정적 파일·R2·미디어 캐시는 한 번도 조회하지 않았다.
   - `/404.html`은 공개 요청 목록에서 뺐지만 빌드된 오류 화면 파일과 Cloudflare의 오류 화면 설정은 유지했다. 직접 GET·HEAD 요청은 `404 no-store`이고 정적 파일 조회는 0회다.
@@ -200,8 +184,8 @@
   - [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 two-phase production 안전 절차.
 
 ### `DWNC-S3-012` — 사용 불가능한 기존 staging R2 token 정리
-- **Status:** `planned`
-- **Updated-at:** `2026-08-27`
+- **Status:** `in-progress`
+- **Updated-at:** `2026-09-04`
 - **Plans:** `PLAN-05`
 - **Priority:** `P1`
 - **Acceptance:**
@@ -209,33 +193,9 @@
   - 이번 작업에 사용한 짧은 수명 열쇠와 2026-08-25에 만든 사용 불가능한 기존 uploader·validator token 두 개만 정확히 식별해 정리한다.
   - 새 자격증명, bucket, 객체, Worker, domain·DNS에는 다른 변경을 하지 않는다.
 - **Evidence:**
-  - 기존 두 token은 비밀값을 잃어 사용할 수 없지만 Cloudflare에서 아직 Active다.
+  - 이번 full audit에 쓴 짧은 수명 validator token은 Cloudflare 화면에서 삭제·목록 부재를 확인했다. 대응하는 고정 Keychain 항목 하나도 비밀값 read 0·exact delete 1 뒤 부재를 확인했다. v3/v3b metadata·dashboard evidence와 모든 capture·receipt는 보존했다.
+  - 기존 validator token 하나는 Cloudflare 화면에서 Inactive임을 확인했다. 나머지 사용 불가능한 기존 원격 token의 정확한 상태 확인과 정리만 남아 있다.
   - 새 validator는 대표 객체를 HEAD 1·full GET 1·PUT 0·DELETE 0으로 검증했고 receipt SHA-256은 `fa72b1849496a9b6e4697721cfef9d4fcd17b8f463b41dcacd714c5f9bb2352a`다.
-
-### `DWNC-S3-013` — Cloudflare 계정 번호를 열쇠와 분리해 안전하게 보관
-- **Status:** `blocked`
-- **Updated-at:** `2026-09-03`
-- **Plans:** `PLAN-05`, `PLAN-06`, `PLAN-07`
-- **Priority:** `P0`
-- **Acceptance:**
-  - 현재 열린 자체 브라우저에서 이 프로젝트의 올바른 Cloudflare 계정인지 한 번 확인하고, 계정 번호는 업로드용·검사용 열쇠와 다른 macOS 보관 항목에 둔다.
-  - 원래 계정 번호는 프로젝트·로그·일반 출력에 남기지 않고 기존 항목이나 파일을 덮어쓰거나 삭제하지 않는다.
-  - 같은 세션과 탭에서 작업을 이어 가는 동안 반복 확인하지 않는다. 브라우저 세션·탭·프로젝트가 바뀌거나 계정 상태가 달라졌을 때만 다시 확인한다.
-  - 계정 확인과 안전한 보관이 끝나면 이 요구사항을 완료 처리하며 계정 보관을 위한 추가 로컬 체계를 만들지 않는다.
-- **Evidence:**
-  - 전용 저장·검사·확인 파일 복구 명령과 Cloudflare 비공개 설정 조회 연결을 로컬에 구현했다.
-  - 사전검사의 클립보드 읽기 0·비우기 0, 읽기 전 실패 때 기존 클립보드 보존, 계정 번호 읽기 시도 뒤 즉시 비우기, 저장 직전 상태 재검사, 새 항목으로만 저장, 성공 뒤 보관함·확인 파일 재검증과 보관함 값의 중간 변경·삭제 차단을 포함한 전용 시험 610개를 통과했다. Mac 보관함과 클립보드를 다루는 시스템 프로그램은 15초 안에 끝나지 않으면 먼저 정상 종료를 요청하고, 그래도 끝나지 않으면 강제로 종료한다. 입력·출력과 그 값을 담았던 프로그램 안 임시 바이트는 성공과 모든 실패에서 0으로 덮는다. 클립보드는 계정 번호 읽기를 시도한 뒤 성공하거나 실패할 때 즉시 비운다. 저장 내용이 맞는지만 확인할 때는 계정 번호 문자열을 만들지 않는다. 다음 기능에 넘기는 마지막 순간에만 문자열을 한 번 만드는데, 프로그램 언어의 특성상 이 문자열은 같은 방식으로 지울 수 없다. 화면·로그·파일에는 남기지 않고 전달 직후 더 이상 사용하지 않는다. 이 변경은 명령 등록과 계정 번호 처리·검사에 관련된 로컬 파일 4개에만 한정됐다.
-  - 이 시스템 프로그램에는 Mac이 직접 알려 준 사용자 폴더와 사용자 이름, 고정 프로그램 검색 경로와 언어 설정, 숫자로 된 사용자 ID에서 만든 macOS 문자 처리값 등 정확히 7개만 전달한다. 부모 프로그램의 임시 폴더·인터넷 우회·프로그램 주입·Node·Cloudflare·R2·AWS 설정은 전달하지 않는다. 이 7개 묶음은 빈 바탕에서 새로 만들고 잠근 뒤, 항목을 추가·변경하거나 다른 묶음으로 교체할 수 없게 했다.
-  - 개발 중 시험용 가짜 연결 한 곳을 빠뜨려 `/usr/bin/security find-generic-password … -w` 읽기 명령이 실제로 한 번 실행됐다. 같은 값을 확인하는 두 번째 읽기 0회, Mac 보관함 저장·변경 0회, 클립보드·인터넷·Cloudflare·R2 접근 0회였다. 이후 모든 시험의 가장 바깥에 실제 시스템 프로그램 실행 감시를 추가했다. 감시 값은 내용이나 함수를 읽거나 실행하지 않고, 존재하기만 하면 Mac 명령 직전에 정해진 오류로 멈춘다. 부모 프로그램에 일부러 넣은 인터넷 우회·프로그램 주입·Node 시험값도 전달되지 않았다. 계정 번호 전용 610개와 당시 전체 26묶음·15,024개, 이번 전체 27묶음·15,076개를 다시 통과하는 동안 추가 실행은 0회였다.
-  - 읽기 전용 열쇠와 계정 번호를 분리하고 조회 명령도 프로젝트 안 확인 파일을 열지 못하게 하는 81개 시험을 통과했다. 이 81개 시험 자체의 실제 Keychain·클립보드·Cloudflare·R2 접근과 사진 업로드용 열쇠 읽기는 모두 0회였다.
-  - 자체 브라우저에서 현재 Cloudflare 화면의 계정 번호 항목이 하나뿐이고 이 프로젝트의 시험용 계정 확인값과 정확히 일치함을 확인했다. 이것은 이번 새 브라우저 탭 확인 전의 역사적 전용 경로 증거이며, 당시 계정 번호 원문을 별도 일반 출력이나 프로젝트 파일에 남기지 않았다.
-  - 일반 실행 경로의 보관 시도는 Mac 보관함 단계에서 정해진 오류로 중단됐다. 그 뒤 자체 브라우저에서 Mac 보관함 저장 절차를 시작하려 한 두 차례는 각각 15초 안에 연결되지 않아 저장 프로그램 시작 전에 중단됐다. 매번 임시 내용은 지워졌고 Mac 보관함·확인 파일은 만들어지지 않았다. 이후 연결 대기를 60초로 늘린 최소 변경은 commit `5a49c79fbd1e4d76d22fe736f6d22940aa6c856e`·tree `f246b062473f5544d3ea432dbd7d2864a2d63086`에 저장했고, 전용 시험·기존 회귀시험·독립 검토를 통과했으며 push는 0회다.
-  - 위 commit의 첫 실제 실행은 ready 전 `BRIDGE_E_BIND`로 종료됐다. 후속 진단에서 일반 격리 환경의 localhost bind 제한이 원인임을 확인했고, 권한 확장 host 1회는 ready까지 정상 진행했다. 이번 자체 브라우저 client send 1회는 `BRIDGE_E_CLIENT_CONNECT`로 실패했고, host는 accepted connection 0회 후 60초 만료로 `BRIDGE_E_TIMEOUT`·`durableState=none`을 반환했다. 원문은 브라우저 메모리 Buffer에서만 처리했고 출력·파일·argv·환경변수에 남기지 않았다. clipboard read·clear false, raw printed false였으며 account initialization·Keychain·metadata write·retry·recover·delete는 모두 0회다. 사후 읽기 전용 사전검사는 `ready`, primary·recovery·Keychain 모두 없음을 확인했다. R2 private exposure/API/full audit와 Cloudflare 원격 변경은 0회다. 이전 브라우저 탭 확인 도구 출력에 계정 식별자가 포함된 URL이 1회 표시된 사실은 그대로 유지하되 원문과 URL을 다시 기록하지 않았다.
-  - 후속 비민감 clipboard probe는 자체 브라우저 write 1회와 macOS `pbpaste` read 1회의 값이 일치하지 않았고 system clipboard write는 0회였다. 설치 구현의 자체 브라우저는 virtual clipboard를 쓰며 시스템 클립보드 공유가 공식 보장되지 않는다.
-  - secure non-echo stdin receiver는 관련 4파일만 바꾼 commit `4467a7e468a6aa72f3f26c4e12e9ce3b8d5c9779`·tree `9c6505ef46393b139c923ad5a43f0605c4b14611`에 구현했다. stdin 112·account-target 698·diff 검사가 통과했고 독립 검토 지적 0건, push 0회다.
-  - 비민감 자체 브라우저→Terminal 시험은 receiver `READY` 뒤 Computer Use가 `com.apple.Terminal`로 값을 전달하기 전에 안전 정책으로 차단했다. local paste 0·receiver input 0, receiverStopped·echoRestored true였고 브라우저 시험 clipboard를 비웠다. 재시도·대체 앱 우회는 0회다. 이번 stdin/Terminal 경로의 Account ID copy·read·paste·initialize는 모두 0회다. 앞선 localhost 경로의 누계는 browser memory 처리·client send 시도 1회, host accepted·success 0회이며 Keychain·metadata 작성은 전체 0회다. Cloudflare·R2·API·full audit도 0회다.
-  - 별도 진단 실수로 loopback 회귀시험을 한 번 잘못 호출해 sandbox bind 1회 뒤 `BRIDGE_E_BIND`로 즉시 종료됐다. accepted connection·payload·initialize·Keychain·Cloudflare는 모두 0회였고 재시도하지 않았다.
-  - 현재 지원되는 자동 전달 경로가 없어 중단한다. 제품이 허용하는 안전한 로컬 receiver target이 생기거나 사용자가 원문을 도구 출력 없이 non-echo receiver에 직접 입력하는 명시적 handoff가 있을 때만 재개한다.
 
 ### `DWNC-OPS-001` — 공유·스크랩 추정 10개 처리 결정
 - **Status:** `decision-needed`
@@ -447,3 +407,27 @@
   - HEAD와 GET의 ETag `"d3ded31a7b52f467702909afbc7d5340"`·Last-Modified `2026-08-27T00:24:12.000Z`와 manifest SHA-256 세대가 일치했으며 verifiedAt은 `2026-08-27T05:07:48.418Z`다.
   - create-only validation receipt SHA-256은 `fa72b1849496a9b6e4697721cfef9d4fcd17b8f463b41dcacd714c5f9bb2352a`다.
   - 이어 PUT 없이 전수 inspection을 다시 수행해 exact 1·missing 2,757·mismatch 0·orphan 0을 확인했다. inspectedAt은 `2026-08-27T05:09:09.996Z`, receipt SHA-256은 `f00f3c13c9ae99f8a36599db85d7a180e31d8779776653bca72c2aee596d380e`다.
+
+### `DWNC-S3-008` — staging R2 create-only bulk upload와 full audit
+- **Status:** `done`
+- **Updated-at:** `2026-09-04`
+- **Plans:** `PLAN-05`
+- **Priority:** `P0`
+- **Acceptance:**
+  - exact final manifest만 create-only로 업로드하고, 올바른 계정의 비공개 bucket에서 manifest 전체 GET/SHA-256와 총 bytes를 확인한다.
+  - missing·mismatch·orphan을 보고하고 PUT·DELETE·overwrite 없이 `full-get-sha256` receipt를 남긴다.
+- **Evidence:**
+  - 실제 staging에서 객체 2,758개·2,346,220,246바이트·orphan 0과 full object-set SHA-256 `9345d2f06c8bd7cda457a9d4335cdc2213e71dcd30bb9e11e6f3e1f8e11ae467`이 일치했다.
+  - 논리 LIST/HEAD/GET은 3/2,758/2,758, 실제 전송 시도는 3/2,760/2,758, HEAD retry 2·전체 retry 2, PUT/DELETE 0이다. 보존 receipt storage SHA-256은 `ce4e4f38b35063ec425c2ba5e65cc1d3a89355def51486542e6bccd3c1909bdd`이며 현재 계약 재검증을 통과했다.
+
+### `DWNC-S3-013` — Cloudflare 계정 번호를 열쇠와 분리해 안전하게 보관
+- **Status:** `done`
+- **Updated-at:** `2026-09-04`
+- **Plans:** `PLAN-05`, `PLAN-06`, `PLAN-07`
+- **Priority:** `P0`
+- **Acceptance:**
+  - 올바른 Cloudflare 계정을 한 번 확인하고 계정 번호를 업로드·검사용 열쇠와 분리해 macOS 보관함에 둔다.
+  - 원문을 프로젝트·로그·일반 출력에 남기지 않고 기존 항목이나 파일을 덮어쓰거나 삭제하지 않는다.
+- **Evidence:**
+  - 초기 localhost·virtual clipboard·Terminal 전달 실패는 accepted connection·local paste·초기화를 0회로 유지한 채 중단했으며, 이후 승인된 안전 전달로 account target 초기화와 비표시 일치 확인을 완료했다.
+  - 원문은 프로젝트 파일·argv·환경변수·일반 출력에 남기지 않았고, 계정 대상 전용 시험 698개와 secure stdin 시험 112개를 통과했다.

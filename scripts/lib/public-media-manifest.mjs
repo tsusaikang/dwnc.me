@@ -305,6 +305,46 @@ export function publicMediaFullGetObjectSetSha256(objects) {
   return sha256(canonicalJson(projected));
 }
 
+export function summarizePublicMediaFullAuditRequests(requestCounts, {
+  objectCount,
+  orphanCount,
+  maxAttempts = 3,
+}) {
+  const operationKeys = ['LIST', 'HEAD', 'GET', 'PUT', 'DELETE'];
+  if (!exactKeys(requestCounts, operationKeys)
+    || !Number.isSafeInteger(objectCount) || objectCount < 1
+    || !Number.isSafeInteger(orphanCount) || orphanCount < 0
+    || !Number.isSafeInteger(maxAttempts) || maxAttempts < 1
+    || operationKeys.some((key) =>
+      !Number.isSafeInteger(requestCounts[key]) || requestCounts[key] < 0)) {
+    fail('MEDIA_E_REMOTE_RECEIPT');
+  }
+  const logicalRequestCounts = {
+    LIST: Math.ceil((objectCount + orphanCount) / 1_000),
+    HEAD: objectCount,
+    GET: objectCount,
+    PUT: 0,
+    DELETE: 0,
+  };
+  for (const key of ['LIST', 'HEAD', 'GET']) {
+    if (requestCounts[key] < logicalRequestCounts[key]
+      || requestCounts[key] > logicalRequestCounts[key] * maxAttempts) {
+      fail('MEDIA_E_REMOTE_RECEIPT');
+    }
+  }
+  if (requestCounts.PUT !== 0 || requestCounts.DELETE !== 0) fail('MEDIA_E_REMOTE_RECEIPT');
+  const retryCounts = {
+    LIST: requestCounts.LIST - logicalRequestCounts.LIST,
+    HEAD: requestCounts.HEAD - logicalRequestCounts.HEAD,
+    GET: requestCounts.GET - logicalRequestCounts.GET,
+  };
+  return {
+    logicalRequestCounts,
+    retryCounts,
+    retryCount: retryCounts.LIST + retryCounts.HEAD + retryCounts.GET,
+  };
+}
+
 export function validateRemoteReceipt(receipt, manifest) {
   const keys = [
     'schemaVersion', 'contract', 'manifestSha256', 'objectCount', 'totalBytes',
@@ -344,14 +384,6 @@ export function validateRemoteReceipt(receipt, manifest) {
         || receipt.audit.fullGetBytes !== manifest.totalBytes
         || receipt.audit.fullGetContract !== 'all-manifest-objects-streamed-sha256-v1'
         || !SHA256_PATTERN.test(receipt.audit.fullObjectSetSha256 ?? '')
-        || !exactKeys(receipt.audit.requestCounts, ['LIST', 'HEAD', 'GET', 'PUT', 'DELETE'])
-        || ['LIST', 'HEAD', 'GET', 'PUT', 'DELETE'].some((key) =>
-          !Number.isSafeInteger(receipt.audit.requestCounts[key])
-          || receipt.audit.requestCounts[key] < 0)
-        || receipt.audit.requestCounts.LIST !== Math.ceil(manifest.objectCount / 1_000)
-        || receipt.audit.requestCounts.HEAD !== manifest.objectCount
-        || receipt.audit.requestCounts.GET !== manifest.objectCount
-        || receipt.audit.requestCounts.PUT !== 0 || receipt.audit.requestCounts.DELETE !== 0
         || !/^[a-f0-9]{40}$/u.test(receipt.audit.sourceCommit ?? '')
         || !/^[a-f0-9]{40}$/u.test(receipt.audit.sourceTree ?? '')
         || receipt.audit.gitCheckCount !== 3
@@ -362,6 +394,13 @@ export function validateRemoteReceipt(receipt, manifest) {
         || !SHA256_PATTERN.test(receipt.audit.exposureCaptureSha256 ?? '')))
     || !Array.isArray(receipt.objects)
     || receipt.objects.length !== manifest.entries.length) fail('MEDIA_E_REMOTE_RECEIPT');
+  if (receipt.verificationLevel === 'full-get-sha256') {
+    summarizePublicMediaFullAuditRequests(receipt.audit.requestCounts, {
+      objectCount: manifest.objectCount,
+      orphanCount: receipt.audit.orphanCount,
+      maxAttempts: 3,
+    });
+  }
   const exposure = receipt.bucketExposure;
   const unverifiedExposure = exposure.verification === 'unverified'
     && exposure.jurisdiction === null

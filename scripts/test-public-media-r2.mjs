@@ -564,7 +564,7 @@ function headFor(entry, overrides = {}) {
     calls.push({ url: new URL(url), method: init.method, headers: init.headers });
     if (init.method === 'GET') {
       listAttempt += 1;
-      if (listAttempt === 1) return new Response('retry', { status: 503 });
+      if (listAttempt === 1) throw new Error('synthetic pre-response network failure');
       if (listAttempt === 2) return new Response(`<ListBucketResult><IsTruncated>true</IsTruncated>
         <NextContinuationToken>page-two</NextContinuationToken>
         <Contents><Key>media%2Fa.jpg</Key><Size>3</Size><ETag>&quot;a&quot;</ETag></Contents>
