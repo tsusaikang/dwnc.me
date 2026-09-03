@@ -15,6 +15,7 @@ const TESTS = Object.freeze([
   'test-r2-credential-store.mjs',
   'test-cloudflare-account-target.mjs',
   'test-cloudflare-account-target-loopback.mjs',
+  'test-cloudflare-account-target-stdin.mjs',
   'test-cloudflare-control-plane-auth.mjs',
   'test-cloudflare-staging-control-token.mjs',
   'test-cloudflare-staging-control-recovery-entrypoint.mjs',
