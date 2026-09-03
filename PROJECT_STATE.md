@@ -1,6 +1,6 @@
 # dwnc.me 프로젝트 공식 상태
 
-최종 갱신: 2026-09-03 KST — localhost bind 제한 원인은 확인·해소, 새 단일 host는 ready였으나 자체 브라우저의 localhost 접속이 실패해 상태 변경 없이 중단, 실제 2,758개 파일 내용 전수 비교 대기
+최종 갱신: 2026-09-03 KST — 자체 브라우저와 Mac 사이의 지원되는 자동 계정 번호 전달 경로를 찾지 못해 `PLAN-05` 중단, 실제 2,758개 파일 내용 전수 비교 대기
 
 사용자가 확인할 현재 목표·결정·진행을 막는 조건·다음 단계와 stable requirement ID는 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)를 기준으로 한다. 이 문서는 구현 세부사항, 검증 수치, Git·Cloudflare 상태 재확인 결과와 인수인계를 보존하는 기술 기준점이다. 완료 이력은 요구사항 원장의 보관 정책에 따라 [`docs/REQUIREMENTS_ARCHIVE.md`](docs/REQUIREMENTS_ARCHIVE.md)로 이동하되 이 기술 증거를 삭제하지 않는다.
 
@@ -8,7 +8,7 @@
 
 네이버 블로그 `blog.naver.com/tsusai`와 티스토리 기반 `dwnc.me`의 직접 작성 콘텐츠를 소유자가 통제하는 새 블로그로 이전한다. 원문, 이미지, 게시일, 카테고리, 태그, 기존 주소, 공개 범위를 보존하며 이후 새 글도 지속해서 작성할 수 있어야 한다.
 
-비개발자용 현재 요약: 공개할 사진과 GIF 2,758개를 시험용 비공개 저장소에 모두 올렸고, 업로드 뒤 목록·크기·저장정보를 확인한 결과 빠진 항목과 불필요한 항목은 없었다. Codex 자체 브라우저의 Cloudflare 계정도 이 프로젝트 계정과 정확히 일치함을 확인했다. 이전 탭 확인 과정에서 계정 식별자가 포함된 URL이 내부 도구 출력에 1회 표시된 사실은 그대로 유지하되, 원문과 URL을 프로젝트 문서에 기록하거나 파일·명령줄·환경변수에 넣지 않았다. 연결 대기를 60초로 늘린 최소 수정과 로컬 검사·커밋은 완료했다. 이전 `BRIDGE_E_BIND`는 일반 격리 실행에서 localhost 포트 개방이 금지된 것이 원인으로 확인했고, 권한을 확장한 localhost host를 정확히 1회 시작해 ready를 받았으므로 해소됐다. 그 뒤 자체 브라우저에서 계정 번호 원문을 출력·파일·argv·환경변수 없이 메모리 Buffer로만 처리하고 client send를 정확히 1회 호출했지만 `BRIDGE_E_CLIENT_CONNECT`로 실패했다. host는 연결을 하나도 받지 못한 채 60초 뒤 `BRIDGE_E_TIMEOUT`, `durableState=none`, clipboard read·clear false, raw printed false로 종료됐다. 계정 초기화·Mac 보관함 저장·확인 파일 작성은 0회이고 재시도·복구·삭제도 0회다. 후속 읽기 전용 사전검사는 시작 가능 상태이며 원래·복구 확인 파일과 전용 보관함 항목은 모두 없다. 저장소 비공개 상태와 실제 2,758개 내용 전수 비교는 아직 하지 않았고, `dwnc.me` 주소·트래픽·Git 원격 저장소도 바꾸지 않았다.
+비개발자용 현재 요약: 공개할 사진과 GIF 2,758개를 시험용 비공개 저장소에 모두 올렸고, 업로드 뒤 목록·크기·저장정보를 확인한 결과 빠진 항목과 불필요한 항목은 없었다. Codex 자체 브라우저의 Cloudflare 계정도 이 프로젝트 계정과 정확히 일치함을 확인했다. 이전 탭 확인 과정에서 계정 식별자가 포함된 URL이 내부 도구 출력에 1회 표시된 사실은 그대로 유지하되, 원문과 URL을 다시 기록하지 않았다. localhost 전달 실패 뒤 비민감 시험값으로 자체 브라우저 클립보드 쓰기 1회와 macOS `pbpaste` 읽기 1회를 대조했으나 값은 일치하지 않았고 Mac 시스템 클립보드 쓰기는 0회였다. 설치된 구현에서 자체 브라우저는 virtual clipboard를 사용하며 시스템 클립보드 공유는 공식 보장되지 않는다. 그래서 계정 번호를 표시하지 않고 받는 로컬 stdin receiver를 commit `4467a7e468a6aa72f3f26c4e12e9ce3b8d5c9779`·tree `9c6505ef46393b139c923ad5a43f0605c4b14611`에 구현했다. 전용 112개·계정 대상 698개 확인과 변경 형식 검사를 통과했고 독립 검토 지적은 0건, push는 0회다. 비민감 자체 브라우저→Terminal 시험은 receiver의 `READY` 뒤 Computer Use가 `com.apple.Terminal`로 값을 넘기기 전에 안전 정책으로 차단했다. 로컬 paste·receiver 입력은 0회였고 receiverStopped·echoRestored는 true, 브라우저 시험 클립보드는 비웠으며 재시도나 다른 앱 우회는 0회였다. 따라서 현재 지원되는 자동 전달 경로가 없어 `PLAN-05`를 중단했다. 이번 stdin/Terminal 경로의 Account ID copy·read·paste·initialize는 모두 0회다. 앞선 localhost 경로의 누계는 browser memory 처리·client send 시도 1회, host accepted·success 0회이며 Keychain·metadata 작성은 전체 0회다. Cloudflare·R2·API·전체 내용 감사도 0회이고 `dwnc.me` 주소·트래픽도 바꾸지 않았다.
 
 전체 프로젝트 완료 조건은 다음과 같다.
 
@@ -64,7 +64,7 @@
 - `PLAN-02` 공개·비공개 분리와 변환: 완료
 - `PLAN-03` 독립 사이트와 주소 체계: 완료
 - `PLAN-04` 공개 미디어 정리: 완료
-- `PLAN-05` 시험용 R2 실제 내용 확인과 열쇠 정리: **진행 중**. 올바른 계정 확인과 60초 변경·검사·로컬 commit은 완료했다. 이전 `BRIDGE_E_BIND`는 일반 격리 환경의 localhost bind 제한으로 확인되어 권한 확장 host 1회가 ready까지 진행했다. 그러나 자체 브라우저의 client send 1회가 `BRIDGE_E_CLIENT_CONNECT`로 실패했고 host는 연결 수락 0회 후 `BRIDGE_E_TIMEOUT`으로 종료됐다. 상태 영속화는 없으며 계정 보관·저장소 비공개 확인·실제 2,758개 GET/SHA-256 비교·열쇠 정리는 수행하지 않았다. 새 blocker는 자체 브라우저 실행환경에서 host localhost로 접속할 수 없었던 것이며, 후속 방법을 정하기 전에는 재실행·복구·삭제를 하지 않는다.
+- `PLAN-05` 시험용 R2 실제 내용 확인과 열쇠 정리: **중단**. localhost와 시스템 클립보드는 자체 브라우저에서 Mac 로컬로 값을 전달하지 못했고, secure non-echo stdin receiver를 준비한 뒤의 비민감 Terminal 시험도 값 전달 전에 제품 안전 정책으로 차단됐다. 현재 지원되는 자동 전달 경로가 없으므로 재시도·대체 앱 우회를 하지 않는다. 제품이 안전한 로컬 receiver target을 허용하거나, 사용자가 원문을 도구 출력 없이 non-echo receiver에 직접 입력하는 명시적 handoff가 있을 때만 재개한다. 계정 보관·저장소 비공개 확인·실제 2,758개 GET/SHA-256 비교·열쇠 정리는 수행하지 않았다.
 - `PLAN-06` 시험용 사이트 프로그램·버전·사이트 점검: **대기**. 프로그램이 없을 때만 최소 차단용 프로그램을 만들고, 확정된 Git 기록 기준 관련 빌드·검사 한 묶음 → version-only upload → staging-only activation과 시험용 주소 활성화 → 정적 대표 페이지, 예전 주소 GET·HEAD 698회, media GET·HEAD·304·206·416 확인 → 정확한 Git SHA와 version ID 기록 순서다.
 - `PLAN-07` 운영용 이름의 Cloudflare 자원·버전 준비: 대기. `PLAN-06` 통과 뒤 최종 운영에 실제 필요한 자원만 준비하며 새 보조 도구·모의훈련·반복 검증은 추가하지 않는다.
 - `PLAN-08` 실제 도메인 연결과 운영 전환 검증: 사용자 결정 필요
@@ -497,7 +497,8 @@
 ## 미해결 문제
 
 - 콘텐츠 이전 정확성·완전성 측면의 알려진 문제는 없다. Stage 3 R2 전체 2,758개 업로드와 사후 목록 확인, 실제 감사 프로그램의 로컬 원본 전량 예행연습은 완료됐다. 다음 무결성 단계는 새 private-exposure capture를 수집한 직후 실제 staging R2에서 수행하는 전체 2,758개 GET/SHA-256 감사다.
-- 현재 Cloudflare 계정은 이 프로젝트의 staging 확인값과 정확히 일치한다. 이전 탭 확인 도구 출력에 계정 식별자가 포함된 URL이 1회 표시된 사실은 유지하되 원문과 URL을 다시 기록하지 않았다. 이전 `BRIDGE_E_BIND`는 일반 격리 환경의 localhost bind 제한이 원인으로 확인됐고, 권한 확장 host를 1회 시작해 ready를 받았다. 자체 브라우저에서 원문을 메모리 Buffer로만 처리한 client send 1회는 `BRIDGE_E_CLIENT_CONNECT`로 실패했고, host는 accepted connection 0회 후 60초 만료로 `BRIDGE_E_TIMEOUT`·`durableState=none`을 반환했다. clipboard read·clear false, raw printed false였으며 account initialization·Keychain·metadata write·retry·recover·delete는 모두 0회다. 사후 account-target preflight는 `ready`, primary·recovery·Keychain 모두 없음을 확인했다. 이번 진행에서 R2 private exposure/API/full audit와 Cloudflare 원격 변경은 0회이다. 따라서 `PLAN-05`는 진행 중이며 새 blocker는 자체 브라우저 실행환경에서 host localhost로 접속할 수 없었던 것이다.
+- 현재 Cloudflare 계정은 이 프로젝트의 staging 확인값과 정확히 일치하지만, 자체 브라우저에서 Mac 로컬로 계정 번호를 옮길 지원 경로가 없다. 비민감 clipboard probe는 browser write 1·macOS `pbpaste` read 1·match false·system clipboard write 0이었고, 설치 구현의 자체 브라우저는 시스템 공유가 보장되지 않는 virtual clipboard를 쓴다. secure non-echo stdin receiver는 commit `4467a7e468a6aa72f3f26c4e12e9ce3b8d5c9779`·tree `9c6505ef46393b139c923ad5a43f0605c4b14611`에 구현했으며 stdin 112·account-target 698·diff 검사 PASS, 독립 지적 0, push 0이다. 비민감 Terminal 시험은 receiver `READY` 뒤 Computer Use가 `com.apple.Terminal`로 값을 넘기기 전에 차단되어 local paste 0·receiver input 0, receiverStopped·echoRestored true였고 브라우저 시험 clipboard를 비웠다. 재시도·대체 앱 우회는 0회다. 이번 stdin/Terminal 경로의 Account ID copy·read·paste·initialize는 모두 0회다. 앞선 localhost 경로의 누계는 browser memory 처리·client send 시도 1회, host accepted·success 0회이며 Keychain·metadata 작성은 전체 0회다. Cloudflare·R2·API·full audit도 0회다. 따라서 `PLAN-05`는 중단하며, 제품이 허용하는 안전한 로컬 receiver target이나 사용자가 원문을 도구 출력 없이 non-echo receiver에 직접 입력하는 명시적 handoff가 있을 때만 재개한다.
+- 별도 로컬 진단 실수로 loopback 회귀시험을 한 번 잘못 호출했다. sandbox에서 bind를 1회 시도한 뒤 `BRIDGE_E_BIND`로 즉시 끝났고 accepted connection·payload·initialize·Keychain·Cloudflare는 모두 0회였다. 재시도는 하지 않았다.
 - 현재 전체 Cloudflare 검사 묶음에는 `scripts/test-r2-client-entrypoints.mjs` 343행의 감사 진입점 불일치로 실패하는 기존 항목 하나가 있다. 이번 연결 변경보다 먼저 존재한 별도 문제이며, 연결 전용 212개와 계정 전용 698개 검사는 모두 통과했다. 이번에는 범위를 넓혀 고치지 않았다.
 - HTTP→HTTPS, www→apex, trailing slash와 `/index.html` 정규화는 현재 로컬 소스가 아니라 운영 edge의 승인 항목이다. `docs/URL_CONTRACT.md` 체크리스트에 따라 배포·호스팅 승인 뒤 301/308 단일 hop, chain·loop 0을 검증해야 한다.
 - 현재 imported 공개 349글의 다른 글 fragment 링크는 0건이다. 알려진 Naver 플랫폼 fragment와 향후 native deep link fragment는 target rendered ID map을 production 빌드에서 전수 생성·검증하기 전까지 버린다. fragment 보존 map 구현은 사용자가 요청할 때만 진행하는 P2 후속이며 현재 완료조건과 Stage 3를 막지 않는다.
@@ -526,7 +527,7 @@
 
 ## 다음 단계
 
-1. 일반 격리 환경의 localhost bind 제한은 해소했지만 자체 브라우저 client가 ready 상태의 host localhost로 접속하지 못했다. 연결 경계를 변경하거나 다시 실행하기 전에 후속 방법을 먼저 정한다. 연결이 성공한 경우에만 최소 권한·짧은 수명 열쇠로 시험용 저장소의 비공개 상태를 한 번 읽고, 실제 파일 2,758개를 한 번 전수 GET해 개별 SHA-256과 총 2,346,220,246바이트를 원본과 비교한다. 통과 뒤 이번 작업용 열쇠와 사용 불가능한 기존 활성 열쇠를 정확히 식별해 정리한다.
+1. `PLAN-05`는 현재 중단한다. localhost를 다시 시도하거나 다른 앱으로 우회하지 않는다. 제품이 안전한 로컬 receiver target을 허용하거나, 사용자가 계정 번호 원문을 도구 출력 없이 준비된 non-echo receiver에 직접 입력하겠다는 명시적 handoff를 제공할 때만 재개한다. 전달이 실제로 성공한 경우에만 최소 권한·짧은 수명 열쇠로 시험용 저장소의 비공개 상태를 한 번 읽고, 실제 파일 2,758개를 한 번 전수 GET해 개별 SHA-256과 총 2,346,220,246바이트를 원본과 비교한다. 통과 뒤 이번 작업용 열쇠와 사용 불가능한 기존 활성 열쇠를 정확히 식별해 정리한다.
 2. 전수 비교가 통과하면 `dwnc-me-staging`이 없을 때만 외부 요청을 모두 거부하는 최소 차단용 프로그램을 한 번 만든다. 확정된 Git 기록 기준 관련 빌드·검사 한 묶음, version-only upload, staging-only activation과 시험용 주소 활성화, 대표 정적 페이지, 예전 주소 GET·HEAD 698회 및 media GET·HEAD·304·206·416 확인을 이어서 수행하고 정확한 Git SHA와 version ID를 기록한다.
 3. 시험용 확인이 통과하면 최종 운영에 실제 필요한 Cloudflare 자원만 같은 방식으로 준비한다. 새 보조 도구·복구 체계·서명·영수증·장애주입·모의훈련·반복 독립감사는 추가하지 않는다. 새 글 작성 방식과 비공개 백업은 최종 운영 전에 정하되 Stage 3를 막지 않으며, 공유 글 10개·댓글·추가 개선은 사용자가 원할 때만 진행한다. 실제 `dwnc.me` 도메인·DNS·route 연결은 사용자가 결정할 때만 수행한다.
 
