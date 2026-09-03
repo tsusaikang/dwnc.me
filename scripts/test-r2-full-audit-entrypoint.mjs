@@ -664,9 +664,12 @@ try {
   equal(auditEntrypointSource.includes('deadlineMilliseconds'), false);
   equal(auditEntrypointSource.includes('assertBeforeDeadline'), false);
   equal(auditEntrypointSource.includes('now: receiptVerifiedAt'), false);
-  equal(auditEntrypointSource.includes(
-    'r2ClientFromCredentials(r2Credentials, { maxAttempts: 1 })',
-  ), true);
+  equal(auditEntrypointSource.includes([
+    'r2ClientFromCredentials(r2Credentials, {',
+    '  maxAttempts: 1,',
+    '  timeoutMilliseconds: 120_000,',
+    '})',
+  ].join('\n')), true);
   await git(fixtureRoot, gitEnvironment, ['init', '-q', `--template=${gitTemplate}`]);
   await git(fixtureRoot, gitEnvironment, ['config', 'user.name', 'dwnc offline fixture']);
   await git(fixtureRoot, gitEnvironment, ['config', 'user.email', 'fixture@invalid.example']);
