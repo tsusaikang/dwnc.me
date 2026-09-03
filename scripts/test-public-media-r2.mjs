@@ -541,6 +541,23 @@ function headFor(entry, overrides = {}) {
 }
 
 {
+  let noRetryAttempts = 0;
+  const noRetryClient = new R2S3Client({
+    ...credentials,
+    fetchImpl: async () => {
+      noRetryAttempts += 1;
+      return new Response(null, { status: 503 });
+    },
+    now: () => now,
+    delay: async () => undefined,
+    maxAttempts: 1,
+  });
+  await rejectsCode(() => noRetryClient.head('media/a.jpg'), 'MEDIA_E_R2_HEAD');
+  equal(noRetryAttempts, 1);
+  equal(noRetryClient.requestOperationCounts().HEAD, 1);
+}
+
+{
   const calls = [];
   let listAttempt = 0;
   const fetchImpl = async (url, init) => {

@@ -348,9 +348,9 @@ export function validateRemoteReceipt(receipt, manifest) {
         || ['LIST', 'HEAD', 'GET', 'PUT', 'DELETE'].some((key) =>
           !Number.isSafeInteger(receipt.audit.requestCounts[key])
           || receipt.audit.requestCounts[key] < 0)
-        || receipt.audit.requestCounts.LIST < 1
-        || receipt.audit.requestCounts.HEAD < manifest.objectCount
-        || receipt.audit.requestCounts.GET < manifest.objectCount
+        || receipt.audit.requestCounts.LIST !== Math.ceil(manifest.objectCount / 1_000)
+        || receipt.audit.requestCounts.HEAD !== manifest.objectCount
+        || receipt.audit.requestCounts.GET !== manifest.objectCount
         || receipt.audit.requestCounts.PUT !== 0 || receipt.audit.requestCounts.DELETE !== 0
         || !/^[a-f0-9]{40}$/u.test(receipt.audit.sourceCommit ?? '')
         || !/^[a-f0-9]{40}$/u.test(receipt.audit.sourceTree ?? '')

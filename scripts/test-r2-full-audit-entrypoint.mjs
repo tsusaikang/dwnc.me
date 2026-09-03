@@ -664,6 +664,9 @@ try {
   equal(auditEntrypointSource.includes('deadlineMilliseconds'), false);
   equal(auditEntrypointSource.includes('assertBeforeDeadline'), false);
   equal(auditEntrypointSource.includes('now: receiptVerifiedAt'), false);
+  equal(auditEntrypointSource.includes(
+    'r2ClientFromCredentials(r2Credentials, { maxAttempts: 1 })',
+  ), true);
   await git(fixtureRoot, gitEnvironment, ['init', '-q', `--template=${gitTemplate}`]);
   await git(fixtureRoot, gitEnvironment, ['config', 'user.name', 'dwnc offline fixture']);
   await git(fixtureRoot, gitEnvironment, ['config', 'user.email', 'fixture@invalid.example']);
@@ -901,6 +904,17 @@ try {
   const receiptSha256 = sha256Hex(receiptBytes);
   const receipt = JSON.parse(receiptBytes.toString('utf8'));
   validateRemoteReceipt(receipt, manifest);
+  for (const [operation, value] of [
+    ['LIST', receipt.audit.requestCounts.LIST + 1],
+    ['HEAD', receipt.audit.requestCounts.HEAD + 1],
+    ['GET', receipt.audit.requestCounts.GET + 1],
+    ['PUT', 1],
+    ['DELETE', 1],
+  ]) {
+    const invalidReceipt = structuredClone(receipt);
+    invalidReceipt.audit.requestCounts[operation] = value;
+    matches(() => validateRemoteReceipt(invalidReceipt, manifest), /MEDIA_E_REMOTE_RECEIPT/u);
+  }
   equal(receiptBytes.toString('utf8'), `${canonicalRemoteReceiptPayload(receipt)}\n`);
   equal(receipt.verificationLevel, 'full-get-sha256');
   equal(receipt.audit.requestCounts, EXPECTED_REQUEST_COUNTS);

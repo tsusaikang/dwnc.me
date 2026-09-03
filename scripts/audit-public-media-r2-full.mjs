@@ -136,7 +136,7 @@ const bucketExposure = remoteReceiptBucketExposure(exposureCapture, {
   maxLifetimeSeconds: targetPolicy.maxBucketExposureAgeSeconds,
   maxFutureSkewSeconds: targetPolicy.maxBucketExposureFutureSkewSeconds,
 });
-const client = r2ClientFromCredentials(r2Credentials);
+const client = r2ClientFromCredentials(r2Credentials, { maxAttempts: 1 });
 if (options.expectedOrphanCount !== targetPolicy.approvedOrphanCount) {
   throw new Error('MEDIA_E_ORPHAN_APPROVAL');
 }
