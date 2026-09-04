@@ -17,6 +17,7 @@ const TESTS = Object.freeze([
   'test-cloudflare-account-target-loopback.mjs',
   'test-cloudflare-account-target-stdin.mjs',
   'test-cloudflare-control-plane-auth.mjs',
+  'test-cloudflare-staging-control-token-stdin.mjs',
   'test-cloudflare-staging-control-token.mjs',
   'test-cloudflare-staging-control-recovery-entrypoint.mjs',
   'test-cloudflare-r2-exposure.mjs',
