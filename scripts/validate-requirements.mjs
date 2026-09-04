@@ -251,8 +251,8 @@ for (const plan of plans) {
 }
 if (plans.length === 0) addError(currentPath, 'overall plan must contain at least one PLAN row');
 const activePlans = plans.filter(({ status }) => status === '진행 중');
-if (activePlans.length !== 1) {
-  addError(currentPath, `overall plan must have exactly one in-progress PLAN; found ${activePlans.length}`);
+if (activePlans.length > 1) {
+  addError(currentPath, `overall plan must have at most one in-progress PLAN; found ${activePlans.length}`);
 }
 for (const requirement of [...current.requirements, ...archive.requirements]) {
   for (const planId of requirement.plans) {

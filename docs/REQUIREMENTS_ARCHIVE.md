@@ -6,4 +6,14 @@
 
 이 보관 문서에는 완료된 항목만 날짜와 요구사항 번호 순서로 둔다. 요구사항 번호, 제목, 상태, 갱신일, 관련 계획, 우선순위, 완료 조건과 확인 근거는 삭제하거나 재사용하지 않는다. 과거 기록을 바로잡아야 하면 기존 내용을 지우지 않고 새 요구사항과 근거로 정정 관계를 남긴다.
 
-현재 archive로 이동한 요구사항은 없다.
+### `DWNC-CORE-001` — 콘텐츠 보존과 로컬 사이트 기준선
+- **Status:** `done`
+- **Updated-at:** `2026-08-24`
+- **Plans:** `PLAN-01`, `PLAN-02`, `PLAN-03`
+- **Priority:** `P0`
+- **Acceptance:**
+  - 티스토리 공개 164개와 네이버 소유 432개를 공개·private 물리 경계에 맞게 보존한다.
+  - 공개 canonical 349개, legacy alias 349개와 관련 local build/validator를 통과한다.
+- **Evidence:**
+  - [`PROJECT_STATE.md`](../PROJECT_STATE.md)의 현재 검증 결과.
+  - [`MIGRATION_PLAN.md`](MIGRATION_PLAN.md)의 완료 기준선.

@@ -1,6 +1,6 @@
 # dwnc.me 요구사항과 진행 현황
 
-최종 갱신: 2026-09-04 KST
+최종 갱신: 2026-09-05 KST
 
 이 문서는 사용자가 최종 목표, 전체 계획, 현재 위치와 다음 작업을 빠르게 확인하는 공식 기록이다. 자세한 작업 기록은 [`PROJECT_STATE.md`](../PROJECT_STATE.md), 사진을 안전하게 제공하는 기술 규칙은 [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)에 둔다. 문서끼리 내용이 다르면 실제 파일과 검사 결과, Cloudflare에서 다시 확인한 설정을 기준으로 함께 바로잡는다.
 
@@ -23,7 +23,7 @@
 - 시험용 주소에서 글, 예전 주소 349개, 사진 표시와 부분 전송을 모두 확인한 뒤 운영용 구성을 준비한다.
 - 실제 `dwnc.me` 주소 연결은 사용자의 별도 결정 후 진행한다. 연결을 결정하면 실제 주소에서 글·예전 주소·사진·모바일과 데스크톱 화면을 다시 확인해야 전체 운영 전환이 끝난다.
 
-현재 콘텐츠 보존과 독립 사이트의 로컬 구현, Cloudflare 시험용 저장소의 파일 2,758개 전수 확인과 2026-08-25의 사용 불가능한 token 두 개 정리는 완료됐다. 다만 시험용 사이트 프로그램, 실제 도메인 연결과 운영 전환 검증은 아직 남아 있다. 따라서 **사이트 전체가 이미 운영 중이라고 표현하지 않는다.** 근거는 [`PROJECT_STATE.md`](../PROJECT_STATE.md), [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md), [`URL_CONTRACT.md`](URL_CONTRACT.md)에 나누어 기록한다.
+현재 콘텐츠 보존과 독립 사이트의 로컬 구현, Cloudflare 시험용 저장소의 파일 2,758개 전수 확인, 2026-08-25의 사용 불가능한 token 두 개 정리와 시험용 사이트 live 점검까지 완료됐다. 실제 도메인 연결과 운영 전환 검증은 아직 남아 있으므로 **사이트 전체가 이미 운영 중이라고 표현하지 않는다.** 근거는 [`PROJECT_STATE.md`](../PROJECT_STATE.md), [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md), [`URL_CONTRACT.md`](URL_CONTRACT.md)에 나누어 기록한다.
 
 ### 전체 계획
 
@@ -35,16 +35,16 @@
 | `PLAN-03` | 독립 사이트와 주소 체계를 만든다. | 공개 글 349개, 예전 주소 349개, 검색·분류·RSS·사이트맵과 모바일·데스크톱 화면 검사를 통과한다. | `완료` |
 | `PLAN-04` | 공개할 미디어를 정리하고 최종 목록을 확정한다. | 사용자 소유 사진 2,757개와 직접 제작 GIF 1개를 확정하고 제외·대체 결정을 반영한다. | `완료` |
 | `PLAN-05` | 시험용 저장소의 실제 파일 내용을 한 번 전수 확인하고 작업용 열쇠를 정리한다. | 올바른 계정 확인, `Account ID` 한 번 복사·전용 보관, 저장소 비공개 확인, 2,758개 실제 내용·전체 용량 비교, 작업용·사용 불가능한 활성 열쇠 정리를 마치며 R2 객체 덮어쓰기·삭제가 없다. | `완료` |
-| `PLAN-06` | 실제 도메인과 연결되지 않은 시험용 사이트를 올려 최종 동작을 확인한다. deny-only Worker 생성은 완료됐고 `DWNC-S3-010`이 다음 단계다. | 사이트 프로그램이 없을 때만 최소 차단용 프로그램을 만들고, 확정된 Git 기록의 빌드·검사 한 묶음과 새 버전만 올려 시험용으로 적용한 뒤 대표 페이지, 예전 주소 GET·HEAD 698회와 사진 응답을 확인하고 정확한 Git SHA와 버전 번호를 기록한다. | `진행 중` |
+| `PLAN-06` | 실제 도메인과 연결되지 않은 시험용 사이트를 올려 최종 동작을 확인한다. | 사이트 프로그램이 없을 때만 최소 차단용 프로그램을 만들고, 확정된 Git 기록의 빌드·검사 한 묶음과 새 버전만 올려 시험용으로 적용한 뒤 대표 페이지, 예전 주소 GET·HEAD 698회와 사진 응답을 확인하고 정확한 Git SHA와 버전 번호를 기록한다. | `완료` |
 | `PLAN-07` | 시험용 확인 뒤 최종 운영에 실제 필요한 Cloudflare 자원만 준비한다. | 시험용에서 통과한 절차로 필요한 저장소와 사이트 버전만 준비하고, 새 보조 도구·모의훈련·반복 검증은 추가하지 않는다. 실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하지 않는다. | `대기` |
 | `PLAN-08` | 실제 `dwnc.me` 주소를 연결하고 운영 전환을 확인한다. | 사용자 결정 후 실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하고 실제 주소의 글·예전 주소·사진·화면을 다시 검사한다. | `사용자 결정 필요` |
 | `PLAN-09` | 최종 운영에 필요한 새 글 작성 방식과 비공개 백업 방식을 정한다. | 새 글 작성과 비공개 백업·복구 방식을 정한다. 공유 글 10개, 댓글과 추가 개선은 사용자가 원할 때 진행하는 후속 선택으로 두며 Stage 3를 막지 않는다. | `사용자 결정 필요` |
 
 ### 현재 위치
 
-**진행 중인 계획은 `PLAN-06` 하나다.** `PLAN-05`와 `DWNC-S3-009`는 완료 상태를 유지한다. `DWNC-S3-010`의 staging artifact는 source SHA `0e74dfdf8be0fc93bfeeb0089b1d5b0c79b2ccf3` 기준 `/private/tmp/dwnc-staging-preupload-2rdjnV/staging-artifact-68ec15b0df03d63840d3ac002fee81150977f3bdb10d1a568afb499d069d47b2`에 준비됐고 upload·activation은 0회다. 기존 OAuth 로그인은 없다.
+**현재 실행 중인 계획은 없고 다음 공식 계획은 `PLAN-07`이다.** runtime source commit `05962c4c0872b5234d3a45298ab0e44d123d03da`의 artifact `81cf14fcaab0245c380d6e4e8d274df14dee41dde7bacfa19d510449a180d501`를 version `bb59f4ee-55f5-4626-858b-0653d7e79900`으로 올려 staging에 100% 적용하고 live 종합 점검을 통과했다. smoke collector fix commit `ab5489a91c5f6b159a344e49f9d0e066cfb5eaa4`에서는 streaming Content-Length false-negative를 바로잡았다.
 
-사용자에게 이는 **시험용 version을 올리기 직전의 파일 묶음까지 준비됐지만 아직 올리거나 적용하지 않았다는 뜻**이다. 다음에는 일회용 token의 자식 환경 전달과 지속 OAuth 중 하나를 선택하도록 이전 제약을 명시적으로 바꾼 뒤 진행한다.
+사용자에게 이는 **실제 주소와 분리된 시험용 사이트의 적용과 종합 점검까지 끝났다는 뜻**이다. 다음에는 `PLAN-07`에서 최종 운영에 필요한 Cloudflare 자원만 준비하며, 실제 `dwnc.me` 주소는 아직 연결하지 않는다.
 
 ### 미디어 정리 결과
 
@@ -61,18 +61,15 @@
 
 ### 아직 결정할 일과 진행을 막는 조건
 
-1. `DWNC-S3-010` upload를 위해서는 기존 OAuth가 없는 상태에서 일회용 token 자식 환경 전달 또는 지속 OAuth 중 하나를 선택하는 명시적 제약 변경이 필요하다.
-2. 보존 receipt는 아직 unsigned이고, `PLAN-06` 적용 검사가 비공개 확인의 유효시각을 같은 시작시점 기준으로 판단할지는 별도 후속 확인 사항이다.
-3. deny-only Worker 생성과 staging artifact 준비는 완료됐지만 version upload·activation·원격 점검은 아직 실행하지 않았다.
-4. 새 글 작성 방식과 비공개 자료의 백업·복구 방식은 최종 운영 전에 결정해야 한다. 공유·스크랩 글 10개, 과거 댓글과 추가 개선은 사용자가 원할 때 정하는 후속 선택이며 Stage 3를 막지 않는다.
+1. `PLAN-07`은 아직 실무를 시작하지 않았다. 실제 `dwnc.me` 주소 연결은 `PLAN-08`의 사용자 결정 전에는 진행하지 않는다.
+2. 새 글 작성 방식과 비공개 자료의 백업·복구 방식은 최종 운영 전에 결정해야 한다. 공유·스크랩 글 10개, 과거 댓글과 추가 개선은 사용자가 원할 때 정하는 후속 선택이며 Stage 3를 막지 않는다.
 
 ### 바로 다음 작업
 
-1. 일회용 token의 자식 환경 전달 또는 지속 OAuth 중 하나를 선택하도록 이전 제약을 명시적으로 변경한다.
-2. 준비된 `DWNC-S3-010` artifact를 기준으로 새 version만 올려 시험용으로 적용한다.
-3. 시험용 확인이 통과하면 최종 운영에 실제 필요한 Cloudflare 자원만 같은 방식으로 준비한다. 새 보조 도구·복구 체계·서명 체계·영수증 체계·장애주입·모의훈련·반복 독립검토는 추가하지 않으며, 실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하지 않는다.
+1. `PLAN-07`을 시작할 때 staging에서 통과한 절차로 최종 운영에 실제 필요한 Cloudflare 자원만 준비한다.
+2. 새 보조 도구·복구 체계·서명 체계·영수증 체계·장애주입·모의훈련·반복 독립검토는 추가하지 않으며, 실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하지 않는다.
 
-현재 `PLAN-05`와 `DWNC-S3-009`는 완료됐다. `DWNC-S3-010` artifact는 준비됐지만 upload·activation은 0회이며, 다음 외부 실행 전에 인증 방식에 관한 이전 제약을 명시적으로 변경해야 한다. 실제 `dwnc.me` 주소 연결은 `PLAN-08`에서 사용자가 결정할 때만 진행한다.
+현재 `PLAN-05`·`PLAN-06`과 `DWNC-S3-009`·`DWNC-S3-010`은 완료됐다. `PLAN-07`은 아직 대기 중이며, 실제 `dwnc.me` 주소 연결은 `PLAN-08`에서 사용자가 결정할 때만 진행한다.
 
 ### 최근 완료
 
@@ -88,6 +85,7 @@
 - 시험용 사이트 프로그램 최초 생성이 중간에 끊겨도 생성 명령을 반복하지 않고 현재 상태만 두 번 읽어 결과를 판정하는 복구 장치를 만들었다.
 - 시험용 R2 저장소에 남아 있던 2,757개를 추가해 최종 2,758개 업로드를 마쳤다. 업로드 뒤 목록·크기·저장정보를 확인한 결과 빠진 항목과 불필요한 항목은 0개였고 덮어쓰기와 삭제도 0회였다. 이후 실제 파일 내용 2,758개 전수 비교와 원본 일치 확인도 완료했다.
 - 전달 과정이 안전하지 않았던 읽기 전용 열쇠 두 개를 Cloudflare 정보 조회 전에 폐기했다. 두 시도의 정보 조회와 결과 파일 생성은 모두 0회였다.
+- 시험용 사이트 version을 100% 적용하고 대표 페이지, 예전 주소 349개 GET·HEAD 698회, 사진·404·cache의 live 종합 점검을 통과했다. 점검 뒤 시험용 공개 주소와 미리보기는 다시 껐다.
 
 ### 이번 작업에서 하지 않는 것
 
@@ -123,32 +121,6 @@
 ## 요구사항 원장
 
 
-### `DWNC-S3-010` — staging version-only upload·activation·synthetic smoke
-- **Status:** `in-progress`
-- **Updated-at:** `2026-09-04`
-- **Plans:** `PLAN-06`
-- **Priority:** `P0`
-- **Acceptance:**
-  - 확정된 Git 기록을 기준으로 관련 빌드와 검사를 한 묶음만 실행하고, full audit 결과에 묶인 staging version만 version-only로 업로드한다.
-  - 해당 version ID를 staging에 100% 적용하고 모호한 결과는 자동 재시도하지 않는다.
-  - 일반 페이지 GET·HEAD, 예전 주소 349개의 GET·HEAD 총 698건, `/404.html`의 404, media GET·HEAD·304·206·416·ETag·Range를 `workers.dev`에서 검증한다.
-  - 통과한 정확한 Git SHA와 Cloudflare version ID를 기록하고, 새 로컬 모의시험이나 독립검토를 추가하지 않는다.
-  - 실제 `dwnc.me` 도메인·DNS는 변경하지 않는다.
-- **Evidence:**
-  - source SHA `0e74dfdf8be0fc93bfeeb0089b1d5b0c79b2ccf3`의 staging artifact를 `/private/tmp/dwnc-staging-preupload-2rdjnV/staging-artifact-68ec15b0df03d63840d3ac002fee81150977f3bdb10d1a568afb499d069d47b2`에 준비했다. remote receipt·signature·public-key 의존은 제거하고 local HEAD fallback과 stale assertion을 정리했다. upload·activation은 0회이고 기존 OAuth 로그인은 없다.
-  - 선행 요구사항 `DWNC-S3-008`과 `DWNC-S3-009`는 완료됐다. 별도 에이전트 결과를 확인·통합하는 단계다.
-  - `docs/EDGE_REDIRECTS_V1.json`을 Worker가 직접 읽도록 연결했다. 시작할 때 기준 주소·349개·308·출발/도착 주소 중복·안전하지 않은 경로·미디어 경로 충돌을 모두 검사한다.
-  - 로컬에서 349개를 GET·HEAD로 한 번씩, 총 698건 모두 확인했다. 응답은 정확한 상대 새 주소와 빈 본문을 반환하고, 들어온 query는 새 주소에 붙이지 않는다. 이 698건에서 정적 파일·R2·미디어 캐시는 한 번도 조회하지 않았다.
-  - `/404.html`은 공개 요청 목록에서 뺐지만 빌드된 오류 화면 파일과 Cloudflare의 오류 화면 설정은 유지했다. 직접 GET·HEAD 요청은 `404 no-store`이고 정적 파일 조회는 0회다.
-  - 원격 점검 프로그램은 기준 주소 목록 349개와 저장소의 현재 파일, 업로드용으로 묶어 둔 파일, 그 묶음의 확인 기록이 모두 정확히 같음을 먼저 확인한다. 그 뒤에만 임시 출입 비밀번호를 읽고 점검을 시작한다. 외부 주소·주소 뒤 물음표·역슬래시·중복·불필요한 단어를 섞은 시험에서는 비밀번호 읽기·하위 프로그램 시작·인터넷 요청이 모두 0회였다.
-  - 각 요청은 10초 안에 끝나야 하며, 전체 점검 프로그램은 준비 확인과 비밀번호 전달부터 자식 프로그램 정리까지 시작 후 8분 안에 끝나야 한다. 응답 본문은 필요한 크기까지만 읽고, 쓰지 않는 본문은 즉시 닫는다. 응답이 끝나지 않거나 너무 크거나 늦게 도착하거나 중단 신호가 와도 정해진 시간 안에 닫히는 로컬 시험을 통과했다. 모든 요청은 자동 주소 이동을 끄고 처음 요청한 시험용 주소와 실제 응답 주소가 정확히 같은지도 확인한다.
-  - `/about`의 경로·크기·내용 확인값·파일 종류를 업로드 묶음의 확인 기록에 직접 넣었다. 파일 확인과 점검 사이에 `/about`을 바꾸는 시험에서는 임시 출입 비밀번호 읽기·하위 프로그램 시작·인터넷 요청이 모두 0회였다.
-  - 실제 npm 명령에서 점검 프로그램까지 이어지는 경로로 변조된 이전주소 목록 6종을 모두 시험했다. 여섯 경우 모두 임시 출입 비밀번호 읽기·하위 프로그램 시작·인터넷 요청이 0회였고, 정상 목록은 실제 자식 실행을 막는 시험용 감시선에서 정확히 멈췄다.
-  - 원격 점검 계약은 예전 주소 698건, `/about` GET·HEAD 2건, `/404.html` GET·HEAD 2건, 미디어 5건, cache 확인 1~3건, 로그인하지 않은 요청 1건을 모두 세고 기록한다. 첫 cache 확인이 성공하면 총 709건이다. `/about` 화면과 cache 사진은 실제 내용·크기·파일 종류·ETag가 기준과 같아야 한다. 304는 정확한 ETag와 빈 본문, 416은 정확한 전체 크기 표시·ETag·빈 본문이어야 한다. 어느 항목이든 다르면 결과를 만들지 않는다.
-  - 큰 점검 결과도 화면에 모두 전달된 뒤에만 임시 바이트를 지운다. 큰 결과를 천천히 받는 통로, 출력 오류, 끝나지 않는 출력 통로를 실제 실행 경로로 시험해 내용 손상 0, 시간 초과 뒤 남은 출력 작업 0을 확인했다.
-  - 실제 npm 명령의 변조 목록 6종은 별도 계측 파일로 임시 출입 비밀번호 읽기 시도, 하위 프로그램 시작, 인터넷 요청이 각각 0회였음을 직접 확인했다. 정상 목록에서는 앞의 두 시도가 각각 정확히 1회여서 계측이 실제 경로에 연결됐음도 확인했다. 시험용 비밀번호 내용은 출력하지 않았다.
-  - 위 로컬 점검 전용 시험 179개와 인터넷·외부 프로그램 차단 보강 전 전체 Cloudflare 시험 27개 묶음·15,076개가 통과했다. 현재 원본으로 R2 전량 예행연습 194개·차단 경계 전용 152개·영향 범위 829개를 따로 재확인했다. 실제 시험용 주소 점검과 Cloudflare 요청은 아직 0회다.
-  - [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 version-only와 staging smoke 계약.
 
 ### `DWNC-S3-011` — production 이름 Cloudflare 자원·버전 준비
 - **Status:** `planned`
@@ -227,7 +199,7 @@
   - 대화 내용만 공식 상태로 삼지 않고 `REQUIREMENTS.md`와 `PROJECT_STATE.md`를 함께 갱신한다.
   - 최근 완료는 12개까지만 두고 오래된 완료 기록은 보관 문서로 옮긴다.
 - **Evidence:**
-  - 사용자용 요약에 `PLAN-00`부터 `PLAN-09`까지 목적·완료 기준·현재 상태를 기록했고, 진행 중인 실행 계획은 `PLAN-06` 하나이며 현재는 `DWNC-S3-009` v3 실패·정리 뒤 observer 보강과 새 승인 대기, `DWNC-S3-010` 차단 상태로 표시했다.
+  - 사용자용 요약에 `PLAN-00`부터 `PLAN-09`까지 목적·완료 기준·현재 상태를 기록했다. `PLAN-06`과 `DWNC-S3-009`·`DWNC-S3-010`은 완료했고 아직 시작하지 않은 `PLAN-07`을 다음 공식 단계로 표시했다.
   - 지속해서 관리할 현재 요구사항의 `Plans` 항목을 계획표와 연결했다. 사소한 대화는 새 요구사항으로 늘리지 않는다.
   - `npm run requirements:validate`는 이 상시 요구사항, 계획표, 현재 위치 한 개와 요구사항별 계획 연결이 빠지거나 잘못되면 거부한다.
 
@@ -264,17 +236,6 @@
 
 ## 최근 완료된 요구사항
 
-### `DWNC-CORE-001` — 콘텐츠 보존과 로컬 사이트 기준선
-- **Status:** `done`
-- **Updated-at:** `2026-08-24`
-- **Plans:** `PLAN-01`, `PLAN-02`, `PLAN-03`
-- **Priority:** `P0`
-- **Acceptance:**
-  - 티스토리 공개 164개와 네이버 소유 432개를 공개·private 물리 경계에 맞게 보존한다.
-  - 공개 canonical 349개, legacy alias 349개와 관련 local build/validator를 통과한다.
-- **Evidence:**
-  - [`PROJECT_STATE.md`](../PROJECT_STATE.md)의 현재 검증 결과.
-  - [`MIGRATION_PLAN.md`](MIGRATION_PLAN.md)의 완료 기준선.
 
 ### `DWNC-S3-001` — guarded local Cloudflare media release pipeline
 - **Status:** `done`
@@ -414,7 +375,7 @@
   - 승인된 재개 실행에서 `dwnc-me-staging-worker-control-20260904-v2`를 Workers Scripts Write 한 권한·2026-09-05 만료로 UI에서 한 번 생성하고 browser copy 1회→direct stdin actual init 1회를 수행했다. runner는 53바이트를 받았지만 기존 account-target Keychain 확인이 `CLOUDFLARE_E_ACCOUNT_STORE_KEYCHAIN`으로 먼저 실패해 `inputReads=0`, `bufferZeroed=true`, `durableState=none`, raw child output 0과 clipboard clear를 유지했다. token verify·subdomain GET·Keychain/metadata write·bootstrap·deploy·Worker/version/deployment/public endpoint·DNS/route/traffic·R2 변경은 모두 0회이며 재시도하지 않았다. terminal cleanup에서 해당 exact UI 행을 한 번 삭제하고 즉시·새로고침 후 부재를 확인했으며 token action 행은 이전 2개로 돌아왔다. primary/recovery control metadata와 고정 control-token Keychain 항목은 부재였고 presence-only 조회만 사용해 비밀 read·write·delete는 0회였다. exact 7-key 환경과 일반 환경의 비밀 없는 비교에서 account-target 항목은 모두 존재, control-token 항목은 모두 exit 44·not-found였으므로 환경 가시성이나 항목 부재가 원인은 아니다. actual secret read 없이 원인은 기존 account-target의 `-w` 비밀 읽기/잠금 해제 또는 읽은 내용 검증 경계까지로만 좁혔다. 이번 승인 묶음은 terminal 상태로 소진됐고, 정확한 원인 보강과 새 사용자 승인 전에는 다시 실행하지 않는다. authorization creator commit `045a314cfac6db8ce977ae072cd1ce8be1d1655e`는 완료됐지만 이번 실행에서 사용하지 않았으며 `DWNC-S3-009`는 미완료·`DWNC-S3-010`은 차단 상태다.
 
   - 승인된 v3 실행에서는 `dwnc-me-staging-worker-control-20260904-v3`를 Workers Scripts Write·2026-09-05 만료·All IPs로 UI에서 한 번 생성하고 browser copy 1회→direct stdin 초기화 1회를 수행했다. 호출자는 53바이트 전달 뒤 자체 buffer를 0으로 덮고 clipboard를 비웠으며 overflow는 없었다. 직접 관측값은 child exit 1·stderr 296바이트와 메인 observer의 stdout JSON parse 실패이며, stderr 내용은 읽거나 해석하지 않았다. runner 정적 계약상 처리된 exit 1 실패 JSON은 stderr로 나가고 stdout은 비지만, 296바이트가 될 수 있는 허용 오류는 `CLOUDFLARE_E_ACCOUNT_STORE_KEYCHAIN`, `CLOUDFLARE_E_ACCOUNT_STORE_LOCATION`, `CLOUDFLARE_E_ACCOUNT_STORE_METADATA`, `CLOUDFLARE_E_STAGING_CONTROL_EXISTS`, `CLOUDFLARE_E_STAGING_CONTROL_VERIFY` 다섯 가지이므로 이번 오류는 특정할 수 없다. 성공 영수증·재시도·외부 bootstrap은 0회다. exact UI 행을 즉시 한 번 삭제했고 즉시·새로고침 후 모두 0건, 목록은 기존 두 행으로 돌아왔다. 하위 감사에서 `durableLocalState=none`, control-token primary/recovery metadata와 고정 Keychain 항목은 모두 부재였고 Account ID·token 원문 read/output은 0회였다. 감사 자체의 외부 write/delete·파일 수정·retry도 0회이며 authorization creator는 사용하지 않았다. 다음 시도 전 메인 observer는 exit 0이면 stdout, exit 1이면 stderr를 제한된 크기로 해석하고 고정 schema를 확인해야 한다. 나머지 원인과 수정 범위는 그 결과로 판단한다. 이번 승인 묶음은 소진됐고 `DWNC-S3-009`는 미완료·NO-GO, `DWNC-S3-010`은 차단 상태다.
-  - 후속 v5 token은 initializer `ACCOUNT_STORE_KEYCHAIN`, direct-frame `VERIFY`, network tool 경계 실패 뒤 dashboard 방식으로 전환했으며 exact v5 token을 삭제해 기존 두 행만 남겼다. 2026-09-04 dashboard에서 `dwnc-me-staging`을 직접 생성했다. 최초 비활성 HelloWorld version은 `330216b8`, 현재 100% 활성 deny-only version은 `2b543790`이다. 활성 응답은 정확히 404 `Not found`와 `no-store`·`text/plain; charset=utf-8`·`nosniff` header를 반환한다. `workers.dev`·preview는 disabled이고 custom domain·route·binding은 없다. dashboard preview가 initial version에 GET 2회를 보냈지만 production DNS·route·traffic과 R2 영향은 0이다.
+  - 후속 v5 token은 initializer `ACCOUNT_STORE_KEYCHAIN`, direct-frame `VERIFY`, network tool 경계 실패 뒤 dashboard 방식으로 전환했으며 exact v5 token을 삭제해 기존 두 행만 남겼다. 2026-09-04 dashboard에서 `dwnc-me-staging`을 직접 생성했다. 최초 비활성 HelloWorld version은 `330216b8`, 당시 100% 활성 deny-only version은 `2b543790`이었다. 활성 응답은 정확히 404 `Not found`와 `no-store`·`text/plain; charset=utf-8`·`nosniff` header를 반환했다. 당시 `workers.dev`·preview는 disabled이고 custom domain·route·binding은 없었다. dashboard preview가 initial version에 GET 2회를 보냈지만 production DNS·route·traffic과 R2 영향은 0이다.
 
 ### `DWNC-S3-012` — 사용 불가능한 기존 staging R2 token 정리
 - **Status:** `done`
@@ -441,3 +402,21 @@
 - **Evidence:**
   - 초기 localhost·virtual clipboard·Terminal 전달 실패는 accepted connection·local paste·초기화를 0회로 유지한 채 중단했으며, 이후 승인된 안전 전달로 account target 초기화와 비표시 일치 확인을 완료했다.
   - 원문은 프로젝트 파일·argv·환경변수·일반 출력에 남기지 않았고, 계정 대상 전용 시험 698개와 secure stdin 시험 112개를 통과했다.
+
+### `DWNC-S3-010` — staging version-only upload·activation·synthetic smoke
+- **Status:** `done`
+- **Updated-at:** `2026-09-05`
+- **Plans:** `PLAN-06`
+- **Priority:** `P0`
+- **Acceptance:**
+  - 확정된 Git 기록을 기준으로 관련 빌드와 검사를 한 묶음만 실행하고, staging version만 version-only로 업로드한다.
+  - 해당 version ID를 staging에 100% 적용하고 모호한 결과는 자동 재시도하지 않는다.
+  - 일반 페이지 GET·HEAD, 예전 주소 349개의 GET·HEAD 총 698건, `/404.html`의 404, media GET·HEAD·304·206·416·ETag·Range를 `workers.dev`에서 검증한다.
+  - 통과한 정확한 Git SHA와 Cloudflare version ID를 기록하고 실제 `dwnc.me` 도메인·DNS는 변경하지 않는다.
+- **Evidence:**
+  - runtime source commit `05962c4c0872b5234d3a45298ab0e44d123d03da`의 artifact SHA-256은 `81cf14fcaab0245c380d6e4e8d274df14dee41dde7bacfa19d510449a180d501`다. version `bb59f4ee-55f5-4626-858b-0653d7e79900`을 version-only로 올려 staging에 100% 적용했다.
+  - live 종합 점검에서 이전 주소 GET 349·HEAD 349는 모두 308·빈 body·query 제거, media GET 200·HEAD 200·304·206·416·MIME·ETag·Range, `/404.html` GET·HEAD와 cache를 통과했고 모든 live 응답의 version이 정확히 일치했다.
+  - `/` GET·HEAD는 200 `text/html`, HEAD는 빈 body였고 `/about` GET body는 artifact와 byte-exact였다. `/about` GET·HEAD 200·MIME·version·header parity와 HEAD 빈 body도 확인했다.
+  - 앞선 `debfe664…`는 path normalization 결함으로 `/`가 404였고 `4bd84ef8…`는 이를 고친 뒤 full collector의 과도한 고정 Content-Length 비교에서 멈췄다. 실제 live 응답은 의도한 streaming 계약을 충족했으며 smoke collector fix commit `ab5489a91c5f6b159a344e49f9d0e066cfb5eaa4`에서 이 false-negative를 교정했다. staging smoke unit 181개와 media-worker 5,796개가 PASS했다.
+  - 최종 `workers.dev`·preview는 off이고 custom domain·route는 0이며 ASSETS와 staging R2 binding은 유지됐다. 2026-08-27 account token은 `DWNC-S3-012` 대상이 아니므로 보존했다. production DNS·route·traffic, R2 overwrite·delete, Git push는 모두 0회다.
+  - [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 version-only와 staging smoke 계약.

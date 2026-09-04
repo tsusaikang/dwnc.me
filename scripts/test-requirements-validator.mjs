@@ -280,8 +280,8 @@ assert.throws(
   () =>
     assertPlainLanguageSummary({
     current: sourceCurrent.replace(
-      '시험용 사이트 프로그램이 없는 경우에만',
-      'Worker가 없는 경우에만',
+      '시험용 사이트 프로그램 최초 생성이',
+      'Worker가 최초 생성되면',
     ),
     }),
   /user summary contains unclear technical wording: Worker가/,
@@ -326,12 +326,14 @@ withFixture(
 
 withFixture(
   {
-    current: sourceCurrent.replace(
-      /^(\| `PLAN-06` \|[^\n]*\| )`대기` \|$/m,
-      '$1`진행 중` |',
-    ),
+    current: sourceCurrent
+      .replace(/^(\| `PLAN-07` \|[^\n]*\| )`대기` \|$/m, '$1`진행 중` |')
+      .replace(
+        /^(\| `PLAN-08` \|[^\n]*\| )`사용자 결정 필요` \|$/m,
+        '$1`진행 중` |',
+      ),
   },
-  (result) => assertRejected(result, /overall plan must have exactly one in-progress PLAN; found 2/),
+  (result) => assertRejected(result, /overall plan must have at most one in-progress PLAN; found 2/),
 );
 
 withFixture(
