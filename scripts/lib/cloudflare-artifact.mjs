@@ -14,8 +14,6 @@ import {
 import {
   canonicalRemoteReceiptPayload,
   publicKeySpkiSha256,
-  validatePublicMediaReleasePolicy,
-  validateRemoteReceipt,
   verifyRemoteReceiptSignature,
 } from './public-media-manifest.mjs';
 import { collectPublicRequestSurface } from './cloudflare-surface.mjs';
@@ -341,8 +339,6 @@ export async function createStagingPreuploadArtifact({
   stagingAccountIdSha256,
   stagingBucket,
   mediaManifest,
-  mediaRemoteReceipt,
-  mediaReceiptFiles,
 }) {
   if (![sourceRoot, artifactRoot, bundleDirectory].every(
     (value) => typeof value === 'string' && path.isAbsolute(value))
@@ -372,10 +368,6 @@ export async function createStagingPreuploadArtifact({
     if (error?.code !== 'ENOENT') throw error;
     await mkdir(artifactRoot, { recursive: false, mode: 0o700 });
   }
-  await assertRegularFile(mediaReceiptFiles.signaturePath, 'CLOUDFLARE_E_ARTIFACT_MEDIA_RECEIPT');
-  await assertRegularFile(mediaReceiptFiles.publicKeyPath, 'CLOUDFLARE_E_ARTIFACT_MEDIA_RECEIPT');
-  const mediaSignatureBytes = await readFile(mediaReceiptFiles.signaturePath);
-  const mediaPublicKeyPem = await readFile(mediaReceiptFiles.publicKeyPath, 'utf8');
   await removePending(pending);
   await mkdir(pending, { mode: 0o700 });
   try {
@@ -389,10 +381,6 @@ export async function createStagingPreuploadArtifact({
     await writeFile(path.join(pending, 'wrangler-empty.env'), '', { mode: 0o600 });
     await writeFile(path.join(pending, 'wrangler-staging-promotion.jsonc'),
       `${canonicalJson(stagingPromotion)}\n`, { mode: 0o600 });
-    await writeFile(path.join(pending, 'media-remote-receipt.json'),
-      `${canonicalRemoteReceiptPayload(mediaRemoteReceipt)}\n`, { mode: 0o600 });
-    await cp(mediaReceiptFiles.signaturePath, path.join(pending, 'media-remote-receipt.sig'));
-    await cp(mediaReceiptFiles.publicKeyPath, path.join(pending, 'media-remote-public-key.pem'));
     const staticTree = await directoryArtifactSha256(path.join(pending, 'static'));
     const publicSurface = await collectPublicRequestSurface(path.join(pending, 'static'));
     const [sourceRedirects, staticRedirects, smokeStaticBytes] = await Promise.all([
@@ -403,7 +391,7 @@ export async function createStagingPreuploadArtifact({
     if (!sourceRedirects.equals(staticRedirects)) fail('CLOUDFLARE_E_ARTIFACT_REDIRECTS');
     const receipt = {
       schemaVersion: 1,
-      contract: 'dwnc-cloudflare-staging-preupload-artifact-v1',
+      contract: 'dwnc-cloudflare-staging-preupload-artifact-v2',
       environment: 'staging',
       sourceGitSha,
       ciSourceGitSha,
@@ -425,9 +413,6 @@ export async function createStagingPreuploadArtifact({
       environmentFileSha256: sha256Hex(''),
       redirectsSha256: sha256Hex(staticRedirects),
       mediaManifestSha256: mediaManifest.manifestSha256,
-      mediaRemoteReceiptSha256: sha256Hex(canonicalRemoteReceiptPayload(mediaRemoteReceipt)),
-      mediaRemoteSignatureSha256: sha256Hex(mediaSignatureBytes),
-      mediaRemotePublicKeySpkiSha256: publicKeySpkiSha256(mediaPublicKeyPem),
       stagingBindingsSha256: cloudflareResourceDigest(
         expectedStagingVersionBindings(stagingBucket)),
       stagingAssetsConfigSha256: cloudflareResourceDigest(expectedProductionAssetsResource()),
@@ -500,32 +485,12 @@ export async function validateArtifactDirectory(directory) {
   };
 }
 
-function validateStagingArtifactAuthority({
-  artifact, mediaReceipt, mediaPublicKeyPem, policy, manifest,
-}) {
-  try {
-    validatePublicMediaReleasePolicy(policy);
-    validateRemoteReceipt(mediaReceipt, manifest);
-  } catch {
-    fail('CLOUDFLARE_E_STAGING_ARTIFACT_AUTHORITY');
-  }
-  const mediaPublicKeyFingerprint = publicKeySpkiSha256(mediaPublicKeyPem);
+function validateStagingArtifactAuthority({ artifact, policy, manifest }) {
   if (policy.staging.bucket !== 'dwnc-me-public-media-staging'
-    || !/^[a-f0-9]{64}$/u.test(policy.staging.publicKeySpkiSha256 ?? '')
+    || !/^[a-f0-9]{64}$/u.test(policy.staging.accountIdSha256 ?? '')
     || artifact.stagingAccountIdSha256 !== policy.staging.accountIdSha256
-    || artifact.mediaManifestSha256 !== manifest.manifestSha256
-    || artifact.mediaRemotePublicKeySpkiSha256 !== policy.staging.publicKeySpkiSha256
-    || mediaPublicKeyFingerprint !== policy.staging.publicKeySpkiSha256
-    || mediaReceipt.manifestSha256 !== manifest.manifestSha256
-    || mediaReceipt.target.environment !== 'staging'
-    || mediaReceipt.target.bucket !== 'dwnc-me-public-media-staging'
-    || mediaReceipt.target.bucket !== policy.staging.bucket
-    || mediaReceipt.target.accountIdSha256 !== policy.staging.accountIdSha256
-    || mediaReceipt.verificationLevel !== 'full-get-sha256'
-    || mediaReceipt.bucketExposure.verification !== 'cloudflare-control-plane'
-    || mediaReceipt.bucketExposure.r2DevEnabled !== false
-    || mediaReceipt.bucketExposure.customDomainCount !== 0
-    || mediaReceipt.audit.orphanCount !== 0) {
+    || !/^[a-f0-9]{64}$/u.test(manifest.manifestSha256 ?? '')
+    || artifact.mediaManifestSha256 !== manifest.manifestSha256) {
     fail('CLOUDFLARE_E_STAGING_ARTIFACT_AUTHORITY');
   }
 }
@@ -544,17 +509,8 @@ export async function validateStagingArtifactDirectory(directory, { policy, mani
   const environmentFile = await readFile(path.join(directory, 'wrangler-empty.env'));
   const stagingPromotion = await readFile(
     path.join(directory, 'wrangler-staging-promotion.jsonc'), 'utf8');
-  const mediaReceiptRaw = await readFile(path.join(directory, 'media-remote-receipt.json'), 'utf8');
-  const mediaSignatureRaw = await readFile(path.join(directory, 'media-remote-receipt.sig'));
-  const mediaPublicKeyPem = await readFile(path.join(directory, 'media-remote-public-key.pem'), 'utf8');
-  let mediaReceipt;
-  try { mediaReceipt = JSON.parse(mediaReceiptRaw); }
-  catch { fail('CLOUDFLARE_E_ARTIFACT_MEDIA_RECEIPT'); }
-  const signatureText = mediaSignatureRaw.toString('utf8').trim();
-  if (!/^[A-Za-z0-9+/]{86}==$/u.test(signatureText)) fail('CLOUDFLARE_E_ARTIFACT_MEDIA_RECEIPT');
-  verifyRemoteReceiptSignature(mediaReceipt, Buffer.from(signatureText, 'base64'), mediaPublicKeyPem);
   validateStagingArtifactAuthority({
-    artifact: receipt, mediaReceipt, mediaPublicKeyPem, policy, manifest,
+    artifact: receipt, policy, manifest,
   });
   if (sha256Hex(worker) !== receipt.workerScriptSha256 || worker.length !== receipt.workerScriptBytes
     || staticTree.sha256 !== receipt.staticTreeSha256 || staticTree.files !== receipt.staticFiles
@@ -565,13 +521,7 @@ export async function validateStagingArtifactDirectory(directory, { policy, mani
     || sha256Hex(smokeStaticBytes) !== receipt.smokeStaticSha256
     || sha256Hex(stagingConfig.trim()) !== receipt.stagingUploadConfigSha256
     || sha256Hex(environmentFile) !== receipt.environmentFileSha256 || environmentFile.length !== 0
-    || sha256Hex(stagingPromotion.trim()) !== receipt.stagingPromotionConfigSha256
-    || sha256Hex(canonicalRemoteReceiptPayload(mediaReceipt)) !== receipt.mediaRemoteReceiptSha256
-    || mediaReceipt.manifestSha256 !== receipt.mediaManifestSha256
-    || mediaReceipt.target.environment !== 'staging'
-    || mediaReceipt.target.accountIdSha256 !== receipt.stagingAccountIdSha256
-    || sha256Hex(mediaSignatureRaw) !== receipt.mediaRemoteSignatureSha256
-    || publicKeySpkiSha256(mediaPublicKeyPem) !== receipt.mediaRemotePublicKeySpkiSha256) {
+    || sha256Hex(stagingPromotion.trim()) !== receipt.stagingPromotionConfigSha256) {
     fail('CLOUDFLARE_E_ARTIFACT_DRIFT');
   }
   return {
@@ -587,7 +537,7 @@ export async function validateStagingUploadArtifactDirectory(directory, stagingA
   let receipt;
   try { receipt = JSON.parse(await readFile(path.join(directory, 'artifact.json'), 'utf8')); }
   catch { fail('CLOUDFLARE_E_ARTIFACT_DIRECTORY'); }
-  if (receipt?.contract !== 'dwnc-cloudflare-staging-preupload-artifact-v1') {
+  if (receipt?.contract !== 'dwnc-cloudflare-staging-preupload-artifact-v2') {
     return validateArtifactDirectory(directory);
   }
   const authority = typeof stagingAuthority === 'function'

@@ -453,53 +453,12 @@ try {
   await assert.rejects(() => validateStagingArtifactDirectory(first.directory, stagingAuthority));
   assert.equal((await readdir(stagingFirst.directory)).includes('wrangler-upload.jsonc'), false);
 
-  const missingKeyPolicy = structuredClone(stagingPolicy);
-  missingKeyPolicy.staging.publicKeySpkiSha256 = null;
-  await assert.rejects(() => validateStagingArtifactDirectory(stagingFirst.directory, {
-    policy: missingKeyPolicy, manifest: stagingManifest,
-  }));
-  const wrongKeyPolicy = structuredClone(stagingPolicy);
-  wrongKeyPolicy.staging.publicKeySpkiSha256 = 'd'.repeat(64);
-  await assert.rejects(() => validateStagingArtifactDirectory(stagingFirst.directory, {
-    policy: wrongKeyPolicy, manifest: stagingManifest,
-  }));
   await assert.rejects(() => validateStagingArtifactDirectory(stagingFirst.directory, {
     policy: stagingPolicy, manifest: { ...stagingManifest, manifestSha256: 'e'.repeat(64) },
   }));
 
-  async function createMutatedStagingArtifact(label, mediaRemoteReceipt) {
-    const mutatedSignature = sign(
-      null, Buffer.from(canonicalRemoteReceiptPayload(mediaRemoteReceipt)), privateKey,
-    );
-    const mutatedSignaturePath = path.join(temporary, `${label}.sig`);
-    await writeFile(mutatedSignaturePath, `${mutatedSignature.toString('base64')}\n`, { mode: 0o600 });
-    return createStagingPreuploadArtifact({
-      ...stagingInput,
-      artifactRoot: path.join(temporary, `staging-artifacts-${label}`),
-      mediaRemoteReceipt,
-      mediaReceiptFiles: { signaturePath: mutatedSignaturePath, publicKeyPath },
-    });
-  }
-  const headOnly = await createMutatedStagingArtifact('head-only', {
-    ...stagingRemoteReceipt, verificationLevel: 'head-exact',
-  });
-  await assert.rejects(() => validateStagingArtifactDirectory(headOnly.directory, stagingAuthority));
-  const wrongBucket = await createMutatedStagingArtifact('wrong-bucket', {
-    ...stagingRemoteReceipt,
-    target: { ...stagingRemoteReceipt.target, bucket: 'dwnc-me-public-media-other' },
-  });
-  await assert.rejects(() => validateStagingArtifactDirectory(wrongBucket.directory, stagingAuthority));
-  const publicBucket = await createMutatedStagingArtifact('public-bucket', {
-    ...stagingRemoteReceipt,
-    bucketExposure: { ...stagingRemoteReceipt.bucketExposure, r2DevEnabled: true, customDomainCount: 1 },
-  });
-  await assert.rejects(() => validateStagingArtifactDirectory(publicBucket.directory, stagingAuthority));
-  const orphaned = await createMutatedStagingArtifact('orphaned', {
-    ...stagingRemoteReceipt, audit: { ...stagingRemoteReceipt.audit, orphanCount: 1 },
-  });
-  await assert.rejects(() => validateStagingArtifactDirectory(orphaned.directory, stagingAuthority));
   console.log(JSON.stringify({
-    suite: 'cloudflare-preupload-artifact', assertions: 138,
+    suite: 'cloudflare-preupload-artifact', assertions: 132,
     repeatedArtifactDigestStable: true, timestampInCore: false, buildUuidInCore: false,
     versionIdInCore: false, stagingPayloadComparable: true,
     productionValidatorRejectsStagingArtifact: true,

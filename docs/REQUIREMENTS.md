@@ -42,9 +42,9 @@
 
 ### 현재 위치
 
-**진행 중인 계획은 `PLAN-06` 하나다.** `PLAN-05`는 완료 상태를 유지한다. `DWNC-S3-009`는 dashboard에서 `dwnc-me-staging`을 만들고 deny-only version `2b543790`을 100% 활성화해 완료했다. `workers.dev`·preview는 disabled이고 custom domain·route·binding은 없다. `DWNC-S3-010`은 별도 에이전트 결과 확인 전까지 다음 단계다.
+**진행 중인 계획은 `PLAN-06` 하나다.** `PLAN-05`와 `DWNC-S3-009`는 완료 상태를 유지한다. `DWNC-S3-010`의 staging artifact는 source SHA `0e74dfdf8be0fc93bfeeb0089b1d5b0c79b2ccf3` 기준 `/private/tmp/dwnc-staging-preupload-2rdjnV/staging-artifact-68ec15b0df03d63840d3ac002fee81150977f3bdb10d1a568afb499d069d47b2`에 준비됐고 upload·activation은 0회다. 기존 OAuth 로그인은 없다.
 
-사용자에게 이는 **실제 도메인과 연결되지 않은 차단 전용 시험 Worker가 준비됐다는 뜻**이다. 다음에는 `DWNC-S3-010` 결과를 확인해 시험용 version과 동작 점검을 이어간다.
+사용자에게 이는 **시험용 version을 올리기 직전의 파일 묶음까지 준비됐지만 아직 올리거나 적용하지 않았다는 뜻**이다. 다음에는 일회용 token의 자식 환경 전달과 지속 OAuth 중 하나를 선택하도록 이전 제약을 명시적으로 바꾼 뒤 진행한다.
 
 ### 미디어 정리 결과
 
@@ -61,18 +61,18 @@
 
 ### 아직 결정할 일과 진행을 막는 조건
 
-1. 승인된 v3 실행은 원인을 특정하지 못한 exit 1 뒤 terminal cleanup까지 완료했고 승인 묶음은 소진됐다. observer 보강과 새 승인 전에는 재실행하지 않으며 실패·모호한 결과에서는 재시도하지 않는다.
+1. `DWNC-S3-010` upload를 위해서는 기존 OAuth가 없는 상태에서 일회용 token 자식 환경 전달 또는 지속 OAuth 중 하나를 선택하는 명시적 제약 변경이 필요하다.
 2. 보존 receipt는 아직 unsigned이고, `PLAN-06` 적용 검사가 비공개 확인의 유효시각을 같은 시작시점 기준으로 판단할지는 별도 후속 확인 사항이다.
-3. 파일을 방문자에게 보여 줄 시험용 사이트 프로그램은 아직 만들지 않았다. v3 실패 결과를 올바르게 확인하도록 observer를 보강하고 새 승인을 받아 `DWNC-S3-009`를 완료한 뒤에만 `DWNC-S3-010`으로 진행한다.
+3. deny-only Worker 생성과 staging artifact 준비는 완료됐지만 version upload·activation·원격 점검은 아직 실행하지 않았다.
 4. 새 글 작성 방식과 비공개 자료의 백업·복구 방식은 최종 운영 전에 결정해야 한다. 공유·스크랩 글 10개, 과거 댓글과 추가 개선은 사용자가 원할 때 정하는 후속 선택이며 Stage 3를 막지 않는다.
 
 ### 바로 다음 작업
 
-1. v3 direct stdin 자식의 exit 1 결과를 stderr에서 제한된 크기로 해석하고 고정 schema를 확인하도록 메인 observer를 보강한 뒤 새 사용자 승인을 받는다. 나머지 원인과 수정 범위는 그 결과로 판단한다. 그 전에는 새 token 생성·전달·초기화·bootstrap을 하지 않으며 실패·모호한 결과에서는 재시도하지 않는다.
-2. `DWNC-S3-009` 완료 뒤 `DWNC-S3-010`에서 확정된 Git 기록 기준 빌드·검사 한 묶음과 새 버전만 올려 시험용으로 적용한다.
+1. 일회용 token의 자식 환경 전달 또는 지속 OAuth 중 하나를 선택하도록 이전 제약을 명시적으로 변경한다.
+2. 준비된 `DWNC-S3-010` artifact를 기준으로 새 version만 올려 시험용으로 적용한다.
 3. 시험용 확인이 통과하면 최종 운영에 실제 필요한 Cloudflare 자원만 같은 방식으로 준비한다. 새 보조 도구·복구 체계·서명 체계·영수증 체계·장애주입·모의훈련·반복 독립검토는 추가하지 않으며, 실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하지 않는다.
 
-현재 `PLAN-05`의 원격 무결성 확인과 token 정리는 모두 완료됐다. `PLAN-06`은 승인된 `DWNC-S3-009` v3 실행이 원인을 특정하지 못한 exit 1로 끝난 뒤 terminal cleanup을 완료했고 승인 묶음은 소진됐다. observer 보강과 새 승인 전에는 재실행하지 않으며 `DWNC-S3-010`은 차단한다. 실제 `dwnc.me` 주소 연결은 `PLAN-08`에서 사용자가 결정할 때만 진행한다.
+현재 `PLAN-05`와 `DWNC-S3-009`는 완료됐다. `DWNC-S3-010` artifact는 준비됐지만 upload·activation은 0회이며, 다음 외부 실행 전에 인증 방식에 관한 이전 제약을 명시적으로 변경해야 한다. 실제 `dwnc.me` 주소 연결은 `PLAN-08`에서 사용자가 결정할 때만 진행한다.
 
 ### 최근 완료
 
@@ -125,7 +125,7 @@
 
 ### `DWNC-S3-010` — staging version-only upload·activation·synthetic smoke
 - **Status:** `in-progress`
-- **Updated-at:** `2026-08-28`
+- **Updated-at:** `2026-09-04`
 - **Plans:** `PLAN-06`
 - **Priority:** `P0`
 - **Acceptance:**
@@ -135,6 +135,7 @@
   - 통과한 정확한 Git SHA와 Cloudflare version ID를 기록하고, 새 로컬 모의시험이나 독립검토를 추가하지 않는다.
   - 실제 `dwnc.me` 도메인·DNS는 변경하지 않는다.
 - **Evidence:**
+  - source SHA `0e74dfdf8be0fc93bfeeb0089b1d5b0c79b2ccf3`의 staging artifact를 `/private/tmp/dwnc-staging-preupload-2rdjnV/staging-artifact-68ec15b0df03d63840d3ac002fee81150977f3bdb10d1a568afb499d069d47b2`에 준비했다. remote receipt·signature·public-key 의존은 제거하고 local HEAD fallback과 stale assertion을 정리했다. upload·activation은 0회이고 기존 OAuth 로그인은 없다.
   - 선행 요구사항 `DWNC-S3-008`과 `DWNC-S3-009`는 완료됐다. 별도 에이전트 결과를 확인·통합하는 단계다.
   - `docs/EDGE_REDIRECTS_V1.json`을 Worker가 직접 읽도록 연결했다. 시작할 때 기준 주소·349개·308·출발/도착 주소 중복·안전하지 않은 경로·미디어 경로 충돌을 모두 검사한다.
   - 로컬에서 349개를 GET·HEAD로 한 번씩, 총 698건 모두 확인했다. 응답은 정확한 상대 새 주소와 빈 본문을 반환하고, 들어온 query는 새 주소에 붙이지 않는다. 이 698건에서 정적 파일·R2·미디어 캐시는 한 번도 조회하지 않았다.

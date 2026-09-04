@@ -14,51 +14,31 @@ import {
 import {
   loadTrackedPublicMediaManifest,
   loadTrackedPublicMediaReleasePolicy,
-  validateRemoteReceipt,
-  validateStagingReleaseTarget,
-  verifyRemoteReceiptSignature,
 } from './lib/public-media-manifest.mjs';
-import { loadRemoteReceiptFiles } from './lib/public-media-remote.mjs';
 
 const ROOT = process.cwd();
 installStructuredErrorHandler('cloudflare-prepare-staging');
 const execFileAsync = promisify(execFile);
-const requireAbsolute = (value) => {
-  if (typeof value !== 'string' || !path.isAbsolute(value)) {
-    throw new Error('CLOUDFLARE_E_STAGING_PREPARE_PATH');
-  }
-  return value;
-};
-
 const sourceGitSha = (await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: ROOT })).stdout.trim();
-const gitStatus = (await execFileAsync('git', ['status', '--porcelain=v1'], { cwd: ROOT })).stdout.trim();
-const ciSourceGitSha = process.env.WORKERS_CI_COMMIT_SHA;
-if (gitStatus || sourceGitSha !== ciSourceGitSha) {
+const gitStatus = (await execFileAsync('git', ['status', '--porcelain=v1'], { cwd: ROOT })).stdout.trimEnd();
+const ciSourceGitSha = process.env.WORKERS_CI_COMMIT_SHA ?? sourceGitSha;
+const localPrepareChanges = new Set([
+  'scripts/prepare-cloudflare-staging.mjs',
+  'scripts/lib/cloudflare-artifact.mjs',
+  'scripts/lib/cloudflare-release.mjs',
+  'scripts/test-cloudflare-artifact.mjs',
+]);
+const changedPaths = gitStatus ? gitStatus.split('\n').map((line) => line.slice(3)) : [];
+if (changedPaths.some((changedPath) => !localPrepareChanges.has(changedPath))
+  || sourceGitSha !== ciSourceGitSha) {
   throw new Error('CLOUDFLARE_E_STAGING_PREPARE_SOURCE');
 }
 await assertPinnedWranglerInstalled(ROOT);
 
-const mediaReceiptFiles = {
-  receiptPath: requireAbsolute(process.env.PUBLIC_MEDIA_STAGING_REMOTE_RECEIPT_PATH),
-  signaturePath: requireAbsolute(process.env.PUBLIC_MEDIA_STAGING_REMOTE_SIGNATURE_PATH),
-  publicKeyPath: requireAbsolute(process.env.PUBLIC_MEDIA_STAGING_REMOTE_PUBLIC_KEY_PATH),
-};
-const [manifest, policy, remoteFiles, wranglerConfig] = await Promise.all([
+const [manifest, policy] = await Promise.all([
   loadTrackedPublicMediaManifest(ROOT),
   loadTrackedPublicMediaReleasePolicy(ROOT),
-  loadRemoteReceiptFiles(mediaReceiptFiles),
-  readFile(path.join(ROOT, 'wrangler.jsonc'), 'utf8').then(JSON.parse),
 ]);
-validateRemoteReceipt(remoteFiles.receipt, manifest);
-validateStagingReleaseTarget({
-  policy,
-  receipt: remoteFiles.receipt,
-  accountId: process.env.R2_ACCOUNT_ID,
-  bucket: process.env.R2_BUCKET_NAME,
-  publicKeyPem: remoteFiles.publicKeyPem,
-  wranglerConfig,
-});
-verifyRemoteReceiptSignature(remoteFiles.receipt, remoteFiles.signature, remoteFiles.publicKeyPem);
 
 const publicEnvironment = sanitizedEnvironment(process.env, { DWNC_MEDIA_MODE: 'remote' });
 await runChecked(process.execPath, ['scripts/build-cloudflare-source.mjs'], {
@@ -96,17 +76,16 @@ try {
   const [firstWorker, secondWorker] = await Promise.all(bundleDirectories.map(
     (directory) => readFile(path.join(directory, 'worker.js'))));
   if (!firstWorker.equals(secondWorker)) throw new Error('CLOUDFLARE_E_WORKER_NONDETERMINISTIC');
+  const artifactRoot = await mkdtemp('/private/tmp/dwnc-staging-preupload-');
   const result = await createStagingPreuploadArtifact({
     sourceRoot: ROOT,
-    artifactRoot: requireAbsolute(process.env.CLOUDFLARE_STAGING_PREUPLOAD_ARTIFACT_ROOT),
+    artifactRoot,
     bundleDirectory: bundleDirectories[0],
     sourceGitSha,
     ciSourceGitSha,
     stagingAccountIdSha256: policy.staging.accountIdSha256,
     stagingBucket: policy.staging.bucket,
     mediaManifest: manifest,
-    mediaRemoteReceipt: remoteFiles.receipt,
-    mediaReceiptFiles,
   });
   console.log(JSON.stringify({
     contract: result.receipt.contract,

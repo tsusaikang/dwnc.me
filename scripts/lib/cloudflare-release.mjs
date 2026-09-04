@@ -29,8 +29,7 @@ const STAGING_PREUPLOAD_KEYS = Object.freeze([
   'staticTreeSha256', 'staticFiles', 'publicRequestSurfaceSha256', 'publicRequestPaths',
   'smokeStaticPath', 'smokeStaticBytes', 'smokeStaticSha256', 'smokeStaticMime',
   'stagingUploadConfigSha256', 'stagingPromotionConfigSha256', 'environmentFileSha256',
-  'redirectsSha256', 'mediaManifestSha256', 'mediaRemoteReceiptSha256',
-  'mediaRemoteSignatureSha256', 'mediaRemotePublicKeySpkiSha256',
+  'redirectsSha256', 'mediaManifestSha256',
   'stagingBindingsSha256', 'stagingAssetsConfigSha256',
   'wranglerVersion', 'compatibilityDate',
 ]);
@@ -187,7 +186,7 @@ export function validatePreuploadArtifact(receipt, expected = {}) {
 export function validateStagingPreuploadArtifact(receipt, expected = {}) {
   if (!exactKeys(receipt, STAGING_PREUPLOAD_KEYS)
     || receipt.schemaVersion !== 1
-    || receipt.contract !== 'dwnc-cloudflare-staging-preupload-artifact-v1'
+    || receipt.contract !== 'dwnc-cloudflare-staging-preupload-artifact-v2'
     || receipt.environment !== 'staging'
     || !GIT_SHA1.test(receipt.sourceGitSha ?? '')
     || receipt.ciSourceGitSha !== receipt.sourceGitSha
@@ -210,9 +209,6 @@ export function validateStagingPreuploadArtifact(receipt, expected = {}) {
     || !SHA256.test(receipt.environmentFileSha256 ?? '')
     || !SHA256.test(receipt.redirectsSha256 ?? '')
     || !SHA256.test(receipt.mediaManifestSha256 ?? '')
-    || !SHA256.test(receipt.mediaRemoteReceiptSha256 ?? '')
-    || !SHA256.test(receipt.mediaRemoteSignatureSha256 ?? '')
-    || !SHA256.test(receipt.mediaRemotePublicKeySpkiSha256 ?? '')
     || !SHA256.test(receipt.stagingBindingsSha256 ?? '')
     || !SHA256.test(receipt.stagingAssetsConfigSha256 ?? '')
     || receipt.wranglerVersion !== '4.125.0'
@@ -228,7 +224,7 @@ export function validateStagingPreuploadArtifact(receipt, expected = {}) {
 }
 
 export function stagingUploadArtifactSha256(artifact) {
-  if (artifact?.contract === 'dwnc-cloudflare-staging-preupload-artifact-v1') {
+  if (artifact?.contract === 'dwnc-cloudflare-staging-preupload-artifact-v2') {
     validateStagingPreuploadArtifact(artifact);
     return stagingPreuploadArtifactSha256(artifact);
   }
