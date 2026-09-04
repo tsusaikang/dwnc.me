@@ -1,6 +1,6 @@
 # dwnc.me 프로젝트 공식 상태
 
-최종 갱신: 2026-09-04 KST — staging 비공개 상태와 실제 2,758개 full GET/SHA-256 검증 완료, 감사용 validator 폐기·로컬 정리 완료
+최종 갱신: 2026-09-04 KST — staging 비공개 상태와 실제 2,758개 full GET/SHA-256 검증 완료, 과거 token 식별 미해결로 PLAN-06 차단
 
 사용자가 확인할 현재 목표·결정·진행을 막는 조건·다음 단계와 stable requirement ID는 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)를 기준으로 한다. 이 문서는 구현 세부사항, 검증 수치, Git·Cloudflare 상태 재확인 결과와 인수인계를 보존하는 기술 기준점이다. 완료 이력은 요구사항 원장의 보관 정책에 따라 [`docs/REQUIREMENTS_ARCHIVE.md`](docs/REQUIREMENTS_ARCHIVE.md)로 이동하되 이 기술 증거를 삭제하지 않는다.
 
@@ -65,10 +65,12 @@
 - `PLAN-03` 독립 사이트와 주소 체계: 완료
 - `PLAN-04` 공개 미디어 정리: 완료
 - `PLAN-05` 시험용 R2 실제 내용 확인과 열쇠 정리: **진행 중**. 계정 결속, 저장소 비공개 확인, 실제 2,758개 GET/SHA-256 비교와 이번 validator 원격 폐기·로컬 Keychain 정리는 완료됐다. 사용 불가능한 기존 원격 token의 정확한 상태 확인과 정리만 남았다.
-- `PLAN-06` 시험용 사이트 프로그램·버전·사이트 점검: **대기**. 프로그램이 없을 때만 최소 차단용 프로그램을 만들고, 확정된 Git 기록 기준 관련 빌드·검사 한 묶음 → version-only upload → staging-only activation과 시험용 주소 활성화 → 정적 대표 페이지, 예전 주소 GET·HEAD 698회, media GET·HEAD·304·206·416 확인 → 정확한 Git SHA와 version ID 기록 순서다.
+- `PLAN-06` 시험용 사이트 프로그램·버전·사이트 점검: **차단**. `PLAN-05`의 과거 token 두 개를 정확히 식별할 근거가 확보되거나 사용자가 완료조건 변경을 승인해 `PLAN-05`가 공식적으로 닫힌 뒤에만 시작한다. 이후 순서는 프로그램이 없을 때만 최소 차단용 프로그램 생성 → 확정된 Git 기록 기준 관련 빌드·검사 한 묶음 → version-only upload → staging-only activation과 시험용 주소 활성화 → 정적 대표 페이지, 예전 주소 GET·HEAD 698회, media GET·HEAD·304·206·416 확인 → 정확한 Git SHA와 version ID 기록이다.
 - `PLAN-07` 운영용 이름의 Cloudflare 자원·버전 준비: 대기. `PLAN-06` 통과 뒤 최종 운영에 실제 필요한 자원만 준비하며 새 보조 도구·모의훈련·반복 검증은 추가하지 않는다.
 - `PLAN-08` 실제 도메인 연결과 운영 전환 검증: 사용자 결정 필요
 - `PLAN-09` 새 글 작성·비공개 백업 운영 결정: 사용자 결정 필요. 두 항목은 최종 운영에 필요하고, 공유 글 10개·댓글·추가 개선은 사용자 선택 후속으로 Stage 3를 막지 않는다.
+
+인수인계 상태: `PLAN-05`의 실제 2,758개 원격 감사와 이번 validator 정리는 완료됐지만 과거 이름 미기록 token 두 개의 exact identity가 미해결이다. 식별 근거 또는 사용자 승인에 따른 완료조건 결정 전까지 `PLAN-06`은 차단 상태다.
 
 요구사항과 계획의 자세한 연결은 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)를 기준으로 한다. 최종 결과·완료조건·범위·순서·승인 범위가 실제로 바뀔 때만 요구사항 번호, 관련 계획, 우선순위, 완료 기준, 상태와 근거 및 현재 위치를 갱신한다. 단순 질문·설명·진행 확인과 이미 기록된 작업의 계속 지시는 새 요구사항으로 만들지 않는다.
 
@@ -530,8 +532,8 @@
 
 ## 다음 단계
 
-1. `PLAN-05`의 실제 staging 비공개 확인, 2,758개 전수 GET/SHA-256와 이번 validator 원격·로컬 정리는 완료됐다. 보존 receipt와 capture를 유지한 채 사용 불가능한 기존 원격 token만 정확히 식별해 상태를 확인하고 정리한다.
-2. 전수 비교가 통과하면 `dwnc-me-staging`이 없을 때만 외부 요청을 모두 거부하는 최소 차단용 프로그램을 한 번 만든다. 확정된 Git 기록 기준 관련 빌드·검사 한 묶음, version-only upload, staging-only activation과 시험용 주소 활성화, 대표 정적 페이지, 예전 주소 GET·HEAD 698회 및 media GET·HEAD·304·206·416 확인을 이어서 수행하고 정확한 Git SHA와 version ID를 기록한다.
+1. `PLAN-05`의 실제 staging 비공개 확인, 2,758개 전수 GET/SHA-256와 이번 validator 원격·로컬 정리는 완료됐다. 보존 receipt와 capture를 유지한 채 사용 불가능한 기존 원격 token의 exact identity 근거를 확보해 정리하거나, 사용자가 현재 증거에 맞춘 완료조건 변경을 결정해야 `PLAN-05`를 닫을 수 있다.
+2. `PLAN-05`가 공식적으로 닫히면 `dwnc-me-staging`이 없을 때만 외부 요청을 모두 거부하는 최소 차단용 프로그램을 한 번 만든다. 확정된 Git 기록 기준 관련 빌드·검사 한 묶음, version-only upload, staging-only activation과 시험용 주소 활성화, 대표 정적 페이지, 예전 주소 GET·HEAD 698회 및 media GET·HEAD·304·206·416 확인을 이어서 수행하고 정확한 Git SHA와 version ID를 기록한다.
 3. 시험용 확인이 통과하면 최종 운영에 실제 필요한 Cloudflare 자원만 같은 방식으로 준비한다. 새 보조 도구·복구 체계·서명·영수증·장애주입·모의훈련·반복 독립감사는 추가하지 않는다. 새 글 작성 방식과 비공개 백업은 최종 운영 전에 정하되 Stage 3를 막지 않으며, 공유 글 10개·댓글·추가 개선은 사용자가 원할 때만 진행한다. 실제 `dwnc.me` 도메인·DNS·route 연결은 사용자가 결정할 때만 수행한다.
 
 ## 중요한 제약과 주의사항
