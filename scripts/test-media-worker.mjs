@@ -1,20 +1,8 @@
 import assert from 'node:assert/strict';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import edgeRedirectManifest from '../docs/EDGE_REDIRECTS_V1.json' with { type: 'json' };
 import { createMediaWorker } from '../src/lib/media-worker.ts';
 import { publicMediaEntryManifestSha256 } from './lib/public-media-manifest.mjs';
-
-// Node 24's Web Crypto surface does not yet expose the Workers-only method.
-// The production Worker calls crypto.subtle.timingSafeEqual directly; this shim
-// keeps the Node fixture behavior equivalent without changing Worker code.
-if (typeof crypto.subtle.timingSafeEqual !== 'function') {
-  Object.defineProperty(crypto.subtle, 'timingSafeEqual', {
-    value: (left, right) => timingSafeEqual(
-      Buffer.from(left.buffer ?? left, left.byteOffset ?? 0, left.byteLength),
-      Buffer.from(right.buffer ?? right, right.byteOffset ?? 0, right.byteLength),
-    ),
-  });
-}
 
 const manifestSha256 = 'a'.repeat(64);
 const bytes = Buffer.from('0123456789abcdef');
@@ -177,58 +165,13 @@ const equal = (actual, expected) => { assert.equal(actual, expected); assertions
 }
 
 {
-  const smokeToken = 'A'.repeat(43);
   const workerEnvironment = {
     DWNC_DEPLOYMENT_ENVIRONMENT: 'staging',
-    DWNC_STAGING_SMOKE_POLICY: 'bearer-token-non-access-origin',
-    DWNC_STAGING_SMOKE_ORIGIN: 'https://dwnc-me-staging.dwnc.workers.dev',
-    DWNC_STAGING_SMOKE_TOKEN: smokeToken,
     CF_VERSION_METADATA: { id: '22345678-1234-4123-8123-123456789abc' },
   };
-  const denied = environment({ workerEnvironment });
-  const deniedResponse = await handle(new Request('https://dwnc-me-staging.dwnc.workers.dev/about'), denied.env);
-  equal(deniedResponse.status, 404);
-  equal(denied.calls.assets.length, 0);
-
-  for (const authorization of [
-    `Bearer ${smokeToken.slice(0, -1)}`,
-    `Bearer ${smokeToken}x`,
-    `Bearer ${'x'.repeat(smokeToken.length)}`,
-    `Bearer ${'A'.repeat(44)}`,
-    smokeToken,
-  ]) {
-    const invalid = environment({ workerEnvironment });
-    const invalidResponse = await handle(new Request('https://dwnc-me-staging.dwnc.workers.dev/about', {
-      headers: { authorization },
-    }), invalid.env);
-    equal(invalidResponse.status, 404);
-    equal(invalid.calls.assets.length, 0);
-  }
-
-  const legacyPolicy = environment({
-    workerEnvironment: { ...workerEnvironment, DWNC_STAGING_SMOKE_POLICY: 'signed-header-non-access-origin' },
-  });
-  const legacyPolicyResponse = await handle(new Request('https://dwnc-me-staging.dwnc.workers.dev/about', {
-    headers: { authorization: `Bearer ${smokeToken}` },
-  }), legacyPolicy.env);
-  equal(legacyPolicyResponse.status, 404);
-  equal(legacyPolicy.calls.assets.length, 0);
-
-  const oversizedConfiguredToken = environment({
-    workerEnvironment: { ...workerEnvironment, DWNC_STAGING_SMOKE_TOKEN: 'A'.repeat(44) },
-  });
-  const oversizedConfiguredTokenResponse = await handle(new Request(
-    'https://dwnc-me-staging.dwnc.workers.dev/about', {
-      headers: { authorization: `Bearer ${'A'.repeat(44)}` },
-    },
-  ), oversizedConfiguredToken.env);
-  equal(oversizedConfiguredTokenResponse.status, 404);
-  equal(oversizedConfiguredToken.calls.assets.length, 0);
-
   const allowed = environment({ workerEnvironment });
-  const allowedResponse = await handle(new Request('https://dwnc-me-staging.dwnc.workers.dev/about', {
-    headers: { authorization: `Bearer ${smokeToken}` },
-  }), allowed.env);
+  const allowedResponse = await handle(
+    new Request('https://dwnc-me-staging.dwnc.workers.dev/about'), allowed.env);
   equal(allowedResponse.status, 200);
   equal(allowedResponse.headers.get('x-dwnc-staging-version'), workerEnvironment.CF_VERSION_METADATA.id);
   equal(allowed.calls.assets.length, 1);
@@ -248,7 +191,7 @@ const equal = (actual, expected) => { assert.equal(actual, expected); assertions
   const cacheHit = environment({ cached, workerEnvironment });
   const cacheHitResponse = await handle(new Request(
     `https://dwnc-me-staging.dwnc.workers.dev${entry.publicPath}`,
-    { headers: { authorization: `Bearer ${smokeToken}`, 'x-dwnc-smoke-cache-probe': '1' } },
+    { headers: { 'x-dwnc-smoke-cache-probe': '1' } },
   ), cacheHit.env);
   equal(cacheHitResponse.status, 200);
   equal(cacheHitResponse.headers.get('x-dwnc-cache-probe'), 'HIT');

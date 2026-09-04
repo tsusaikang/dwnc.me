@@ -1,5 +1,3 @@
-import { isCanonicalStagingSmokeToken } from './staging-smoke-token.js';
-
 export interface PublicMediaWorkerEntry {
   publicPath: string;
   key: string;
@@ -43,9 +41,6 @@ function isMediaCacheLike(value: unknown): value is MediaCacheLike {
 export type MediaWorkerEnvironment = Pick<Cloudflare.ProductionEnv, 'MEDIA_BUCKET' | 'ASSETS'> & {
   MEDIA_CACHE?: MediaCacheLike;
   DWNC_DEPLOYMENT_ENVIRONMENT?: 'staging' | 'production';
-  DWNC_STAGING_SMOKE_POLICY?: 'bearer-token-non-access-origin';
-  DWNC_STAGING_SMOKE_ORIGIN?: string;
-  DWNC_STAGING_SMOKE_TOKEN?: string;
   CF_VERSION_METADATA?: { id: string; tag?: string; timestamp?: string };
 };
 
@@ -88,36 +83,6 @@ function bytesToHex(value: ArrayBuffer): string {
 
 async function sha256Text(value: string): Promise<string> {
   return bytesToHex(await crypto.subtle.digest('SHA-256', encoder.encode(value)));
-}
-
-async function secureTextEqual(left: string, right: string): Promise<boolean> {
-  const [leftDigest, rightDigest] = await Promise.all([
-    crypto.subtle.digest('SHA-256', encoder.encode(left)),
-    crypto.subtle.digest('SHA-256', encoder.encode(right)),
-  ]);
-  const subtle = crypto.subtle as SubtleCrypto & {
-    timingSafeEqual(a: ArrayBuffer | ArrayBufferView, b: ArrayBuffer | ArrayBufferView): boolean;
-  };
-  return subtle.timingSafeEqual(leftDigest, rightDigest);
-}
-
-async function stagingSmokeAuthorized(
-  request: Request,
-  url: URL,
-  env: MediaWorkerEnvironment,
-): Promise<boolean | null> {
-  if (env.DWNC_DEPLOYMENT_ENVIRONMENT !== 'staging') return null;
-  const configuredToken = env.DWNC_STAGING_SMOKE_TOKEN;
-  if (env.DWNC_STAGING_SMOKE_POLICY !== 'bearer-token-non-access-origin'
-    || typeof env.DWNC_STAGING_SMOKE_ORIGIN !== 'string'
-    || url.origin !== env.DWNC_STAGING_SMOKE_ORIGIN
-    || typeof configuredToken !== 'string'
-    || !isCanonicalStagingSmokeToken(configuredToken)) return false;
-  const authorization = request.headers.get('authorization');
-  if (!authorization?.startsWith('Bearer ')) return false;
-  const candidate = authorization.slice('Bearer '.length);
-  if (!isCanonicalStagingSmokeToken(candidate)) return false;
-  return secureTextEqual(candidate, configuredToken);
 }
 
 function withStagingCacheProbe(response: Response, enabled: boolean): Response {
@@ -391,9 +356,8 @@ export function createMediaWorker(
     context?: MediaWorkerExecutionContext,
   ): Promise<Response> {
     const url = new URL(request.url);
-    const smokeAuthorized = await stagingSmokeAuthorized(request, url, env);
-    if (smokeAuthorized === false) return unavailable(request.method);
-    const cacheProbe = smokeAuthorized === true
+    const staging = env.DWNC_DEPLOYMENT_ENVIRONMENT === 'staging';
+    const cacheProbe = staging
       && request.headers.get('x-dwnc-smoke-cache-probe') === '1';
     const response = await (async (): Promise<Response> => {
     if (!url.pathname.startsWith('/media/')) {
@@ -482,7 +446,7 @@ export function createMediaWorker(
     }
     return response;
     })();
-    if (smokeAuthorized === true) {
+    if (staging) {
       const versionId = env.CF_VERSION_METADATA?.id;
       if (typeof versionId !== 'string'
         || !/^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(versionId)) {

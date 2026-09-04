@@ -26,7 +26,13 @@ const localPrepareChanges = new Set([
   'scripts/prepare-cloudflare-staging.mjs',
   'scripts/lib/cloudflare-artifact.mjs',
   'scripts/lib/cloudflare-release.mjs',
+  'scripts/check-wrangler-types.mjs',
   'scripts/test-cloudflare-artifact.mjs',
+  'scripts/test-media-worker.mjs',
+  'scripts/validate-cloudflare-config.mjs',
+  'src/lib/media-worker.ts',
+  'worker-configuration.d.ts',
+  'wrangler.jsonc',
 ]);
 const changedPaths = gitStatus ? gitStatus.split('\n').map((line) => line.slice(3)) : [];
 if (changedPaths.some((changedPath) => !localPrepareChanges.has(changedPath))

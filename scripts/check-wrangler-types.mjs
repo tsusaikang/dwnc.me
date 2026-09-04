@@ -41,16 +41,16 @@ try {
   if (!canonical.includes('interface ProductionEnv')
     || !canonical.includes('MEDIA_BUCKET: R2Bucket;')
     || !canonical.includes('ASSETS: Fetcher;')
-    || !canonical.includes('DWNC_STAGING_SMOKE_TOKEN: string;')
     || !production.includes('MEDIA_BUCKET: R2Bucket;')
     || !production.includes('CF_VERSION_METADATA: WorkerVersionMetadata;')
+    || canonical.includes('DWNC_STAGING_SMOKE_TOKEN: string;')
     || production.includes('DWNC_STAGING_SMOKE_TOKEN: string;')) {
     throw new Error('CLOUDFLARE_E_WRANGLER_TYPES_BINDINGS');
   }
   console.log(JSON.stringify({
     wrangler: '4.125.0',
     canonicalTypesDrift: 0,
-    canonicalBindings: ['ASSETS', 'MEDIA_BUCKET', 'DWNC_STAGING_SMOKE_TOKEN'],
+    canonicalBindings: ['ASSETS', 'MEDIA_BUCKET'],
     productionEnvironmentProbe: true,
   }, null, 2));
 } finally {

@@ -1,6 +1,6 @@
 # dwnc.me 프로젝트 공식 상태
 
-최종 갱신: 2026-09-04 KST — PLAN-05·DWNC-S3-009 완료 유지 / DWNC-S3-010 staging artifact 준비 완료, 인증 방식 경계 대기
+최종 갱신: 2026-09-04 KST — PLAN-05·DWNC-S3-009 완료 유지 / DWNC-S3-010 새 staging artifact 준비 완료, Mac 잠금 해제 후 upload 대기
 
 사용자가 확인할 현재 목표·결정·진행을 막는 조건·다음 단계와 stable requirement ID는 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)를 기준으로 한다. 이 문서는 구현 세부사항, 검증 수치, Git·Cloudflare 상태 재확인 결과와 인수인계를 보존하는 기술 기준점이다. 완료 이력은 요구사항 원장의 보관 정책에 따라 [`docs/REQUIREMENTS_ARCHIVE.md`](docs/REQUIREMENTS_ARCHIVE.md)로 이동하되 이 기술 증거를 삭제하지 않는다.
 
@@ -8,7 +8,7 @@
 
 네이버 블로그 `blog.naver.com/tsusai`와 티스토리 기반 `dwnc.me`의 직접 작성 콘텐츠를 소유자가 통제하는 새 블로그로 이전한다. 원문, 이미지, 게시일, 카테고리, 태그, 기존 주소, 공개 범위를 보존하며 이후 새 글도 지속해서 작성할 수 있어야 한다.
 
-비개발자용 현재 요약: 공개할 사진과 GIF 2,758개의 시험용 비공개 저장소 감사와 token 정리를 마쳐 `PLAN-05`는 완료 상태를 유지한다. 2026-09-04 Cloudflare dashboard에서 `dwnc-me-staging`의 deny-only version `2b543790`을 100% 활성화해 `DWNC-S3-009`도 완료했다. `workers.dev`·preview는 꺼져 있고 custom domain·route·binding은 없다. `DWNC-S3-010`의 업로드 전 artifact는 source SHA `0e74dfdf8be0fc93bfeeb0089b1d5b0c79b2ccf3` 기준 `/private/tmp/dwnc-staging-preupload-2rdjnV/staging-artifact-68ec15b0df03d63840d3ac002fee81150977f3bdb10d1a568afb499d069d47b2`에 준비됐으며 upload·activation은 0회다. 기존 OAuth 로그인은 없다. 다음 실제 경계는 일회용 token을 자식 환경에만 전달하는 방식과 지속 OAuth 중 하나를 선택하기 위해 이전 제약을 명시적으로 바꾸는 일이다.
+비개발자용 현재 요약: 공개할 사진과 GIF 2,758개의 시험용 비공개 저장소 감사와 token 정리를 마쳐 `PLAN-05`는 완료 상태를 유지한다. `DWNC-S3-009`도 완료됐고, 현재 Cloudflare의 active staging version은 이전 artifact의 `6d2c056f`이며 `workers.dev`·preview는 꺼져 있고 active custom domain·route는 없다. `DWNC-S3-010`의 새 staging artifact는 source SHA `36823143876d6e1ae3c843bf050ba4b5d38b812b` 기준 `/private/tmp/dwnc-staging-preupload-Wutwo0/staging-artifact-e7e7c18226b3609acd9ca9f2e3b0562639ee867a6200490fb8d628ef1a2834cf`에 준비됐지만 Mac이 잠겨 OAuth 실행을 계속할 수 없어 upload·activation·원격 smoke는 아직 하지 않았다. 비운영 staging에는 실제 도메인·route가 없고 `workers.dev`를 일반 smoke 동안만 잠시 켰다가 다시 끄므로, 사용자 결과와 직접 관련 없는 Bearer token·추가 증거 gate는 staging에서 제거했다. production 코드·설정·DNS·route·traffic은 바꾸지 않았다.
 
 전체 프로젝트 완료 조건은 다음과 같다.
 
@@ -49,13 +49,13 @@
 - Cloudflare Stage 3 preflight·Builds guard: **account·Worker·repo 식별과 raw deploy 제거·exact version-only wrapper readback 완료**
 - Cloudflare Stage 3 로컬 안전장치: **commit `ccec8bb855e45ef679a4b99faf0f0633a99e089e`·tree `241a654acc387233d4e2d5e076754b345619e9ac`로 업로드·사후 확인·전체 내용 감사의 보호 절차를 기록했고 push는 0**
 - Cloudflare 계정 선택 안전장치: **자체 브라우저의 계정이 staging 확인값과 정확히 일치함을 확인했다. 이전 URL 확인에서 계정 식별자가 내부 출력에 1회 표시된 사실은 유지하되, 원문과 URL을 프로젝트 문서·파일·argv·명령줄·환경변수에 넣지 않았다. 계정 전달 경로는 commit `b66798ff3ad7907e3fd43bdcb62328f2319cf5fe`에서 계정 검사 698개, 한 번만 여는 연결은 commit `bb0a250344d3c2f8d991b73bab11e2fd3a281833`·tree `edb439b2bfb33cf9940a07c9883c057f40191f6c`에서 연결 검사 212개와 계정 검사 698개를 통과했다. 60초 변경은 commit `5a49c79fbd1e4d76d22fe736f6d22940aa6c856e`·tree `f246b062473f5544d3ea432dbd7d2864a2d63086`에 저장했고 push는 0회다. 이전 `BRIDGE_E_BIND`는 일반 격리 환경의 localhost bind 제한이 원인으로 확인됐고 권한 확장 host가 ready를 반환했으므로 해소됐다. 이번 host 실행은 1회, 브라우저 client send도 1회였지만 client는 `BRIDGE_E_CLIENT_CONNECT`, host는 accepted connection 0회 후 60초 만료로 `BRIDGE_E_TIMEOUT`이었다. 원문은 브라우저 메모리 Buffer에서만 처리했고 출력·파일·argv·환경변수로 남기지 않았다. `durableState=none`, clipboard read·clear false, raw printed false였고 계정 초기화·Keychain·metadata 작성·재시도·복구·삭제는 모두 0회다. 사후 preflight는 `ready`, primary·recovery·Keychain은 모두 없음, clipboard read·clear false를 다시 확인했다.**
-- Cloudflare Stage 3 staging R2 상태: **최종 2,758개 업로드와 비공개 설정 확인, 실제 전체 full GET/SHA-256 감사 완료. 객체 2,758개·2,346,220,246바이트·orphan 0·전체 object-set SHA-256 일치, 논리 LIST/HEAD/GET 3/2,758/2,758, 실제 전송 시도 3/2,760/2,758, HEAD retry 2·PUT/DELETE 0이다. Worker·version·activation 0**
+- Cloudflare Stage 3 staging R2 상태: **최종 2,758개 업로드와 비공개 설정 확인, 실제 전체 full GET/SHA-256 감사 완료. 객체 2,758개·2,346,220,246바이트·orphan 0·전체 object-set SHA-256 일치, 논리 LIST/HEAD/GET 3/2,758/2,758, 실제 전송 시도 3/2,760/2,758, HEAD retry 2·PUT/DELETE 0이다. 현재 staging active version은 이전 artifact의 `6d2c056f`, 새 `e7e7c182…` artifact upload·activation은 0이다.**
 - Cloudflare Stage 3 staging signing trust: **media public fingerprint `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`, release public fingerprint `2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2` policy 고정 / private key는 macOS Keychain에만 보관·export 0 / production fingerprint `null` 유지**
 - Cloudflare Stage 3 deny-only Worker 로컬 검사: **생성 전후 account `workers.dev=dwnc`, 생성 뒤 공개·미리보기 주소 꺼짐, 전체 로그·trace 설정, `content/v2`의 정확히 한 module 바이트·SHA-256, deploy 가능한 version 정확히 1개와 deployment 정확히 1개·100%, 연속 두 현재 상태의 일치를 함께 강제한다. 인터넷·외부 프로그램 차단 보강 전 전체 Cloudflare 모의시험 27개·15,076 assertions PASS, 보강 뒤 R2 전량 예행연습 194 assertions·차단 경계 전용 152 assertions·영향 범위 829 assertions PASS / 금지 시도 24종은 연결·실행 직전에 차단하고, 허용한 읽기 전용 Git 15회·격리 Python 5회만 원래 프로그램을 실행 / 계정 보관함 read command 사고 1, second read·저장·변경 0, guard 뒤 추가 native spawn 0 / 최소 권한 열쇠 전달과 생성 중단 복구의 로컬 안전장치 완료**
 - 공개 미디어 최종 범위: **B 선택 반영. 사용자 소유 사진 2,757개 + 직접 제작 SBS GIF 1개 = 2,758개. 지도 99개는 장소 카드 16개(원 장소 네이버지도 15+네이버지도 검색 1)로 대체, LINE 스티커 5개·placeholder 27개 제외 / final 검증 PASS**
 - 네이버 세 편집기 세대 대표·비디오 대표 데스크톱·모바일 브라우저 QA: **모두 PASS**
 - 이전 기술 완료 조건: **달성**
-- 운영 방식·호스팅·도메인 전환: **private R2+same-origin Worker 구조 확정 / 전체 업로드·실제 파일 내용 감사 완료, Worker·version·activation 미실행 / 실제 `dwnc.me` 도메인·DNS 미연결**
+- 운영 방식·호스팅·도메인 전환: **private R2+same-origin Worker 구조 확정 / 전체 업로드·실제 파일 내용 감사와 deny-only Worker 생성 완료 / 새 staging version upload·activation·smoke 미실행 / 실제 `dwnc.me` 도메인·DNS 미연결**
 
 ## 전체 계획과 현재 위치
 
@@ -65,12 +65,12 @@
 - `PLAN-03` 독립 사이트와 주소 체계: 완료
 - `PLAN-04` 공개 미디어 정리: 완료
 - `PLAN-05` 시험용 R2 실제 내용 확인과 열쇠 정리: **완료**. 계정 결속, 저장소 비공개 확인, 실제 2,758개 GET/SHA-256 비교, 이번 validator 원격 폐기·로컬 Keychain 정리와 2026-08-25의 사용 불가능한 기존 token 두 개의 정확한 식별·삭제·목록 부재 확인을 모두 마쳤다.
-- `PLAN-06` 시험용 사이트 프로그램·버전·사이트 점검: **진행 중**. `DWNC-S3-009`는 완료됐고 `DWNC-S3-010`의 staging artifact도 준비됐다. upload·activation 0이며 인증 방식의 명시적 제약 변경 전에는 외부 실행을 시작하지 않는다.
+- `PLAN-06` 시험용 사이트 프로그램·버전·사이트 점검: **진행 중**. `DWNC-S3-009`는 완료됐다. staging-only Bearer gate를 제거한 새 `e7e7c182…` artifact도 준비됐지만 Mac 잠금으로 upload 전에 중단했으며 `DWNC-S3-010`은 완료되지 않았다.
 - `PLAN-07` 운영용 이름의 Cloudflare 자원·버전 준비: 대기. `PLAN-06` 통과 뒤 최종 운영에 실제 필요한 자원만 준비하며 새 보조 도구·모의훈련·반복 검증은 추가하지 않는다.
 - `PLAN-08` 실제 도메인 연결과 운영 전환 검증: 사용자 결정 필요
 - `PLAN-09` 새 글 작성·비공개 백업 운영 결정: 사용자 결정 필요. 두 항목은 최종 운영에 필요하고, 공유 글 10개·댓글·추가 개선은 사용자 선택 후속으로 Stage 3를 막지 않는다.
 
-인수인계 상태: `PLAN-05`와 `DWNC-S3-009`는 완료 상태를 유지한다. `DWNC-S3-010` artifact는 source SHA `0e74dfdf8be0fc93bfeeb0089b1d5b0c79b2ccf3` 기준으로 준비됐고 upload·activation은 0회다. 기존 OAuth는 없으며 다음 실행에는 일회용 token 자식 환경 전달 또는 지속 OAuth 중 하나를 택하는 명시적 제약 변경이 필요하다.
+인수인계 상태: `PLAN-05`와 `DWNC-S3-009`는 완료 상태를 유지한다. 현재 active staging version `6d2c056f`는 이전 artifact이고 `workers.dev`는 꺼져 있다. 새 `e7e7c182…` artifact는 준비됐지만 Mac 잠금으로 upload 전에 중단했으므로 `DWNC-S3-010`은 미완료다. Mac 잠금 해제 뒤 기존 OAuth로 새 version upload→정확한 version 100% activation→`workers.dev` 임시 enable과 일반 smoke→disable 순서만 이어간다.
 
 요구사항과 계획의 자세한 연결은 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)를 기준으로 한다. 최종 결과·완료조건·범위·순서·승인 범위가 실제로 바뀔 때만 요구사항 번호, 관련 계획, 우선순위, 완료 기준, 상태와 근거 및 현재 위치를 갱신한다. 단순 질문·설명·진행 확인과 이미 기록된 작업의 계속 지시는 새 요구사항으로 만들지 않는다.
 

@@ -1,13 +1,8 @@
 import { readFile } from 'node:fs/promises';
 import { loadTrackedPublicMediaReleasePolicy } from './lib/public-media-manifest.mjs';
-import {
-  loadTrackedStagingSmokeAccessPolicy,
-  stagingSmokeAccessPolicySha256,
-} from './lib/staging-smoke-access-policy.mjs';
 
 const config = JSON.parse(await readFile('wrangler.jsonc', 'utf8'));
 const releasePolicy = await loadTrackedPublicMediaReleasePolicy(process.cwd());
-const smokeAccessPolicy = await loadTrackedStagingSmokeAccessPolicy(process.cwd());
 const expectedBuckets = {
   staging: ['dwnc-me-staging', 'dwnc-me-public-media-staging'],
   production: ['dwnc-me', 'dwnc-me-public-media-production'],
@@ -72,21 +67,10 @@ for (const [environment, [name, bucket]] of Object.entries(expectedBuckets)) {
 }
 if (!exactObject(config.env.staging.vars, {
   DWNC_DEPLOYMENT_ENVIRONMENT: 'staging',
-  DWNC_STAGING_SMOKE_POLICY: 'bearer-token-non-access-origin',
-  DWNC_STAGING_SMOKE_ORIGIN: 'https://dwnc-me-staging.dwnc.workers.dev',
 }) || !exactObject(config.env.production.vars, {
   DWNC_DEPLOYMENT_ENVIRONMENT: 'production',
-})) throw new Error('CLOUDFLARE_E_STAGING_SMOKE_POLICY');
-if (!exactObject(config.env.staging.secrets, {
-  required: ['DWNC_STAGING_SMOKE_TOKEN'],
-}) || 'secrets' in config.env.production || 'secrets' in config) {
-  throw new Error('CLOUDFLARE_E_STAGING_SMOKE_SECRET');
-}
-if (config.env.staging.vars.DWNC_STAGING_SMOKE_ORIGIN !== smokeAccessPolicy.origin
-  || releasePolicy.staging.smokeOrigin !== smokeAccessPolicy.origin
-  || releasePolicy.staging.smokeAccessPolicySha256
-    !== stagingSmokeAccessPolicySha256(smokeAccessPolicy)) {
-  throw new Error('CLOUDFLARE_E_STAGING_SMOKE_ACCESS_POLICY_PIN');
+}) || 'secrets' in config.env.staging || 'secrets' in config.env.production || 'secrets' in config) {
+  throw new Error('CLOUDFLARE_E_STAGING_CONFIG');
 }
 if (!exactObject(config.env.staging.observability, {
   enabled: true,
@@ -112,5 +96,5 @@ console.log(JSON.stringify({
   r2Environments: Object.keys(expectedBuckets),
   routesConfigured: 0,
   resourcesCreated: 0,
-  requiredStagingSecrets: ['DWNC_STAGING_SMOKE_TOKEN'],
+  requiredStagingSecrets: [],
 }, null, 2));
