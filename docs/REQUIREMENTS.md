@@ -35,16 +35,16 @@
 | `PLAN-03` | 독립 사이트와 주소 체계를 만든다. | 공개 글 349개, 예전 주소 349개, 검색·분류·RSS·사이트맵과 모바일·데스크톱 화면 검사를 통과한다. | `완료` |
 | `PLAN-04` | 공개할 미디어를 정리하고 최종 목록을 확정한다. | 사용자 소유 사진 2,757개와 직접 제작 GIF 1개를 확정하고 제외·대체 결정을 반영한다. | `완료` |
 | `PLAN-05` | 시험용 저장소의 실제 파일 내용을 한 번 전수 확인하고 작업용 열쇠를 정리한다. | 올바른 계정 확인, `Account ID` 한 번 복사·전용 보관, 저장소 비공개 확인, 2,758개 실제 내용·전체 용량 비교, 작업용·사용 불가능한 활성 열쇠 정리를 마치며 R2 객체 덮어쓰기·삭제가 없다. | `완료` |
-| `PLAN-06` | 실제 도메인과 연결되지 않은 시험용 사이트를 올려 최종 동작을 확인한다. 현재는 승인된 `DWNC-S3-009` 단일 실행 범위를 진행한다. | 사이트 프로그램이 없을 때만 최소 차단용 프로그램을 만들고, 확정된 Git 기록의 빌드·검사 한 묶음과 새 버전만 올려 시험용으로 적용한 뒤 대표 페이지, 예전 주소 GET·HEAD 698회와 사진 응답을 확인하고 정확한 Git SHA와 버전 번호를 기록한다. | `진행 중` |
+| `PLAN-06` | 실제 도메인과 연결되지 않은 시험용 사이트를 올려 최종 동작을 확인한다. 현재는 `DWNC-S3-009` 실패 원인 보강과 새 승인 대기 상태다. | 사이트 프로그램이 없을 때만 최소 차단용 프로그램을 만들고, 확정된 Git 기록의 빌드·검사 한 묶음과 새 버전만 올려 시험용으로 적용한 뒤 대표 페이지, 예전 주소 GET·HEAD 698회와 사진 응답을 확인하고 정확한 Git SHA와 버전 번호를 기록한다. | `진행 중` |
 | `PLAN-07` | 시험용 확인 뒤 최종 운영에 실제 필요한 Cloudflare 자원만 준비한다. | 시험용에서 통과한 절차로 필요한 저장소와 사이트 버전만 준비하고, 새 보조 도구·모의훈련·반복 검증은 추가하지 않는다. 실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하지 않는다. | `대기` |
 | `PLAN-08` | 실제 `dwnc.me` 주소를 연결하고 운영 전환을 확인한다. | 사용자 결정 후 실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하고 실제 주소의 글·예전 주소·사진·화면을 다시 검사한다. | `사용자 결정 필요` |
 | `PLAN-09` | 최종 운영에 필요한 새 글 작성 방식과 비공개 백업 방식을 정한다. | 새 글 작성과 비공개 백업·복구 방식을 정한다. 공유 글 10개, 댓글과 추가 개선은 사용자가 원할 때 진행하는 후속 선택으로 두며 Stage 3를 막지 않는다. | `사용자 결정 필요` |
 
 ### 현재 위치
 
-**진행 중인 계획은 `PLAN-06` 하나다.** `PLAN-05`는 완료 상태를 유지한다. 이전 `DWNC-S3-009`용 `dwnc-me-staging-worker-control-20260904` Account API token은 최초 초기화의 clipboard 실패 뒤 사용자 승인으로 정확히 1회 삭제했고 즉시·새로고침 후 목록 부재와 clipboard clear를 확인했다. token 검증·Keychain·metadata 생성, Worker·version·deployment·공개 endpoint·DNS·route·traffic·R2와 다른 token 변경은 0이었다. `DWNC-S3-009`는 아직 미완료지만, 사용자가 새 exact token 1개 생성→direct bridge 초기화 1회→모든 사전 확인 통과 후 bootstrap 1회→terminal 원격·로컬 cleanup을 단일 범위로 승인해 진행 중이다. 실패하거나 결과가 모호하면 재시도하지 않으며 `DWNC-S3-010`은 계속 차단한다.
+**진행 중인 계획은 `PLAN-06` 하나다.** `PLAN-05`는 완료 상태를 유지한다. 승인된 `DWNC-S3-009` 재개 실행은 새 관리 token 생성과 direct stdin 초기화 1회까지 진행했지만, 입력을 읽기 전 기존 account-target Keychain 확인에서 실패했다. 재시도 없이 해당 token의 원격 삭제·즉시 및 새로고침 후 부재, clipboard clear, 로컬 token 기록 부재까지 확인해 terminal cleanup을 마쳤다. token 검증·subdomain 조회·Keychain·metadata 기록·bootstrap·deploy·Worker·version·deployment·공개 endpoint·DNS·route·traffic·R2 변경은 모두 0회다. 이번 승인 묶음은 소진됐고 정확한 원인 보강과 새 사용자 승인 전에는 다시 실행하지 않으며, `DWNC-S3-009`는 미완료·`DWNC-S3-010`은 차단 상태다.
 
-사용자에게 이는 **실패한 임시 관리 열쇠와 클립보드는 정리했고, 새로 승인된 단일 범위 안에서 안전한 열쇠 전달과 최소 차단용 프로그램 생성을 진행한다는 뜻**이다. 다음에는 승인된 순서대로 한 번씩 실행하고, 실패하거나 결과가 모호하면 반복하지 않으며 `DWNC-S3-009` 완료 전에는 `DWNC-S3-010`을 시작하지 않는다.
+사용자에게 이는 **승인된 실행은 안전하게 실패·정리되어 더 진행되지 않았고, 이번 승인은 모두 사용됐다는 뜻**이다. 다음에는 Mac 보관함의 기존 계정 정보 확인 실패 원인을 보강하고 새 승인을 받은 뒤에만 다시 시도하며, `DWNC-S3-009` 완료 전에는 `DWNC-S3-010`을 시작하지 않는다.
 
 ### 미디어 정리 결과
 
@@ -61,18 +61,18 @@
 
 ### 아직 결정할 일과 진행을 막는 조건
 
-1. 초기화에 실패한 임시 관리 token 삭제·목록 부재·clipboard clear는 완료했다. 새 exact token 1개와 후속 단일 실행 범위도 승인됐으며 실패·모호한 결과에서는 재시도하지 않는다.
+1. 승인된 재개 실행은 Keychain 확인 실패 뒤 terminal cleanup까지 완료했고 승인 묶음은 소진됐다. 정확한 원인 보강과 새 승인 전에는 재실행하지 않으며 실패·모호한 결과에서는 재시도하지 않는다.
 2. 보존 receipt는 아직 unsigned이고, `PLAN-06` 적용 검사가 비공개 확인의 유효시각을 같은 시작시점 기준으로 판단할지는 별도 후속 확인 사항이다.
-3. 파일을 방문자에게 보여 줄 시험용 사이트 프로그램은 아직 만들지 않았다. 승인된 범위에서 `DWNC-S3-009`를 진행하고, 완료 뒤에만 `DWNC-S3-010`으로 진행한다.
+3. 파일을 방문자에게 보여 줄 시험용 사이트 프로그램은 아직 만들지 않았다. Keychain 실패 원인을 보강하고 새 승인을 받아 `DWNC-S3-009`를 완료한 뒤에만 `DWNC-S3-010`으로 진행한다.
 4. 새 글 작성 방식과 비공개 자료의 백업·복구 방식은 최종 운영 전에 결정해야 한다. 공유·스크랩 글 10개, 과거 댓글과 추가 개선은 사용자가 원할 때 정하는 후속 선택이며 Stage 3를 막지 않는다.
 
 ### 바로 다음 작업
 
-1. 이미 받은 사용자 승인 범위에서 새 exact token 1개 생성, direct bridge 초기화 1회, 모든 사전 확인 통과 후 bootstrap 1회, terminal 원격·로컬 cleanup을 순서대로 진행한다. 실패·모호한 결과에서는 재시도하지 않는다.
+1. account-target Keychain의 비밀 읽기·잠금 해제 또는 읽은 내용 검증 경계에서 난 실패 원인을 안전하게 보강하고 새 사용자 승인을 받는다. 그 전에는 새 token 생성·전달·초기화·bootstrap을 하지 않으며 실패·모호한 결과에서는 재시도하지 않는다.
 2. `DWNC-S3-009` 완료 뒤 `DWNC-S3-010`에서 확정된 Git 기록 기준 빌드·검사 한 묶음과 새 버전만 올려 시험용으로 적용한다.
 3. 시험용 확인이 통과하면 최종 운영에 실제 필요한 Cloudflare 자원만 같은 방식으로 준비한다. 새 보조 도구·복구 체계·서명 체계·영수증 체계·장애주입·모의훈련·반복 독립검토는 추가하지 않으며, 실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하지 않는다.
 
-현재 `PLAN-05`의 원격 무결성 확인과 token 정리는 모두 완료됐다. `PLAN-06`은 이전 `DWNC-S3-009` token 초기화 실패의 임시 token·clipboard 정리를 완료했고, 이미 승인된 단일 범위 안에서 `DWNC-S3-009`를 진행한다. 실제 `dwnc.me` 주소 연결은 `PLAN-08`에서 사용자가 결정할 때만 진행한다.
+현재 `PLAN-05`의 원격 무결성 확인과 token 정리는 모두 완료됐다. `PLAN-06`은 승인된 `DWNC-S3-009` 실행의 Keychain 실패 뒤 terminal cleanup을 완료했고 승인 묶음은 소진됐다. 정확한 원인 보강과 새 승인 전에는 재실행하지 않으며 `DWNC-S3-010`은 차단한다. 실제 `dwnc.me` 주소 연결은 `PLAN-08`에서 사용자가 결정할 때만 진행한다.
 
 ### 최근 완료
 
@@ -146,7 +146,8 @@
   - 기존 21-field `dwnc-cloudflare-bootstrap-authorization-v1` 계약과 consumer·executor·recovery를 바꾸지 않고 staging 전용 운영 creator `cloudflare:staging:bootstrap-authorization:create`를 추가했다. CLI는 서명된 service 부재·account subdomain의 receipt/signature/public-key 절대경로 6개와 저장소 밖 output 절대경로만 받는다. creator는 두 증거를 tracked release key로 검증하고 `exists=false`, exact account fingerprint·environment·Worker·`dwnc` subdomain·request hash·expiry를 요구한다. 현재 clean HEAD·tree를 생성 전과 create-only 저장 전·후에 대조하되 기존 authorization에는 `sourceGitSha`만 기록하고 새 approval·tree field를 추가하지 않는다. 기존 export로 deny source/config SHA와 두 fresh request hash·최대 15초를 계산하고, crypto UUIDv4·32바이트 nonce hash, 현재 시각·정확히 5분 뒤 만료를 만든 뒤 기존 validator를 통과한 canonical 후보만 mode 600으로 새로 쓰고 exact 재읽기한다. account ID·token 원문은 입력·출력·파일·argv·환경변수에 두지 않으며 후보는 기존 signer로 별도 서명한다. creator 53개, 기존 bootstrap 3,718개·실행 흐름 1,819개·signing 107개 검사는 live network·실제 Keychain·clipboard 0으로 통과했다. 실제 증거 수집·후보 생성·서명·Worker 생성은 0회다.
   - 관리 token의 terminal cleanup에는 새 CLI를 추가하지 않는다. Cloudflare UI에서 exact token 행을 한 번 삭제하고 새로고침 뒤 이름 부재를 확인한 경우에만 기존 PLAN-05 방식으로 고정 service `me.dwnc.cloudflare-staging-worker-control.v1`·account `dwnc:staging:workers-scripts-edit`에 `security delete-generic-password`를 정확히 한 번 실행한다. 이어 같은 identity를 `-w` 없이 presence-only로 조회해 exit 44를 확인한다. primary/recovery metadata와 immutable evidence는 보존하며, 원격 대상이나 삭제·부재 결과가 모호하면 local delete는 0회다.
   - `dwnc-me-staging-worker-control-20260904` Account API token은 Workers Scripts Write 한 권한과 2026-09-05 만료로 생성됐다. 최초 `npm run cloudflare:staging:control-token:init`은 `CLOUDFLARE_E_ACCOUNT_CLIPBOARD`로 clipboard 단계에서 실패했다. 재시도·복구·후속 외부 요청 0, token 검증·Keychain·metadata 생성 불성립 상태에서 중단했다. 이후 사용자 승인으로 Cloudflare UI에서 해당 token을 정확히 1회 삭제했고, 즉시 목록과 새로고침 후 목록 모두 0건을 확인했다. 내장 브라우저 clipboard는 raw read 0으로 내용을 읽지 않고 빈 문자열로 덮어써 비웠다. 다른 token·Worker·version·deployment·공개 endpoint·DNS·route·traffic·R2 변경은 0이다. 이 요구사항은 아직 미완료이며, 새 token 생성·새 전달·재시도는 새 사용자 승인 전에 하지 않고 `DWNC-S3-010`도 시작하지 않는다.
-  - 위 두 항목의 승인 제안·대기 문장은 첫 실패 직후 당시 상태를 기록한다. 현재는 새 exact token 1개 생성 → direct bridge 초기화 1회 → 모든 gate 통과 시 bootstrap 1회 → terminal 원격·로컬 cleanup을 단일 범위로 승인받아 진행하며, 실패·모호한 결과에서는 재시도하지 않고 `DWNC-S3-010`을 차단한다.
+  - 위 두 항목의 승인 제안·대기 문장은 첫 실패 직후, 이어진 단일 승인 범위는 두 번째 실행 직전의 당시 상태를 기록한다.
+  - 승인된 재개 실행에서 `dwnc-me-staging-worker-control-20260904-v2`를 Workers Scripts Write 한 권한·2026-09-05 만료로 UI에서 한 번 생성하고 browser copy 1회→direct stdin actual init 1회를 수행했다. runner는 53바이트를 받았지만 기존 account-target Keychain 확인이 `CLOUDFLARE_E_ACCOUNT_STORE_KEYCHAIN`으로 먼저 실패해 `inputReads=0`, `bufferZeroed=true`, `durableState=none`, raw child output 0과 clipboard clear를 유지했다. token verify·subdomain GET·Keychain/metadata write·bootstrap·deploy·Worker/version/deployment/public endpoint·DNS/route/traffic·R2 변경은 모두 0회이며 재시도하지 않았다. terminal cleanup에서 해당 exact UI 행을 한 번 삭제하고 즉시·새로고침 후 부재를 확인했으며 token action 행은 이전 2개로 돌아왔다. primary/recovery control metadata와 고정 control-token Keychain 항목은 부재였고 presence-only 조회만 사용해 비밀 read·write·delete는 0회였다. exact 7-key 환경과 일반 환경의 비밀 없는 비교에서 account-target 항목은 모두 존재, control-token 항목은 모두 exit 44·not-found였으므로 환경 가시성이나 항목 부재가 원인은 아니다. actual secret read 없이 원인은 기존 account-target의 `-w` 비밀 읽기/잠금 해제 또는 읽은 내용 검증 경계까지로만 좁혔다. 이번 승인 묶음은 terminal 상태로 소진됐고, 정확한 원인 보강과 새 사용자 승인 전에는 다시 실행하지 않는다. authorization creator commit `045a314cfac6db8ce977ae072cd1ce8be1d1655e`는 완료됐지만 이번 실행에서 사용하지 않았으며 `DWNC-S3-009`는 미완료·`DWNC-S3-010`은 차단 상태다.
 
 ### `DWNC-S3-010` — staging version-only upload·activation·synthetic smoke
 - **Status:** `blocked`
