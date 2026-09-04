@@ -247,7 +247,7 @@ function objectMatches(
     && object.httpMetadata?.cacheControl === entry.cacheControl
     && object.customMetadata?.sha256 === entry.sha256
     && object.customMetadata?.contract === 'dwnc-public-media-r2-v1'
-    && object.customMetadata?.manifestEntrySha256 === manifestEntrySha256
+    && object.customMetadata?.['manifest-entry-sha256'] === manifestEntrySha256
     && platformSha256(object) === entry.sha256
     && typeof object.version === 'string'
     && object.version.length > 0

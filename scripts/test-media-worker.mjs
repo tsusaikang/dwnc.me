@@ -41,7 +41,7 @@ function object(body = bytes) {
     customMetadata: {
       sha256: entry.sha256,
       contract: 'dwnc-public-media-r2-v1',
-      manifestEntrySha256: publicMediaEntryManifestSha256(entry),
+      'manifest-entry-sha256': publicMediaEntryManifestSha256(entry),
     },
     body: new Response(body).body,
   };
@@ -457,7 +457,7 @@ for (const options of [{ missing: true }, { headError: true }, { getError: true 
 }
 for (const mutateHead of [
   (value) => { value.checksums = { sha256: Uint8Array.from(Buffer.alloc(32, 7)).buffer }; },
-  (value) => { value.customMetadata.manifestEntrySha256 = 'd'.repeat(64); },
+  (value) => { value.customMetadata['manifest-entry-sha256'] = 'd'.repeat(64); },
   (value) => { value.version = ''; },
 ]) {
   const { env, calls } = environment({ mutateHead });
