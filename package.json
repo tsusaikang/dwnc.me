@@ -61,6 +61,7 @@
     "cloudflare:promotion:execute": "node scripts/execute-cloudflare-production-promotion.mjs",
     "cloudflare:promotion:lock-status": "node scripts/inspect-cloudflare-promotion-lock.mjs",
     "cloudflare:service:existence": "node scripts/fetch-cloudflare-service-existence.mjs",
+    "cloudflare:staging:bootstrap-authorization:create": "node scripts/create-cloudflare-staging-bootstrap-authorization.mjs",
     "cloudflare:service:bootstrap": "node scripts/bootstrap-cloudflare-service.mjs",
     "cloudflare:signing:key:init": "node scripts/initialize-cloudflare-signing-key.mjs",
     "cloudflare:signing:sign": "node scripts/sign-cloudflare-evidence.mjs",

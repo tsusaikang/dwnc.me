@@ -29,6 +29,7 @@ const TESTS = Object.freeze([
   'test-cloudflare-promotion-executor.mjs',
   'test-cloudflare-staging-activation-store.mjs',
   'test-cloudflare-bootstrap.mjs',
+  'test-cloudflare-bootstrap-authorization.mjs',
   'test-cloudflare-bootstrap-recovery.mjs',
   'test-cloudflare-bootstrap-execution.mjs',
   'test-cloudflare-sealed-input.mjs',
