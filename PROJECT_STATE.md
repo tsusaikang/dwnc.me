@@ -1,6 +1,6 @@
 # dwnc.me 프로젝트 공식 상태
 
-최종 갱신: 2026-09-04 KST — staging 비공개 상태와 실제 2,758개 full GET/SHA-256 검증 완료, 과거 token 식별 미해결로 PLAN-06 차단
+최종 갱신: 2026-09-04 KST — staging 비공개 상태·실제 2,758개 full GET/SHA-256 검증·과거 token 두 개 정리 완료, PLAN-06 진행 준비
 
 사용자가 확인할 현재 목표·결정·진행을 막는 조건·다음 단계와 stable requirement ID는 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)를 기준으로 한다. 이 문서는 구현 세부사항, 검증 수치, Git·Cloudflare 상태 재확인 결과와 인수인계를 보존하는 기술 기준점이다. 완료 이력은 요구사항 원장의 보관 정책에 따라 [`docs/REQUIREMENTS_ARCHIVE.md`](docs/REQUIREMENTS_ARCHIVE.md)로 이동하되 이 기술 증거를 삭제하지 않는다.
 
@@ -8,7 +8,7 @@
 
 네이버 블로그 `blog.naver.com/tsusai`와 티스토리 기반 `dwnc.me`의 직접 작성 콘텐츠를 소유자가 통제하는 새 블로그로 이전한다. 원문, 이미지, 게시일, 카테고리, 태그, 기존 주소, 공개 범위를 보존하며 이후 새 글도 지속해서 작성할 수 있어야 한다.
 
-비개발자용 현재 요약: 공개할 사진과 GIF 2,758개를 시험용 비공개 저장소에 모두 올렸고, 저장소가 외부에 공개되지 않은 상태와 실제 파일 내용 전체를 확인했다. 보존된 영수증을 현재 원본 목록과 안전 계약으로 다시 검사한 결과 2,758개·2,346,220,246바이트·불필요한 파일 0개와 전체 내용 확인값이 일치했다. 읽기 전송 중 파일 정보 확인 2건이 자동으로 한 번씩 재시도됐지만 현재 계약이 허용하는 전체 시도 범위 안이고, 파일 생성·덮어쓰기·삭제는 0회다. 감사에 쓴 짧은 수명 validator token은 원격에서 삭제했고 대응 Keychain 항목 하나도 비밀값을 읽지 않고 정확히 한 번 삭제해 부재를 확인했다. 기존 증거와 영수증은 모두 보존했다. `PLAN-05`에는 사용 불가능한 기존 원격 token의 정확한 상태 확인과 정리만 남았고, `dwnc.me` 주소·트래픽은 바꾸지 않았다.
+비개발자용 현재 요약: 공개할 사진과 GIF 2,758개를 시험용 비공개 저장소에 모두 올렸고, 저장소가 외부에 공개되지 않은 상태와 실제 파일 내용 전체를 확인했다. 보존된 영수증을 현재 원본 목록과 안전 계약으로 다시 검사한 결과 2,758개·2,346,220,246바이트·불필요한 파일 0개와 전체 내용 확인값이 일치했다. 읽기 전송 중 파일 정보 확인 2건이 자동으로 한 번씩 재시도됐지만 현재 계약이 허용하는 전체 시도 범위 안이고, 파일 생성·덮어쓰기·삭제는 0회다. 감사에 쓴 짧은 수명 validator token과 대응 Keychain 항목을 정리한 데 이어, 사용자 승인 후 2026-08-25에 만든 사용 불가능한 기존 validator·uploader token도 각각 한 번만 삭제하고 최종 목록 부재를 확인했다. 기존 증거와 영수증은 모두 보존했고 다른 Cloudflare 설정과 `dwnc.me` 주소·트래픽은 바꾸지 않았다. `PLAN-05`는 완료됐으며 다음은 `DWNC-S3-009`부터 시작하는 `PLAN-06`이다.
 
 전체 프로젝트 완료 조건은 다음과 같다.
 
@@ -64,13 +64,13 @@
 - `PLAN-02` 공개·비공개 분리와 변환: 완료
 - `PLAN-03` 독립 사이트와 주소 체계: 완료
 - `PLAN-04` 공개 미디어 정리: 완료
-- `PLAN-05` 시험용 R2 실제 내용 확인과 열쇠 정리: **진행 중**. 계정 결속, 저장소 비공개 확인, 실제 2,758개 GET/SHA-256 비교와 이번 validator 원격 폐기·로컬 Keychain 정리는 완료됐다. 사용 불가능한 기존 원격 token의 정확한 상태 확인과 정리만 남았다.
-- `PLAN-06` 시험용 사이트 프로그램·버전·사이트 점검: **차단**. `PLAN-05`의 과거 token 두 개를 정확히 식별할 근거가 확보되거나 사용자가 완료조건 변경을 승인해 `PLAN-05`가 공식적으로 닫힌 뒤에만 시작한다. 이후 순서는 프로그램이 없을 때만 최소 차단용 프로그램 생성 → 확정된 Git 기록 기준 관련 빌드·검사 한 묶음 → version-only upload → staging-only activation과 시험용 주소 활성화 → 정적 대표 페이지, 예전 주소 GET·HEAD 698회, media GET·HEAD·304·206·416 확인 → 정확한 Git SHA와 version ID 기록이다.
+- `PLAN-05` 시험용 R2 실제 내용 확인과 열쇠 정리: **완료**. 계정 결속, 저장소 비공개 확인, 실제 2,758개 GET/SHA-256 비교, 이번 validator 원격 폐기·로컬 Keychain 정리와 2026-08-25의 사용 불가능한 기존 token 두 개의 정확한 식별·삭제·목록 부재 확인을 모두 마쳤다.
+- `PLAN-06` 시험용 사이트 프로그램·버전·사이트 점검: **진행 준비**. `PLAN-05` 완료로 차단이 해제됐다. `DWNC-S3-009`에서 프로그램이 없을 때만 최소 차단용 프로그램 생성 → `DWNC-S3-010`에서 확정된 Git 기록 기준 관련 빌드·검사 한 묶음 → version-only upload → staging-only activation과 시험용 주소 활성화 → 정적 대표 페이지, 예전 주소 GET·HEAD 698회, media GET·HEAD·304·206·416 확인 → 정확한 Git SHA와 version ID 기록 순서로 진행한다.
 - `PLAN-07` 운영용 이름의 Cloudflare 자원·버전 준비: 대기. `PLAN-06` 통과 뒤 최종 운영에 실제 필요한 자원만 준비하며 새 보조 도구·모의훈련·반복 검증은 추가하지 않는다.
 - `PLAN-08` 실제 도메인 연결과 운영 전환 검증: 사용자 결정 필요
 - `PLAN-09` 새 글 작성·비공개 백업 운영 결정: 사용자 결정 필요. 두 항목은 최종 운영에 필요하고, 공유 글 10개·댓글·추가 개선은 사용자 선택 후속으로 Stage 3를 막지 않는다.
 
-인수인계 상태: `PLAN-05`의 실제 2,758개 원격 감사와 이번 validator 정리는 완료됐지만 과거 이름 미기록 token 두 개의 exact identity가 미해결이다. 식별 근거 또는 사용자 승인에 따른 완료조건 결정 전까지 `PLAN-06`은 차단 상태다.
+인수인계 상태: `PLAN-05`의 실제 2,758개 원격 감사와 이번 validator 정리, 과거 token 두 개의 exact identity 확인·승인된 삭제·최종 목록 부재 확인을 완료했다. `PLAN-06` 차단은 해제됐고 다음 순서는 `DWNC-S3-009` → `DWNC-S3-010`이다.
 
 요구사항과 계획의 자세한 연결은 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)를 기준으로 한다. 최종 결과·완료조건·범위·순서·승인 범위가 실제로 바뀔 때만 요구사항 번호, 관련 계획, 우선순위, 완료 기준, 상태와 근거 및 현재 위치를 갱신한다. 단순 질문·설명·진행 확인과 이미 기록된 작업의 계속 지시는 새 요구사항으로 만들지 않는다.
 
@@ -208,7 +208,7 @@
 - 같은 account fingerprint를 다시 확인한 뒤 R2 subscription을 활성화하고 exact private bucket `dwnc-me-public-media-staging`을 만들었다. 첫 admission 직전 재확인에서 bucket은 object 0, private, `r2.dev` 꺼짐, custom domain 0, jurisdiction `default`, location `APAC`, storage class `Standard`였다.
 - 2026-08-27 당시 uploader `dwnc-me-public-media-staging-uploader-v3-20260827`은 exact bucket Object Read & Write·Active·TTL 2026-09-03으로 관측됐다. access-key ID SHA-256은 `6a6df74afbbc4a47fe050b11997b41b6e5e7ba9d02884eb69bb9ac88d82bb976`, repository 밖 metadata SHA-256은 `6d92f8e095050757c407bf31a02e8358c4064e7b9852f44c98037de7f331721e`, Dashboard scope 증거 SHA-256은 `de8c69f1cfa1c26e9ba05cae05f7034f2129494c174ab43d6b2cac44daf85e69`이다.
 - 2026-08-27 당시 validator `dwnc-me-public-media-staging-validator-v2-20260827`은 exact bucket Object Read only·Active·TTL 2026-09-03으로 관측됐다. access-key ID SHA-256은 `be4156f1e29c6282568d18e504d11888907e0df9c8f67a551318a839c735ee5a`, repository 밖 metadata SHA-256은 `03011557f3ae08f1128c10bd5df0508dc50e0bdbbc5652de08f63f05e142fe0c`, Dashboard scope 증거 SHA-256은 `6abc799040f8604af78eaa9d96e8745501b3a4a84054944bdab40918be4dde94`다.
-- 생성 실패 과정에서 비밀값 노출 가능성이 생긴 `dwnc-me-public-media-staging-uploader-v2-20260827`은 즉시 revoked했다. 현재 확인된 상태는 이번 감사 validator 원격 폐기·목록 부재와 대응 Keychain 항목 부재, 기존 validator의 과거 Inactive 관측이다. uploader와 나머지 기존 원격 token의 정확한 현재 상태는 미확정이며 별도 확인 없이 삭제하지 않는다. 자격증명 비밀값은 문서에 기록하지 않는다.
+- 생성 실패 과정에서 비밀값 노출 가능성이 생긴 `dwnc-me-public-media-staging-uploader-v2-20260827`은 즉시 revoked했다. 이번 감사 validator 원격 폐기·목록 부재와 대응 Keychain 항목 부재도 확인했다. 이후 R2 Account API token 표에서 `dwnc-me-staging-r2-validator`와 `dwnc-me-staging-r2-uploader`의 이름·exact staging bucket 권한·2026-08-25 생성·Active 상태를 각 행과 보존 생성 증거로 정확히 결속했다. 사용자 승인 후 validator를 한 번 삭제해 해당 행 0을 확인하고, 이어 uploader를 한 번 삭제해 해당 행 0을 확인했다. 최종 목록에서 두 이름은 모두 부재하고 이전에 관측한 User API token 다섯 개 이름은 그대로이며 다른 Cloudflare 변경은 0회다. 자격증명 비밀값은 문서에 기록하지 않는다.
 - staging media·release Ed25519 private key를 macOS Keychain에 생성했고 private export는 0이다. public fingerprint는 각각 `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`·`2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2`로 policy에 고정했다. staging Worker `dwnc-me-staging`, Bearer smoke token, Worker version, activation, receipt는 0이다. staging origin은 `https://dwnc-me-staging.dwnc.workers.dev`, 접근 정책 digest는 `d6c554c1d80c68c08605636f12f26a411f7826bc40eddaee9233a30b6551781a`다. 실제 `dwnc.me` 도메인·DNS·route는 Cloudflare Worker에 연결되지 않았다.
 
 ### 공개 미디어 소유·플랫폼 후보 감사와 현재 결정
@@ -501,7 +501,7 @@
 ## 미해결 문제
 
 - full audit start-only freshness 변경의 추가 negative fixture와 `PLAN-06` 소비 gate의 같은 규칙 반영 여부는 이번 최소 수정 범위에서 다루지 않았으며 후속 확인 사항이다.
-- 실제 staging R2의 비공개 상태와 전체 2,758개 GET/SHA-256는 권위 있는 보존 receipt로 확인됐고, 이번 validator token 원격 폐기와 대응 Keychain 항목 정리도 완료됐다. 미해결은 사용 불가능한 기존 원격 token의 정확한 상태 확인·정리와 `PLAN-06` receipt 서명·start-only freshness 소비 규칙뿐이다.
+- 실제 staging R2의 비공개 상태와 전체 2,758개 GET/SHA-256는 권위 있는 보존 receipt로 확인됐고, 이번 validator token 원격 폐기와 대응 Keychain 항목 정리, 사용 불가능한 기존 원격 token 두 개의 정확한 식별·승인된 삭제·부재 확인도 완료됐다. token 정리 미해결은 없으며 남은 것은 `PLAN-06` receipt 서명·start-only freshness 소비 규칙이다.
 - 콘텐츠 이전 정확성·완전성 측면의 알려진 문제는 없다. Stage 3 R2 전체 2,758개 업로드, 사후 목록 확인, 실제 전체 내용·bytes·SHA-256 검증이 완료됐다.
 - 별도 로컬 진단 실수로 loopback 회귀시험을 한 번 잘못 호출했다. sandbox에서 bind를 1회 시도한 뒤 `BRIDGE_E_BIND`로 즉시 끝났고 accepted connection·payload·initialize·Keychain·Cloudflare는 모두 0회였다. 재시도는 하지 않았다.
 - 현재 전체 Cloudflare 검사 묶음에는 `scripts/test-r2-client-entrypoints.mjs` 343행의 감사 진입점 불일치로 실패하는 기존 항목 하나가 있다. 이번 연결 변경보다 먼저 존재한 별도 문제이며, 연결 전용 212개와 계정 전용 698개 검사는 모두 통과했다. 이번에는 범위를 넓혀 고치지 않았다.
@@ -517,7 +517,7 @@
 - 지속적인 새 글 작성 방식과 네이버 비공개 자료의 암호화 백업·복구 방식은 최종 운영 전에 결정해야 하지만 Stage 3를 막지 않는다.
 - 티스토리·네이버 댓글을 이식할지, 과거 댓글을 읽기 전용 기록으로만 보존할지는 사용자가 원할 때 진행하는 후속 선택이며 Stage 3를 막지 않는다.
 - 현재 최종 공개 미디어는 실제 private staging bucket의 보존 receipt로 2,758개·2,346,220,246바이트·orphan 0·manifest SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`·full object-set SHA-256 `9345d2f06c8bd7cda457a9d4335cdc2213e71dcd30bb9e11e6f3e1f8e11ae467` 일치를 확인했다. 논리 LIST/HEAD/GET 3/2,758/2,758, 실제 시도 3/2,760/2,758, HEAD retry 2·PUT/DELETE 0이며 receipt storage SHA-256은 `ce4e4f38b35063ec425c2ba5e65cc1d3a89355def51486542e6bccd3c1909bdd`다. 2,889개는 2026-08-25 정리 전 역사 기준선이고 2,785개는 B 결정 전 중간 수치다.
-- 2026-09-04 Cloudflare R2 API token 현재 표를 읽기만 한 결과, 알려진 이름 후보 `dwnc-me-public-media-staging-uploader-v3-20260827`, `dwnc-me-public-media-staging-validator-v2-20260827`, `dwnc-me-stage3-staging-uploader-v2-20260827`, `dwnc-me-stage3-staging-validator-v2-20260827`는 모두 보이지 않았고 현재 표에는 pagination control이나 pagination 안내 문구도 없었다. 삭제는 0회다. 그러나 이 네 이름을 2026-08-25의 이름이 기록되지 않은 S3-012 두 token과 같다고 추정하지 않는다. exact identity 결속과 명시적 삭제 대상이 아직 없으므로 S3-012는 진행 중이며 추가 browser/API 작업 없이 중단한다.
+- 2026-09-04 Cloudflare R2 Account API token 표에서 tracked staging account 확인값이 정확히 일치했고 pagination control 없이 정확히 두 행만 있었다. `dwnc-me-staging-r2-validator`는 exact staging bucket의 Object Read only·2026-08-25 생성·Active, `dwnc-me-staging-r2-uploader`는 같은 bucket의 Object Read & Write·2026-08-25 생성·Active로 각 이름·범위·생성 시점·상태가 한 행에 결속됐으며 보존된 생성 증거와도 정확히 일치했다. 사용자 승인 후 validator와 uploader를 이 순서로 각각 한 번만 삭제했고 각 삭제 뒤 해당 행 0, 최종 목록에서 두 이름 모두 부재를 확인했다. 이전 관측 User API token 다섯 개 이름은 그대로이며 다른 Cloudflare 변경은 0회다. 이로써 S3-012는 완료됐다.
 - Cloudflare Builds의 P0 raw-deploy blocker는 해소했다. 2026-08-25 exact readback은 `SKIP_DEPENDENCY_INSTALL=1`, Build `npm ci && npm run cloudflare:prepare:production`, Deploy `npm run cloudflare:upload:production-version`, Version `npx wrangler versions upload`, root `/`, branch `main`, include `*`이고 raw live `wrangler deploy` 설정은 0이었다. 다음 외부 변경 전 다시 읽으며 traffic promotion은 계속 Git trigger 밖에서 signed evidence와 exact version ID를 다시 승인한 job으로만 수행한다.
 - tracked release policy의 staging account fingerprint는 domain-separated SHA-256 `6ef9d1a2e2a398e755e1d4108acabacde0f5218f9f455abf79f1af56a154ea0f`이고 실제 account와 exact 일치했다. `smokeAccessPolicySha256`는 `d6c554c1d80c68c08605636f12f26a411f7826bc40eddaee9233a30b6551781a`, staging `publicKeySpkiSha256`는 `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`, `releasePublicKeySpkiSha256`는 `2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2`로 확정했다. private key는 Keychain에만 보관했고 export하지 않았다. production account/media/release fingerprint는 모두 `null`로 유지한다.
 - single-object create-only, 실제 `head()` probe, staging-only artifact와 admission smoke의 production 의존 분리는 로컬 구현·negative fixture·전체 회귀와 source commit까지 완료했다. push는 계속 승인되지 않았다.
@@ -532,8 +532,8 @@
 
 ## 다음 단계
 
-1. `PLAN-05`의 실제 staging 비공개 확인, 2,758개 전수 GET/SHA-256와 이번 validator 원격·로컬 정리는 완료됐다. 보존 receipt와 capture를 유지한 채 사용 불가능한 기존 원격 token의 exact identity 근거를 확보해 정리하거나, 사용자가 현재 증거에 맞춘 완료조건 변경을 결정해야 `PLAN-05`를 닫을 수 있다.
-2. `PLAN-05`가 공식적으로 닫히면 `dwnc-me-staging`이 없을 때만 외부 요청을 모두 거부하는 최소 차단용 프로그램을 한 번 만든다. 확정된 Git 기록 기준 관련 빌드·검사 한 묶음, version-only upload, staging-only activation과 시험용 주소 활성화, 대표 정적 페이지, 예전 주소 GET·HEAD 698회 및 media GET·HEAD·304·206·416 확인을 이어서 수행하고 정확한 Git SHA와 version ID를 기록한다.
+1. `PLAN-05`는 실제 staging 비공개 확인, 2,758개 전수 GET/SHA-256, 이번 validator 원격·로컬 정리와 사용 불가능한 기존 원격 token 두 개의 exact identity 확인·승인된 삭제·부재 확인까지 완료했다. 보존 receipt와 capture는 유지한다.
+2. `PLAN-06`의 `DWNC-S3-009`를 먼저 진행해 `dwnc-me-staging`이 없을 때만 외부 요청을 모두 거부하는 최소 차단용 프로그램을 한 번 만든다. 그 완료 뒤 `DWNC-S3-010`에서 확정된 Git 기록 기준 관련 빌드·검사 한 묶음, version-only upload, staging-only activation과 시험용 주소 활성화, 대표 정적 페이지, 예전 주소 GET·HEAD 698회 및 media GET·HEAD·304·206·416 확인을 이어서 수행하고 정확한 Git SHA와 version ID를 기록한다.
 3. 시험용 확인이 통과하면 최종 운영에 실제 필요한 Cloudflare 자원만 같은 방식으로 준비한다. 새 보조 도구·복구 체계·서명·영수증·장애주입·모의훈련·반복 독립감사는 추가하지 않는다. 새 글 작성 방식과 비공개 백업은 최종 운영 전에 정하되 Stage 3를 막지 않으며, 공유 글 10개·댓글·추가 개선은 사용자가 원할 때만 진행한다. 실제 `dwnc.me` 도메인·DNS·route 연결은 사용자가 결정할 때만 수행한다.
 
 ## 중요한 제약과 주의사항
