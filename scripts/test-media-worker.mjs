@@ -83,7 +83,8 @@ function environment({
       },
       ASSETS: {
         async fetch(request) {
-          calls.assets.push(request.url);
+          calls.assets.push({ url: request.url, method: request.method });
+          if (request.method === 'HEAD') return new Response(null, { status: 404 });
           return new Response('asset fallback', { status: 200 });
         },
       },
@@ -205,6 +206,23 @@ const equal = (actual, expected) => { assert.equal(actual, expected); assertions
   equal(response.status, 200);
   equal(calls.assets.length, 1);
   equal(calls.head.length, 0);
+}
+{
+  const { env, calls } = environment();
+  const response = await handle(new Request('https://dwnc.me/'), env);
+  equal(response.status, 200);
+  equal(calls.assets.length, 1);
+  equal(calls.assets[0].url, 'https://dwnc.me/');
+  equal(calls.assets[0].method, 'GET');
+}
+{
+  const { env, calls } = environment();
+  const response = await handle(new Request('https://dwnc.me/about', { method: 'HEAD' }), env);
+  equal(response.status, 200);
+  equal((await response.arrayBuffer()).byteLength, 0);
+  equal(calls.assets.length, 1);
+  equal(calls.assets[0].url, 'https://dwnc.me/about');
+  equal(calls.assets[0].method, 'GET');
 }
 {
   const { env, calls } = environment();

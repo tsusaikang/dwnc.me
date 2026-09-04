@@ -100,6 +100,7 @@ function normalizeStaticPath(pathname: string): string | null {
   catch { return null; }
   if (decoded.includes('%') || decoded.includes('\\') || decoded.includes('//')
     || /[\u0000-\u001f\u007f]/u.test(decoded)) return null;
+  if (decoded === '/') return decoded;
   const segments = decoded.split('/');
   if (segments.some((segment, index) => index > 0 && (segment === '' || segment === '.' || segment === '..'))) {
     return null;
@@ -368,7 +369,14 @@ export function createMediaWorker(
       }
       const redirectTarget = redirects.get(url.pathname);
       if (redirectTarget) return redirect(redirectTarget);
-      return env.ASSETS.fetch(request);
+      if (request.method === 'GET') return env.ASSETS.fetch(request);
+      const assetResponse = await env.ASSETS.fetch(new Request(request, { method: 'GET' }));
+      try { await assetResponse.body?.cancel(); } catch {}
+      return new Response(null, {
+        status: assetResponse.status,
+        statusText: assetResponse.statusText,
+        headers: assetResponse.headers,
+      });
     }
     if (url.search || !PATH_PATTERN.test(url.pathname) || url.pathname.includes('//')
       || url.pathname.includes('..') || url.pathname.includes('\\') || url.pathname.includes('%')) {
