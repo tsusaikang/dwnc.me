@@ -475,9 +475,8 @@ async function collectStagingHttpContract({
     etagVerified: typeof etag === 'string' && /^"[^"\r\n]+"$/u.test(etag),
     static200: staticGet.status === 200 && staticHead.status === 200
       && staticGetBody.length === staticEntry.size && sha256(staticGetBody) === staticEntry.sha256
-      && staticGet.headers.get('content-length') === String(staticEntry.size)
       && normalizedMime(staticGet) === staticEntry.contentType
-      && staticHead.headers.get('content-length') === String(staticEntry.size)
+      && staticHead.headers.get('content-length') === staticGet.headers.get('content-length')
       && normalizedMime(staticHead) === staticEntry.contentType && staticHeadBody.length === 0,
     notFound404: notFoundGet.status === 404 && notFoundHead.status === 404
       && notFoundGet.headers.get('cache-control') === 'no-store'

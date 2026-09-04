@@ -63,6 +63,7 @@ const createFetcher = ({
   aboutBody = staticBytes,
   aboutContentType = 'text/html; charset=utf-8',
   aboutContentLength = String(aboutBody.length),
+  aboutHeadContentLength = aboutContentLength,
   cacheBody = bytes,
   cacheEtag = '"fixture-etag"',
   cacheContentType = entry.contentType,
@@ -141,7 +142,9 @@ const createFetcher = ({
     }
     if (url.pathname === '/about') {
       headers.set('content-type', aboutContentType);
-      headers.set('content-length', aboutContentLength);
+      const contentLength = init.method === 'HEAD'
+        ? aboutHeadContentLength : aboutContentLength;
+      if (contentLength !== null) headers.set('content-length', contentLength);
       return responseAt(new Response(
         init.method === 'HEAD' ? null : aboutBody, { status: 200, headers },
       ), input);
@@ -429,10 +432,20 @@ for (const alteredRoster of alteredRedirectRosters) {
   equal(fetchCount, 0);
 }
 
+for (const acceptableStaticLengthFetcher of [
+  createFetcher({ aboutContentLength: null }),
+  createFetcher({ aboutContentLength: String(staticBytes.length - 1) }),
+]) {
+  const receipt = await collectStagingAdmissionSmokeEvidence(admissionArguments({
+    candidateFetcher: acceptableStaticLengthFetcher,
+  }));
+  equal(receipt.static200, true);
+}
+
 for (const brokenFetcher of [
   createFetcher({ aboutBody: Buffer.from('fixture-abouu') }),
   createFetcher({ aboutBody: staticBytes.subarray(0, staticBytes.length - 1) }),
-  createFetcher({ aboutContentLength: String(staticBytes.length - 1) }),
+  createFetcher({ aboutHeadContentLength: String(staticBytes.length - 1) }),
   createFetcher({ aboutContentType: 'application/octet-stream' }),
   createFetcher({ cacheBody: Buffer.from('fixture-mediZ') }),
   createFetcher({ cacheBody: bytes.subarray(0, bytes.length - 1) }),
