@@ -504,8 +504,9 @@ export function validateProductionReleaseTarget({
   const selectedAccountIdSha256 = typeof accountId === 'string'
     ? cloudflareAccountIdSha256(accountId) : accountIdSha256;
   const nowTimestamp = now instanceof Date ? now.getTime() : Number.NaN;
+  const auditStartedTimestamp = Date.parse(receipt.audit?.startedAt ?? '');
   const exposureTimestamp = Date.parse(receipt.bucketExposure?.verifiedAt ?? '');
-  const exposureAge = nowTimestamp - exposureTimestamp;
+  const exposureAgeAtAuditStart = auditStartedTimestamp - exposureTimestamp;
   if (receipt.target.environment !== production.environment
     || receipt.target.bucket !== production.bucket
     || receipt.target.accountIdSha256 !== production.accountIdSha256
@@ -520,9 +521,10 @@ export function validateProductionReleaseTarget({
     || receipt.bucketExposure.customDomainCount !== 0
     || receipt.audit.orphanCount !== production.approvedOrphanCount
     || Number.isNaN(nowTimestamp)
+    || Number.isNaN(auditStartedTimestamp)
     || Number.isNaN(exposureTimestamp)
-    || exposureAge > production.maxBucketExposureAgeSeconds * 1_000
-    || exposureAge < -(production.maxBucketExposureFutureSkewSeconds * 1_000)) {
+    || exposureAgeAtAuditStart > production.maxBucketExposureAgeSeconds * 1_000
+    || exposureAgeAtAuditStart < -(production.maxBucketExposureFutureSkewSeconds * 1_000)) {
     fail('MEDIA_E_RELEASE_TARGET');
   }
   return true;

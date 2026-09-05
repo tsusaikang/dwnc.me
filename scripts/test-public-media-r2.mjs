@@ -493,6 +493,27 @@ function headFor(entry, overrides = {}) {
       binding: 'MEDIA_BUCKET', bucket_name: credentials.bucket,
     }] } } },
   }), true);
+  const longAuditReceipt = createUnsignedRemoteReceipt(manifest, heads.map((remote, index) => ({
+    ...remote,
+    bodyBytes: manifest.entries[index].size,
+    bodySha256: manifest.entries[index].sha256,
+  })), {
+    verifiedAt: '2026-08-25T00:40:00.000Z', target: productionTarget,
+    verificationLevel: 'full-get-sha256',
+    bucketExposure: productionReceipt.bucketExposure,
+    fullAuditEvidence,
+  });
+  equal(validateProductionReleaseTarget({
+    policy,
+    receipt: longAuditReceipt,
+    accountId: credentials.accountId,
+    bucket: credentials.bucket,
+    publicKeyPem,
+    now: new Date('2026-08-25T00:41:00.000Z'),
+    wranglerConfig: { env: { production: { r2_buckets: [{
+      binding: 'MEDIA_BUCKET', bucket_name: credentials.bucket,
+    }] } } },
+  }), true);
   const stagingReceipt = { ...productionReceipt, target: syntheticTarget };
   equal(validateStagingReleaseTarget({
     policy,
@@ -527,13 +548,28 @@ function headFor(entry, overrides = {}) {
       binding: 'MEDIA_BUCKET', bucket_name: credentials.bucket,
     }] } } },
   })), 'MEDIA_E_RELEASE_TARGET');
+  const staleAtAuditStart = structuredClone(productionReceipt);
+  staleAtAuditStart.bucketExposure.verifiedAt = '2026-08-24T23:43:59.000Z';
   await rejectsCode(() => Promise.resolve(validateProductionReleaseTarget({
     policy,
-    receipt: productionReceipt,
+    receipt: staleAtAuditStart,
     accountId: credentials.accountId,
     bucket: credentials.bucket,
     publicKeyPem,
-    now: new Date('2026-08-25T00:16:00.001Z'),
+    now: new Date('2026-08-25T00:00:00.000Z'),
+    wranglerConfig: { env: { production: { r2_buckets: [{
+      binding: 'MEDIA_BUCKET', bucket_name: credentials.bucket,
+    }] } } },
+  })), 'MEDIA_E_RELEASE_TARGET');
+  const futureAtAuditStart = structuredClone(productionReceipt);
+  futureAtAuditStart.bucketExposure.verifiedAt = '2026-08-25T00:01:01.000Z';
+  await rejectsCode(() => Promise.resolve(validateProductionReleaseTarget({
+    policy,
+    receipt: futureAtAuditStart,
+    accountId: credentials.accountId,
+    bucket: credentials.bucket,
+    publicKeyPem,
+    now: new Date('2026-08-25T00:00:00.000Z'),
     wranglerConfig: { env: { production: { r2_buckets: [{
       binding: 'MEDIA_BUCKET', bucket_name: credentials.bucket,
     }] } } },
