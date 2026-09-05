@@ -103,6 +103,14 @@ const bindings = [
   { name: 'DWNC_DEPLOYMENT_ENVIRONMENT', text: 'production', type: 'plain_text' },
 ];
 const assets = { html_handling: 'drop-trailing-slash', not_found_handling: '404-page', run_worker_first: true };
+const runtimeAssets = {
+  html_handling: assets.html_handling,
+  not_found_handling: assets.not_found_handling,
+  raw_redirects: 'redirects',
+  raw_run_worker_first: assets.run_worker_first,
+  redirects: { rules: {}, staticRules: {}, version: 1 },
+  serve_directly: false,
+};
 artifact.bindingsSha256 = cloudflareResourceDigest(bindings);
 artifact.assetsConfigSha256 = cloudflareResourceDigest(assets);
 const stagingBindings = [
@@ -209,9 +217,8 @@ const detail = {
   },
   resources: {
     script: { etag: '"script-etag"', handlers: ['fetch'] },
-    script_runtime: { compatibility_date: '2026-08-24', compatibility_flags: [] },
+    script_runtime: { compatibility_date: '2026-08-24', assets: runtimeAssets },
     bindings,
-    assets,
   },
 };
 const uploadResult = {
@@ -261,6 +268,45 @@ rejects(() => createVersionAttestationFromDetail({
   artifact, uploadResult, detail: { ...detail, resources: { ...detail.resources, bindings: [] } },
   now: attestation.createdAt, expiresAt: attestation.expiresAt,
 }), 'CLOUDFLARE_E_VERSION_DETAIL_BINDINGS');
+rejects(() => createVersionAttestationFromDetail({
+  artifact, uploadResult,
+  detail: {
+    ...detail,
+    resources: {
+      ...detail.resources,
+      script_runtime: { ...detail.resources.script_runtime, compatibility_flags: ['nodejs_compat'] },
+    },
+  },
+  now: attestation.createdAt, expiresAt: attestation.expiresAt,
+}), 'CLOUDFLARE_E_VERSION_DETAIL');
+const missingRuntimeAssets = Object.fromEntries(
+  Object.entries(runtimeAssets).filter(([key]) => key !== 'raw_redirects'),
+);
+rejects(() => createVersionAttestationFromDetail({
+  artifact, uploadResult,
+  detail: {
+    ...detail,
+    resources: {
+      ...detail.resources,
+      script_runtime: { ...detail.resources.script_runtime, assets: missingRuntimeAssets },
+    },
+  },
+  now: attestation.createdAt, expiresAt: attestation.expiresAt,
+}), 'CLOUDFLARE_E_VERSION_DETAIL');
+rejects(() => createVersionAttestationFromDetail({
+  artifact, uploadResult,
+  detail: {
+    ...detail,
+    resources: {
+      ...detail.resources,
+      script_runtime: {
+        ...detail.resources.script_runtime,
+        assets: { ...runtimeAssets, unexpected: true },
+      },
+    },
+  },
+  now: attestation.createdAt, expiresAt: attestation.expiresAt,
+}), 'CLOUDFLARE_E_VERSION_DETAIL');
 rejects(() => createVersionAttestationFromDetail({
   artifact, uploadResult,
   detail: { ...detail, annotations: { ...detail.annotations, 'workers/tag': 'wrong-artifact-tag' } },

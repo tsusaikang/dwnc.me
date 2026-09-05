@@ -416,16 +416,38 @@ export function createVersionAttestationFromDetail({
   const artifactSha = environment === 'staging'
     ? stagingUploadArtifactSha256(artifact)
     : preuploadArtifactSha256(validatePreuploadArtifact(artifact));
+  const scriptRuntime = detail?.resources?.script_runtime;
+  const runtimeAssets = scriptRuntime?.assets;
+  const runtimeAssetKeys = [
+    'html_handling', 'not_found_handling', 'raw_redirects',
+    'raw_run_worker_first', 'redirects', 'serve_directly',
+  ];
+  const redirectKeys = ['rules', 'staticRules', 'version'];
+  const compatibilityFlags = Object.hasOwn(scriptRuntime ?? {}, 'compatibility_flags')
+    ? scriptRuntime.compatibility_flags : [];
   if (!detail || typeof detail !== 'object' || Array.isArray(detail)
     || detail.id !== uploadResult?.versionId || !UUID.test(detail.id ?? '')
     || !ETAG.test(detail.resources?.script?.etag ?? '')
     || !Array.isArray(detail.resources?.bindings)
-    || !detail.resources?.assets || typeof detail.resources.assets !== 'object'
+    || !runtimeAssets || typeof runtimeAssets !== 'object' || Array.isArray(runtimeAssets)
+    || !exactKeys(runtimeAssets, runtimeAssetKeys)
+    || typeof runtimeAssets.raw_redirects !== 'string'
+    || sha256Hex(runtimeAssets.raw_redirects) !== artifact.redirectsSha256
+    || typeof runtimeAssets.raw_run_worker_first !== 'boolean'
+    || runtimeAssets.serve_directly !== false
+    || !runtimeAssets.redirects || typeof runtimeAssets.redirects !== 'object'
+    || Array.isArray(runtimeAssets.redirects)
+    || !exactKeys(runtimeAssets.redirects, redirectKeys)
+    || !runtimeAssets.redirects.rules || typeof runtimeAssets.redirects.rules !== 'object'
+    || Array.isArray(runtimeAssets.redirects.rules)
+    || !runtimeAssets.redirects.staticRules
+    || typeof runtimeAssets.redirects.staticRules !== 'object'
+    || Array.isArray(runtimeAssets.redirects.staticRules)
+    || runtimeAssets.redirects.version !== 1
     || !Array.isArray(detail.resources.script.handlers)
     || !detail.resources.script.handlers.includes('fetch')
-    || detail.resources.script_runtime?.compatibility_date !== artifact.compatibilityDate
-    || !Array.isArray(detail.resources.script_runtime?.compatibility_flags)
-    || detail.resources.script_runtime.compatibility_flags.length !== 0
+    || scriptRuntime?.compatibility_date !== artifact.compatibilityDate
+    || !Array.isArray(compatibilityFlags) || compatibilityFlags.length !== 0
     || Number.isNaN(Date.parse(detail.metadata?.created_on ?? ''))
     || detail.annotations?.['workers/tag'] !== versionUploadTag(artifactSha)
     || detail.annotations?.['workers/message'] !== (environment === 'staging'
@@ -433,7 +455,11 @@ export function createVersionAttestationFromDetail({
     fail('CLOUDFLARE_E_VERSION_DETAIL');
   }
   const bindingsSha256 = cloudflareResourceDigest(detail.resources.bindings);
-  const assetsConfigSha256 = cloudflareResourceDigest(detail.resources.assets);
+  const assetsConfigSha256 = cloudflareResourceDigest({
+    html_handling: runtimeAssets.html_handling,
+    not_found_handling: runtimeAssets.not_found_handling,
+    run_worker_first: runtimeAssets.raw_run_worker_first,
+  });
   if (bindingsSha256 !== expectedBindingsSha256 || assetsConfigSha256 !== expectedAssetsConfigSha256) {
     fail('CLOUDFLARE_E_VERSION_DETAIL_BINDINGS');
   }
