@@ -714,6 +714,76 @@ function headFor(entry, overrides = {}) {
   equal(streamingClient.requestOperationCounts().PUT, 0);
   equal(streamingClient.requestOperationCounts().DELETE, 0);
 
+  let transientBodyAttempts = 0;
+  const transientBodyClient = new R2S3Client({
+    ...credentials,
+    fetchImpl: async () => {
+      transientBodyAttempts += 1;
+      if (transientBodyAttempts === 1) {
+        return new Response(new ReadableStream({
+          start(controller) { controller.error(new Error('synthetic body stream failure')); },
+        }), { status: 200, headers });
+      }
+      return new Response(bytes, { status: 200, headers });
+    },
+    now: () => now,
+    delay: async () => undefined,
+    maxAttempts: 3,
+  });
+  const transientRecovered = await transientBodyClient.getFull(entry.key);
+  equal(transientBodyAttempts, 2);
+  equal(transientRecovered.bodyBytes, entry.size);
+  equal(transientRecovered.bodySha256, entry.sha256);
+
+  let persistentBodyAttempts = 0;
+  const persistentBodyClient = new R2S3Client({
+    ...credentials,
+    fetchImpl: async () => {
+      persistentBodyAttempts += 1;
+      return new Response(new ReadableStream({
+        start(controller) { controller.error(new Error('synthetic body stream failure')); },
+      }), { status: 200, headers });
+    },
+    now: () => now,
+    delay: async () => undefined,
+    maxAttempts: 3,
+  });
+  await rejectsCode(() => persistentBodyClient.getFull(entry.key), 'MEDIA_E_R2_GET_BODY');
+  equal(persistentBodyAttempts, 3);
+
+  let mixedFailureAttempts = 0;
+  const mixedFailureClient = new R2S3Client({
+    ...credentials,
+    fetchImpl: async () => {
+      mixedFailureAttempts += 1;
+      if (mixedFailureAttempts === 1) return new Response(null, { status: 500 });
+      if (mixedFailureAttempts === 2) throw new Error('synthetic network failure');
+      return new Response(new ReadableStream({
+        start(controller) { controller.error(new Error('synthetic body stream failure')); },
+      }), { status: 200, headers });
+    },
+    now: () => now,
+    delay: async () => undefined,
+    maxAttempts: 3,
+  });
+  await rejectsCode(() => mixedFailureClient.getFull(entry.key), 'MEDIA_E_R2_GET_BODY');
+  equal(mixedFailureAttempts, 3);
+  equal(mixedFailureClient.requestOperationCounts().GET, 3);
+
+  let sizeMismatchAttempts = 0;
+  const sizeMismatchClient = new R2S3Client({
+    ...credentials,
+    fetchImpl: async () => {
+      sizeMismatchAttempts += 1;
+      return new Response(bytes.subarray(0, 2), { status: 200, headers });
+    },
+    now: () => now,
+    delay: async () => undefined,
+    maxAttempts: 3,
+  });
+  await rejectsCode(() => sizeMismatchClient.getFull(entry.key), 'MEDIA_E_R2_GET_BODY');
+  equal(sizeMismatchAttempts, 1);
+
   let cancellationCount = 0;
   const stalledClient = new R2S3Client({
     ...credentials,

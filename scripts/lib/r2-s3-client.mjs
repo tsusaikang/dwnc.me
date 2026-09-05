@@ -373,9 +373,17 @@ export class R2S3Client {
         cancelReader();
       }, this.remainingTimeoutMilliseconds());
       while (true) {
-        const pendingRead = reader.read();
-        pendingRead.catch(() => undefined);
-        const { done, value } = await Promise.race([pendingRead, timeoutPromise]);
+        let readResult;
+        try {
+          const pendingRead = reader.read();
+          pendingRead.catch(() => undefined);
+          readResult = await Promise.race([pendingRead, timeoutPromise]);
+        } catch (error) {
+          if (timeoutError) throw timeoutError;
+          if (error instanceof R2S3Error) throw error;
+          throw new R2S3Error(errorCode, { retryable: true });
+        }
+        const { done, value } = readResult;
         if (timeoutError) throw timeoutError;
         if (done) {
           completed = true;
@@ -418,14 +426,24 @@ export class R2S3Client {
     return this.conditionalIfNoneMatchPutRequests;
   }
 
-  async request({ method, key = '', query = [], headers = {}, body = undefined, payloadSha256 = sha256Hex('') }) {
+  async request({
+    method,
+    key = '',
+    query = [],
+    headers = {},
+    body = undefined,
+    payloadSha256 = sha256Hex(''),
+    attemptBudget = null,
+  }) {
     let lastError;
+    const maximumAttempts = attemptBudget === null
+      ? this.maxAttempts : Math.min(this.maxAttempts, attemptBudget.remaining);
     const operation = method === 'GET' && key === ''
       && query.some(([name, value]) => name === 'list-type' && value === '2') ? 'LIST' : method;
     const conditionalCreatePut = method === 'PUT'
       && Object.entries(headers).some(([name, value]) => name.toLowerCase() === 'if-none-match'
         && value === '*');
-    for (let attempt = 1; attempt <= this.maxAttempts; attempt += 1) {
+    for (let attempt = 1; attempt <= maximumAttempts; attempt += 1) {
       const requestTimeoutMilliseconds = this.remainingTimeoutMilliseconds();
       const signed = signR2S3Request({
         ...this.config, method, key, query, headers, payloadSha256, now: this.now(),
@@ -435,6 +453,7 @@ export class R2S3Client {
         () => controller.abort('MEDIA_E_R2_TIMEOUT'), requestTimeoutMilliseconds,
       );
       try {
+        if (attemptBudget !== null) attemptBudget.remaining -= 1;
         this.requestCounts.set(method, (this.requestCounts.get(method) ?? 0) + 1);
         this.operationCounts.set(operation, (this.operationCounts.get(operation) ?? 0) + 1);
         if (conditionalCreatePut) this.conditionalIfNoneMatchPutRequests += 1;
@@ -445,7 +464,7 @@ export class R2S3Client {
           redirect: 'error',
           signal: controller.signal,
         });
-        if (!RETRYABLE_STATUS.has(response.status) || attempt === this.maxAttempts) return response;
+        if (!RETRYABLE_STATUS.has(response.status) || attempt === maximumAttempts) return response;
         const cancellation = response.body?.cancel('MEDIA_E_R2_RETRY');
         if (cancellation && typeof cancellation.catch === 'function') {
           cancellation.catch(() => undefined);
@@ -457,7 +476,7 @@ export class R2S3Client {
           : error instanceof R2S3Error
           ? error
           : new R2S3Error('MEDIA_E_R2_NETWORK', { retryable: true });
-        if (attempt === this.maxAttempts) throw lastError;
+        if (attempt === maximumAttempts) throw lastError;
       } finally {
         clearTimeout(timeout);
       }
@@ -516,29 +535,43 @@ export class R2S3Client {
   }
 
   async getFull(key) {
-    const response = await this.request({
-      method: 'GET', key, headers: { 'x-amz-checksum-mode': 'ENABLED' },
-    });
-    if (response.status === 404) return null;
-    if (response.status !== 200) fail('MEDIA_E_R2_GET', { status: response.status });
-    if (response.headers.get('content-range') !== null) fail('MEDIA_E_R2_GET_PARTIAL');
-    const metadata = parseR2Head(response, key);
-    const digest = createHash('sha256');
-    let bodyBytes = 0;
-    await this.consumeResponseBody(response, (value, cancelReader) => {
-      bodyBytes += value.byteLength;
-      if (!Number.isSafeInteger(bodyBytes) || bodyBytes > metadata.size) {
-        cancelReader();
-        fail('MEDIA_E_R2_GET_BODY');
+    const attemptBudget = { remaining: this.maxAttempts };
+    while (attemptBudget.remaining > 0) {
+      try {
+        const response = await this.request({
+          method: 'GET', key, headers: { 'x-amz-checksum-mode': 'ENABLED' },
+          attemptBudget,
+        });
+        if (response.status === 404) return null;
+        if (response.status !== 200) fail('MEDIA_E_R2_GET', { status: response.status });
+        if (response.headers.get('content-range') !== null) fail('MEDIA_E_R2_GET_PARTIAL');
+        const metadata = parseR2Head(response, key);
+        const digest = createHash('sha256');
+        let bodyBytes = 0;
+        await this.consumeResponseBody(response, (value, cancelReader) => {
+          bodyBytes += value.byteLength;
+          if (!Number.isSafeInteger(bodyBytes) || bodyBytes > metadata.size) {
+            cancelReader();
+            fail('MEDIA_E_R2_GET_BODY');
+          }
+          digest.update(value);
+        }, 'MEDIA_E_R2_GET_BODY');
+        if (bodyBytes !== metadata.size) fail('MEDIA_E_R2_GET_BODY');
+        return {
+          ...metadata,
+          bodyBytes,
+          bodySha256: digest.digest('hex'),
+        };
+      } catch (error) {
+        if (!(error instanceof R2S3Error) || error.code !== 'MEDIA_E_R2_GET_BODY'
+          || error.retryable !== true || attemptBudget.remaining === 0) throw error;
       }
-      digest.update(value);
-    }, 'MEDIA_E_R2_GET_BODY');
-    if (bodyBytes !== metadata.size) fail('MEDIA_E_R2_GET_BODY');
-    return {
-      ...metadata,
-      bodyBytes,
-      bodySha256: digest.digest('hex'),
-    };
+      const attemptsUsed = this.maxAttempts - attemptBudget.remaining;
+      const delayMilliseconds = Math.min(2_000, 100 * (2 ** (attemptsUsed - 1)))
+        + ((attemptsUsed * 37) % 83);
+      await this.delay(delayMilliseconds);
+    }
+    fail('MEDIA_E_R2_GET_BODY');
   }
 
   async putCreateOnly(entry, bytes) {
