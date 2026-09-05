@@ -198,8 +198,10 @@ const productionOutputs = [
     object_count: '0',
     bucket_size: '0 B',
   })}\n`,
-  'Public access via the r2.dev URL is disabled.\n',
-  `Listing custom domains connected to bucket '${PRODUCTION_R2_EXPOSURE_BUCKET}'...\n`
+  '\n ⛅️ wrangler 4.125.0\n────────────────────\n'
+    + 'Public access via the r2.dev URL is disabled.\n',
+  '\n ⛅️ wrangler 4.125.0\n────────────────────\n'
+    + `Listing custom domains connected to bucket '${PRODUCTION_R2_EXPOSURE_BUCKET}'...\n`
     + 'There are no custom domains connected to this bucket.\n',
 ];
 const productionCapture = await fetchProductionR2ExposureCapture({
@@ -295,9 +297,20 @@ equal(await rejectProductionOutputs([
   })}\n`, ...productionOutputs.slice(1),
 ], 'CLOUDFLARE_E_R2_EXPOSURE_RESPONSE'), 3);
 equal(await rejectProductionOutputs([
-  productionOutputs[0], "Public access is enabled at 'https://public.example.invalid'.\n",
+  productionOutputs[0], '\n ⛅️ wrangler 4.125.0\n────────────────────\n'
+    + "Public access is enabled at 'https://public.example.invalid'.\n",
   productionOutputs[2],
 ], 'CLOUDFLARE_E_R2_EXPOSURE_PUBLIC'), 3);
+equal(await rejectProductionOutputs([
+  productionOutputs[0], '\n ⛅️ wrangler 4.125.1\n────────────────────\n'
+    + 'Public access via the r2.dev URL is disabled.\n',
+  productionOutputs[2],
+], 'CLOUDFLARE_E_R2_EXPOSURE_RESPONSE'), 3);
+equal(await rejectProductionOutputs([
+  productionOutputs[0], 'unexpected prefix\n'
+    + 'Public access via the r2.dev URL is disabled.\n',
+  productionOutputs[2],
+], 'CLOUDFLARE_E_R2_EXPOSURE_RESPONSE'), 3);
 equal(await rejectProductionOutputs([
   productionOutputs[0], productionOutputs[1],
   `Listing custom domains connected to bucket '${PRODUCTION_R2_EXPOSURE_BUCKET}'...\n`

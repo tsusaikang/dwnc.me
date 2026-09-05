@@ -5,6 +5,7 @@ import { canonicalJson, sha256Hex } from './cloudflare-release.mjs';
 import {
   cloudflareOAuthWranglerEnvironment,
   inspectCloudflareOAuthAccount,
+  PINNED_WRANGLER_VERSION,
 } from './cloudflare-process.mjs';
 import { cloudflareAccountIdSha256 } from './public-media-manifest.mjs';
 
@@ -17,6 +18,9 @@ const BUCKET = /^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/u;
 const SAFE_BUCKET_PROPERTY = /^[A-Za-z0-9_-]{1,64}$/u;
 const REQUEST_METHOD_KEYS = Object.freeze(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const MAXIMUM_RESPONSE_BODY_BYTES = 1024 * 1024;
+const WRANGLER_BANNER_TEXT = ` ⛅️ wrangler ${PINNED_WRANGLER_VERSION}`;
+const WRANGLER_BANNER = `\n${WRANGLER_BANNER_TEXT}\n`
+  + `${'─'.repeat(WRANGLER_BANNER_TEXT.length)}\n`;
 
 export const STAGING_R2_EXPOSURE_PURPOSE = 'staging-r2-private-exposure-read';
 export const STAGING_R2_EXPOSURE_BUCKET = 'dwnc-me-public-media-staging';
@@ -389,14 +393,16 @@ function parseProductionBucketInfo(rawBody) {
 }
 
 function parseProductionManagedOutput(rawBody) {
-  const output = rawBody.trim();
+  const output = (rawBody.startsWith(WRANGLER_BANNER)
+    ? rawBody.slice(WRANGLER_BANNER.length) : rawBody).trim();
   if (output === 'Public access via the r2.dev URL is disabled.') return { enabled: false };
   if (/^Public access is enabled at 'https:\/\/[^']+'\.$/u.test(output)) return { enabled: true };
   fail('CLOUDFLARE_E_R2_EXPOSURE_RESPONSE');
 }
 
 function parseProductionCustomDomainsOutput(rawBody, bucket) {
-  const output = rawBody.trim();
+  const output = (rawBody.startsWith(WRANGLER_BANNER)
+    ? rawBody.slice(WRANGLER_BANNER.length) : rawBody).trim();
   const empty = `Listing custom domains connected to bucket '${bucket}'...\n`
     + 'There are no custom domains connected to this bucket.';
   if (output === empty) return { domains: [] };
