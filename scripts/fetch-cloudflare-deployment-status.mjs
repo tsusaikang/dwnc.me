@@ -7,9 +7,9 @@ import {
 } from './lib/cloudflare-release.mjs';
 import { produceDeploymentStatusCaptureAndEvidence } from './lib/cloudflare-deployment-status.mjs';
 import {
-  assertCloudflareAccountTarget,
   assertPinnedWranglerInstalled,
-  cloudflareWranglerEnvironment,
+  cloudflareOAuthWranglerEnvironment,
+  inspectCloudflareOAuthAccount,
   installStructuredErrorHandler,
 } from './lib/cloudflare-process.mjs';
 import { loadTrackedPublicMediaReleasePolicy } from './lib/public-media-manifest.mjs';
@@ -27,11 +27,14 @@ if (capturePath === evidencePath) throw new Error('CLOUDFLARE_E_STATUS_PATH');
 const targetVersionId = process.env.CLOUDFLARE_EXPECTED_DEPLOYMENT_VERSION_ID;
 const { receipt: artifact } = await validateArtifactDirectory(artifactDirectory);
 const policy = await loadTrackedPublicMediaReleasePolicy(ROOT, { requireComplete: true });
-assertCloudflareAccountTarget(process.env.CLOUDFLARE_ACCOUNT_ID, artifact.accountIdSha256);
 if (policy.production.accountIdSha256 !== artifact.accountIdSha256) {
   throw new Error('CLOUDFLARE_E_ACCOUNT_TARGET');
 }
 await assertPinnedWranglerInstalled(ROOT);
+await inspectCloudflareOAuthAccount({
+  root: ROOT,
+  expectedAccountIdSha256: artifact.accountIdSha256,
+});
 const args = ['deployments', 'status', '--json', '--env', 'production', '--config',
   path.join(artifactDirectory, 'wrangler-promotion.jsonc'),
   '--env-file', path.join(artifactDirectory, 'wrangler-empty.env')];
@@ -43,7 +46,7 @@ try {
     encoding: 'utf8',
     maxBuffer: 2 * 1024 * 1024,
     timeout: 60000,
-    env: cloudflareWranglerEnvironment(process.env, {
+    env: cloudflareOAuthWranglerEnvironment(process.env, {
       CI: '1', WRANGLER_WRITE_LOGS: '0', WRANGLER_SEND_METRICS: 'false',
       WRANGLER_NO_SKILLS_UPDATE_PROMPTS: 'true',
     }),

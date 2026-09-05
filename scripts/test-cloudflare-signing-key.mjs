@@ -171,6 +171,14 @@ try {
   equal(stagingFetcherSource.includes('CLOUDFLARE_STAGING_DEPLOYMENT_STATUS_EVIDENCE_PATH'), true);
   equal(productionFetcherSource.includes('CLOUDFLARE_DEPLOYMENT_STATUS_CAPTURE_PATH'), true);
   equal(productionFetcherSource.includes('CLOUDFLARE_DEPLOYMENT_STATUS_EVIDENCE_PATH'), true);
+  for (const source of [productionFetcherSource,
+    await readFile('scripts/fetch-cloudflare-version-detail.mjs', 'utf8')]) {
+    equal(source.includes('inspectCloudflareOAuthAccount'), true);
+    equal(source.includes('cloudflareOAuthWranglerEnvironment'), true);
+    equal(source.includes('assertCloudflareAccountTarget'), false);
+    equal(source.includes('cloudflareWranglerEnvironment'), false);
+    equal(source.includes('process.env.CLOUDFLARE_ACCOUNT_ID'), false);
+  }
 
   const releaseContracts = [
     'dwnc-cloudflare-service-existence-v1',

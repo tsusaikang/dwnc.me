@@ -5,9 +5,9 @@ import { promisify } from 'node:util';
 import { validateArtifactDirectory } from './lib/cloudflare-artifact.mjs';
 import { canonicalJson, sha256Hex, validateVersionUploadResult } from './lib/cloudflare-release.mjs';
 import {
-  assertCloudflareAccountTarget,
   assertPinnedWranglerInstalled,
-  cloudflareWranglerEnvironment,
+  cloudflareOAuthWranglerEnvironment,
+  inspectCloudflareOAuthAccount,
   installStructuredErrorHandler,
 } from './lib/cloudflare-process.mjs';
 import { loadTrackedPublicMediaReleasePolicy } from './lib/public-media-manifest.mjs';
@@ -23,11 +23,14 @@ const uploadResultPath = absolute(process.env.CLOUDFLARE_VERSION_UPLOAD_RESULT_P
 const outputPath = absolute(process.env.CLOUDFLARE_VERSION_DETAIL_EVIDENCE_PATH);
 const { receipt: artifact, artifactSha256 } = await validateArtifactDirectory(artifactDirectory);
 const policy = await loadTrackedPublicMediaReleasePolicy(ROOT, { requireComplete: true });
-assertCloudflareAccountTarget(process.env.CLOUDFLARE_ACCOUNT_ID, artifact.accountIdSha256);
 if (policy.production.accountIdSha256 !== artifact.accountIdSha256) {
   throw new Error('CLOUDFLARE_E_ACCOUNT_TARGET');
 }
 await assertPinnedWranglerInstalled(ROOT);
+await inspectCloudflareOAuthAccount({
+  root: ROOT,
+  expectedAccountIdSha256: artifact.accountIdSha256,
+});
 let uploadResult;
 try { uploadResult = JSON.parse(await readFile(uploadResultPath, 'utf8')); }
 catch { throw new Error('CLOUDFLARE_E_UPLOAD_RESULT'); }
@@ -45,7 +48,7 @@ try {
     encoding: 'utf8',
     maxBuffer: 4 * 1024 * 1024,
     timeout: 60000,
-    env: cloudflareWranglerEnvironment(process.env, {
+    env: cloudflareOAuthWranglerEnvironment(process.env, {
       CI: '1', WRANGLER_WRITE_LOGS: '0', WRANGLER_SEND_METRICS: 'false',
       WRANGLER_NO_SKILLS_UPDATE_PROMPTS: 'true',
     }),
