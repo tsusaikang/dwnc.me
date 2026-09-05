@@ -29,3 +29,15 @@
 - **Evidence:**
   - source commit `a541803bcf35fe95f761f0964e21ceff405c048b`.
   - [`PROJECT_STATE.md`](../PROJECT_STATE.md)의 12 suites·463 assertions PASS 기록.
+
+### `DWNC-S3-002` — Cloudflare Builds raw deploy 제거
+- **Status:** `done`
+- **Updated-at:** `2026-08-25`
+- **Plans:** `PLAN-07`
+- **Priority:** `P0`
+- **Acceptance:**
+  - Build를 production prepare wrapper로, Deploy를 version-only wrapper로 제한한다.
+  - 인증된 account·Worker·repository에서 exact server setting을 다시 읽고 raw deploy 설정과 traffic change가 0임을 확인한다.
+- **Evidence:**
+  - 2026-08-25 로그인된 Chrome exact readback.
+  - [`PROJECT_STATE.md`](../PROJECT_STATE.md)의 Builds guard checkpoint.

@@ -21,9 +21,9 @@
 - 공개 글 349개를 독립 사이트의 새 주소로 제공하고, 예전 티스토리·네이버 주소 349개도 올바른 새 글로 이어지게 한다.
 - 큰 사진 파일은 Cloudflare의 비공개 저장소(R2)에 두고, 사이트 프로그램(Worker)을 통해서만 안전하게 보여 준다.
 - 시험용 주소에서 글, 예전 주소 349개, 사진 표시와 부분 전송을 모두 확인한 뒤 운영용 구성을 준비한다.
-- 실제 `dwnc.me` 주소 연결은 사용자의 별도 결정 후 진행한다. 연결을 결정하면 실제 주소에서 글·예전 주소·사진·모바일과 데스크톱 화면을 다시 확인해야 전체 운영 전환이 끝난다.
+- 실제 `dwnc.me` 주소를 새 production Worker에 연결하고 실제 주소에서 대표 글·예전 주소·사진·모바일과 데스크톱 화면을 확인했다.
 
-현재 콘텐츠 보존과 독립 사이트의 로컬 구현, Cloudflare 시험용 저장소의 파일 2,758개 전수 확인, 2026-08-25의 사용 불가능한 token 두 개 정리와 시험용 사이트 live 점검까지 완료됐다. 실제 도메인 연결과 운영 전환 검증은 아직 남아 있으므로 **사이트 전체가 이미 운영 중이라고 표현하지 않는다.** 근거는 [`PROJECT_STATE.md`](../PROJECT_STATE.md), [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md), [`URL_CONTRACT.md`](URL_CONTRACT.md)에 나누어 기록한다.
+현재 콘텐츠 보존과 독립 사이트 구현, Cloudflare staging·production R2의 파일 2,758개 전수 확인, production Worker version 활성화, 실제 도메인 연결과 대표 화면 확인까지 완료됐다. **새 사이트는 현재 `dwnc.me`에서 운영 중이다.** 새 글 작성 방식과 비공개 자료의 백업·복구 방식은 `PLAN-09`의 사용자 결정으로 남아 있다. 근거는 [`PROJECT_STATE.md`](../PROJECT_STATE.md), [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md), [`URL_CONTRACT.md`](URL_CONTRACT.md)에 나누어 기록한다.
 
 ### 전체 계획
 
@@ -37,14 +37,14 @@
 | `PLAN-05` | 시험용 저장소의 실제 파일 내용을 한 번 전수 확인하고 작업용 열쇠를 정리한다. | 올바른 계정 확인, `Account ID` 한 번 복사·전용 보관, 저장소 비공개 확인, 2,758개 실제 내용·전체 용량 비교, 작업용·사용 불가능한 활성 열쇠 정리를 마치며 R2 객체 덮어쓰기·삭제가 없다. | `완료` |
 | `PLAN-06` | 실제 도메인과 연결되지 않은 시험용 사이트를 올려 최종 동작을 확인한다. | 사이트 프로그램이 없을 때만 최소 차단용 프로그램을 만들고, 확정된 Git 기록의 빌드·검사 한 묶음과 새 버전만 올려 시험용으로 적용한 뒤 대표 페이지, 예전 주소 GET·HEAD 698회와 사진 응답을 확인하고 정확한 Git SHA와 버전 번호를 기록한다. | `완료` |
 | `PLAN-07` | 시험용 확인 뒤 최종 운영에 실제 필요한 Cloudflare 자원만 준비한다. | 시험용에서 통과한 절차로 필요한 저장소와 사이트 버전만 준비하고, 새 보조 도구·모의훈련·반복 검증은 추가하지 않는다. 실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하지 않는다. | `완료` |
-| `PLAN-08` | 실제 `dwnc.me` 주소를 연결하고 운영 전환을 확인한다. | 사용자 결정 후 실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하고 실제 주소의 글·예전 주소·사진·화면을 다시 검사한다. | `사용자 결정 필요` |
+| `PLAN-08` | 실제 `dwnc.me` 주소를 연결하고 운영 전환을 확인한다. | 사용자 결정 후 실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하고 실제 주소의 글·예전 주소·사진·화면을 다시 검사한다. | `완료` |
 | `PLAN-09` | 최종 운영에 필요한 새 글 작성 방식과 비공개 백업 방식을 정한다. | 새 글 작성과 비공개 백업·복구 방식을 정한다. 공유 글 10개, 댓글과 추가 개선은 사용자가 원할 때 진행하는 후속 선택으로 두며 Stage 3를 막지 않는다. | `사용자 결정 필요` |
 
 ### 현재 위치
 
-**현재 실행 중인 계획은 없고 다음 공식 계획은 `PLAN-08`이다.** production private R2에 2,758개·2,346,220,246바이트를 create-only로 준비하고 전체 GET/SHA-256 감사를 통과했다. source commit `68f2225bf647061e4740f2dc136cc9fd8f937fdb`의 artifact `be178dbe3618d3f1c9300bae265780a3d77841bac2120457d985f88393a34615`를 version `476acc86-b11d-4ba4-a699-cb26c551a93d`으로 version-only 업로드했지만 활성화하지 않았다.
+**현재 실행 중인 계획은 없고 다음 공식 계획은 `PLAN-09`이다.** 준비된 운영용 사이트 프로그램을 적용하고 기존 주소 연결 기록을 삭제하지 않은 채 `dwnc.me`에 연결했다. 실제 주소의 대표 글·예전 주소 이동·사진과 모바일·데스크톱 화면이 정상이다.
 
-사용자에게 이는 **운영 전환에 필요한 비공개 저장소와 비활성 사이트 버전까지 준비됐지만 현재 방문자에게 보이는 사이트는 바뀌지 않았다는 뜻**이다. 다음에는 사용자가 `PLAN-08`의 실제 `dwnc.me` 연결 여부를 결정한다.
+사용자에게 이는 **새 사이트가 현재 실제 `dwnc.me` 방문자에게 제공되고 있다는 뜻**이다. 다음에는 사용자가 새 글 작성 방식과 비공개 자료 백업 방식을 결정한다.
 
 ### 미디어 정리 결과
 
@@ -61,15 +61,15 @@
 
 ### 아직 결정할 일과 진행을 막는 조건
 
-1. `PLAN-07`은 완료됐다. 실제 `dwnc.me` 주소 연결은 `PLAN-08`의 사용자 결정 전에는 진행하지 않는다.
-2. 새 글 작성 방식과 비공개 자료의 백업·복구 방식은 최종 운영 전에 결정해야 한다. 공유·스크랩 글 10개, 과거 댓글과 추가 개선은 사용자가 원할 때 정하는 후속 선택이며 Stage 3를 막지 않는다.
+1. `PLAN-08` 운영 전환은 완료됐다. 새 글 작성 방식과 비공개 자료의 백업·복구 방식은 `PLAN-09`에서 사용자가 결정한다.
+2. 공유·스크랩 글 10개, 과거 댓글과 추가 개선은 사용자가 원할 때 정하는 후속 선택이다.
 
 ### 바로 다음 작업
 
-1. 사용자가 `PLAN-08`의 실제 `dwnc.me` 연결과 production traffic 전환 여부를 결정한다.
-2. 결정 전에는 DNS·route·traffic·public endpoint를 변경하지 않는다.
+1. 사용자가 `PLAN-09`의 새 글 작성 방식과 비공개 자료 백업·복구 방식을 결정한다.
+2. 이후 주소 연결과 방문자 흐름 변경, 저장소 파일 덮어쓰기·삭제와 Git push는 별도 승인 없이 진행하지 않는다.
 
-현재 `PLAN-05`·`PLAN-06`·`PLAN-07`과 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`은 완료됐다. `PLAN-08`은 아직 시작하지 않았으며 실제 `dwnc.me` 주소 연결은 사용자가 결정할 때만 진행한다.
+현재 `PLAN-05`부터 `PLAN-08`까지와 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`는 완료됐다. 다음 공식 단계 `PLAN-09`는 사용자 결정을 기다린다.
 
 ### 최근 완료
 
@@ -86,10 +86,11 @@
 - 시험용 R2 저장소에 남아 있던 2,757개를 추가해 최종 2,758개 업로드를 마쳤다. 업로드 뒤 목록·크기·저장정보를 확인한 결과 빠진 항목과 불필요한 항목은 0개였고 덮어쓰기와 삭제도 0회였다. 이후 실제 파일 내용 2,758개 전수 비교와 원본 일치 확인도 완료했다.
 - 전달 과정이 안전하지 않았던 읽기 전용 열쇠 두 개를 Cloudflare 정보 조회 전에 폐기했다. 두 시도의 정보 조회와 결과 파일 생성은 모두 0회였다.
 - 시험용 사이트 version을 100% 적용하고 대표 페이지, 예전 주소 349개 GET·HEAD 698회, 사진·404·cache의 live 종합 점검을 통과했다. 점검 뒤 시험용 공개 주소와 미리보기는 다시 껐다.
+- 운영용 사이트 프로그램을 적용하고 기존 주소 연결 기록을 보존한 방식으로 `dwnc.me`를 연결했다. 실제 주소의 대표 글·예전 주소·대표 GIF와 데스크톱·모바일 화면이 정상이다.
 
 ### 이번 작업에서 하지 않는 것
 
-- 실제 `dwnc.me` 주소가 가리키는 곳과 주소 연결 설정을 바꾸는 일
+- 승인 없이 실제 `dwnc.me`의 주소 연결 설정과 방문자 흐름을 다시 바꾸는 일
 - 정해진 안전 확인 절차를 건너뛰고 사이트를 직접 배포하는 일
 - 기존 파일이나 Cloudflare 저장소의 파일을 덮어쓰거나 삭제하는 일
 - Git push
@@ -186,7 +187,7 @@
   - 대화 내용만 공식 상태로 삼지 않고 `REQUIREMENTS.md`와 `PROJECT_STATE.md`를 함께 갱신한다.
   - 최근 완료는 12개까지만 두고 오래된 완료 기록은 보관 문서로 옮긴다.
 - **Evidence:**
-  - 사용자용 요약에 `PLAN-00`부터 `PLAN-09`까지 목적·완료 기준·현재 상태를 기록했다. `PLAN-06`과 `DWNC-S3-009`·`DWNC-S3-010`은 완료했고 아직 시작하지 않은 `PLAN-07`을 다음 공식 단계로 표시했다.
+  - 사용자용 요약에 `PLAN-00`부터 `PLAN-09`까지 목적·완료 기준·현재 상태를 기록했다. `PLAN-08`까지 완료했고 사용자 결정이 필요한 `PLAN-09`를 다음 공식 단계로 표시했다.
   - 지속해서 관리할 현재 요구사항의 `Plans` 항목을 계획표와 연결했다. 사소한 대화는 새 요구사항으로 늘리지 않는다.
   - `npm run requirements:validate`는 이 상시 요구사항, 계획표, 현재 위치 한 개와 요구사항별 계획 연결이 빠지거나 잘못되면 거부한다.
 
@@ -223,18 +224,6 @@
 
 ## 최근 완료된 요구사항
 
-
-### `DWNC-S3-002` — Cloudflare Builds raw deploy 제거
-- **Status:** `done`
-- **Updated-at:** `2026-08-25`
-- **Plans:** `PLAN-07`
-- **Priority:** `P0`
-- **Acceptance:**
-  - Build를 production prepare wrapper로, Deploy를 version-only wrapper로 제한한다.
-  - 인증된 account·Worker·repository에서 exact server setting을 다시 읽고 raw deploy 설정과 traffic change가 0임을 확인한다.
-- **Evidence:**
-  - 2026-08-25 로그인된 Chrome exact readback.
-  - [`PROJECT_STATE.md`](../PROJECT_STATE.md)의 Builds guard checkpoint.
 
 ### `DWNC-S3-004` — 플랫폼 후보 132개 provenance·시각 감사
 - **Status:** `done`
@@ -410,3 +399,18 @@
   - source commit `68f2225bf647061e4740f2dc136cc9fd8f937fdb`의 artifact `be178dbe3618d3f1c9300bae265780a3d77841bac2120457d985f88393a34615`를 version `476acc86-b11d-4ba4-a699-cb26c551a93d`으로 version-only 업로드하고 bindings·assets·ETag·runtime attestation과 서명을 완료했다.
   - 기존 active version `f0a8bec2-b57b-45af-b2f6-227dd045b3f8` 100%는 그대로이고 DNS·route·traffic·public endpoint 변화는 0이다. 현재 tooling 기준은 commit `f88aac20ec98426539b9450299d7c84b31d8ba4f`이며 artifact source와 구분한다.
   - [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 two-phase production 안전 절차.
+
+### `DWNC-S3-014` — 실제 도메인 연결과 production 운영 전환
+- **Status:** `done`
+- **Updated-at:** `2026-09-05`
+- **Plans:** `PLAN-08`
+- **Priority:** `P0`
+- **Acceptance:**
+  - 사용자의 결정 뒤 준비된 production Worker version을 100% 활성화하고 실제 `dwnc.me`가 새 사이트를 제공하도록 연결한다.
+  - 실제 주소에서 대표 글, Tistory·Naver 예전 주소 이동, 대표 미디어와 데스크톱·모바일 화면을 확인한다.
+  - 기존 DNS를 불필요하게 삭제하지 않고 R2 객체 덮어쓰기·삭제와 Git push를 하지 않는다.
+- **Evidence:**
+  - production version을 100% 활성화하고 기존 apex CNAME을 삭제하지 않은 채 DNS only에서 Proxied로 전환해 Worker route `dwnc.me/*`를 연결했다. 기존 Proxied `www` CNAME은 유지했다.
+  - Custom Domain은 기존 DNS와 충돌해 사용하지 않았고 DNS 삭제는 0회다. 기존 redirect 설정이 HTTP apex와 HTTPS `www`를 HTTPS apex의 같은 경로·query로 이동시키므로 새 redirect rule은 만들지 않았다.
+  - 실제 루트, `/posts/596`의 제목·본문·이미지 10개, `/posts/411`의 제목·이미지 25개, `/1`→`/posts/433`, `/naver/220404726308`→`/posts/1`, 대표 GIF 표시를 확인했다.
+  - 데스크톱이 정상이고 390×844 모바일의 홈과 `/posts/596`에서 모바일형 레이아웃, 가로 넘침·핵심 잘림·깨진 이미지가 모두 0이다. R2 덮어쓰기·삭제와 Git push도 0회다.

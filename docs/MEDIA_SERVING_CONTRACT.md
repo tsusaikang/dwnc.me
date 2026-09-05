@@ -1,6 +1,6 @@
 # dwnc.me 공개 미디어 전달 계약 v1
 
-상태: **staging R2 bulk upload 당시 기준 source commit `ccec8bb855e45ef679a4b99faf0f0633a99e089e`·tree `241a654acc387233d4e2d5e076754b345619e9ac`·관련 push 0 / staging R2 bulk upload 완료·exact 2,758·missing 0·mismatch 0·orphan 0·overwrite 0·delete 0 / private-exposure canonical API capture와 실제 staging R2 전체 2,758개 full GET/SHA-256 audit 완료·보존 receipt 재검증 통과 / 이번 validator 원격·로컬 정리 완료·과거 이름 미기록 token 두 개의 exact identity 미해결 / 식별 근거 또는 사용자 승인에 따른 완료조건 결정 전까지 PLAN-06 차단 / deny-only Worker 최초 생성 전후와 staging 원격 점검의 로컬 안전 보강 완료·실제 smoke token·Worker·version·activation 없음 / 실제 도메인·DNS 미연결**
+상태: **staging·production private R2에 최종 2,758개·2,346,220,246바이트 준비와 전체 GET/SHA-256 감사 완료 / production Worker version 100% 활성화 / 기존 apex CNAME 보존·Proxied 전환과 `dwnc.me/*` Worker route 연결 완료 / 기존 Proxied `www` CNAME과 HTTP·www→HTTPS apex redirect 유지 / 실제 대표 글·예전 주소·미디어·데스크톱·모바일 확인 완료 / R2 overwrite·delete와 Git push 0**
 
 이 문서는 공개 글이 참조하는 대용량 미디어를 동일 출처 `https://dwnc.me/media/*`로 제공하기 위한 계약이다. 기존 URL, 로컬 원본, SHA-256 증거를 바꾸지 않고 private R2 bucket을 전달용 복제본으로 사용한다.
 
@@ -45,7 +45,7 @@ npm run media:validate:local
 
 - production과 staging은 서로 다른 **private** R2 bucket을 사용한다.
 - `r2.dev`와 bucket 직접 public custom-domain access를 켜지 않는다. 그렇지 않으면 Worker allowlist와 철회를 우회할 수 있다.
-- `wrangler.jsonc`의 staging bucket 이름은 현재 생성된 private staging bucket과 일치한다. binding·Worker·route는 아직 미배포 draft이며 production bucket 이름과 모든 production binding도 생성·배포를 뜻하지 않는다.
+- `wrangler.jsonc`의 staging·production bucket 이름은 각각 실제 private bucket과 일치한다. production Worker는 version 100% 활성 상태이고 `dwnc.me/*` route로 실제 서비스를 제공한다. R2의 `r2.dev`와 bucket custom domain은 계속 꺼져 있다.
 - Worker는 `assets.run_worker_first: true`로 모든 요청에서 Static Assets보다 먼저 실행한다. `/media/*`는 tracked media manifest를 따르고, 그 밖의 `GET`·`HEAD`는 tracked public request-surface manifest의 exact path만 허용한다. 허용된 예전 주소 349개는 Static Assets보다 먼저 `docs/EDGE_REDIRECTS_V1.json`의 새 주소로 308 응답하고, 나머지 허용 경로만 `ASSETS`로 전달한다. 철회된 글·예전 주소·검색·RSS·sitemap·aggregate 경로는 cache/asset 조회 전에 동일한 `404 + no-store`로 닫힌다.
 - 공개 Worker에는 R2 `LIST`, `PUT`, `DELETE`를 구현하지 않는다.
 
@@ -193,7 +193,7 @@ staging bulk receipt와 staging full-audit receipt, 향후 production full-audit
 
 production receipt는 manifest digest, 객체 수·총 bytes, 검증시각과 key별 size·SHA-256·MIME·ETag·canonical Last-Modified·nullable S3 version ID뿐 아니라 target environment·bucket·Cloudflare account fingerprint와 검증 수준을 canonical ordering으로 담는다. 집합 단위 manifest 결속은 이 receipt에서 수행하고, detached Ed25519 signature와 public key trust anchor를 함께 검증한다.
 
-tracked `src/data/public-media-release-policy-v1.json`은 Worker binding·bucket·요구 검증 수준과 `r2.dev 비활성·custom domain 0`인 private exposure 정책을 고정한다. staging media Ed25519 public-key SPKI fingerprint는 `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`, release fingerprint는 `2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2`로 고정했다. private key는 macOS Keychain에만 보관하고 export하지 않는다. production account·media·release fingerprint는 모두 `null`을 유지하므로 staging key나 receipt로 production gate를 통과할 수 없다.
+tracked `src/data/public-media-release-policy-v1.json`은 Worker binding·bucket·요구 검증 수준과 `r2.dev 비활성·custom domain 0`인 private exposure 정책을 고정한다. staging media Ed25519 public-key SPKI fingerprint는 `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`, release fingerprint는 `2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2`다. production media fingerprint는 `3277f416d8657bebaff3dcfcbe57dafd683fdfc6cefe36306b5046ca48ff890a`, release fingerprint는 `11b44ae3c3c8743ede7881ea40ebf59243711246d100e3383ad23b220c5cc0bb`로 고정했다. private key는 macOS Keychain에만 보관하고 export하지 않는다.
 
 production remote 검증 entrypoint의 비자격증명 증거 경로:
 
@@ -303,7 +303,9 @@ Cloudflare Dashboard의 최신 Stage 3 Builds guard exact readback은 올바른 
 
 Cloudflare Cache API는 저장 시 쓴 내부 cache key를 사용하므로 공개 URL만으로 모든 캐시 사본을 exact purge할 수 있다고 약속하지 않는다. 보안 경계는 모든 요청에서 Cache API·Static Assets보다 먼저 실행되는 최신 static/media allowlist와, 전체 공개 request surface를 artifact에서 파생해 누적 withdrawn hash와 대조하는 signed promotion head다. 철회 release 뒤 과거 전체 Worker·static·redirect·manifest version을 직접 재승격하거나 `wrangler rollback`하면 재노출될 수 있으므로 verifier가 거부한다. 화면을 되돌릴 때도 최신 projection·redirect·media deny floor를 합성한 새 artifact/version을 만들어 forward rollback한다. staging은 sampling 100%이고 cache smoke는 Bearer token으로 보호한 `workers.dev` endpoint에서 수행한다.
 
-## 8. 현재 Cloudflare 상태와 남은 작업
+## 8. Cloudflare 진행 이력과 현재 상태
+
+아래의 날짜별 staging 실패·복구 문단은 당시 판단 근거를 보존한 역사 기록이다. 현재 권위 상태는 이 절의 마지막 문단과 [`PROJECT_STATE.md`](../PROJECT_STATE.md)를 따른다.
 
 2026-08-25 당시 사전점검에서 올바른 Cloudflare account fingerprint가 정책과 exact 일치했다. 원격 작업 직전 private staging bucket `dwnc-me-public-media-staging`은 객체 0이었고 dashboard 관측값은 `r2.dev` 꺼짐, custom domain 0, jurisdiction `default`, location `APAC`, storage class `Standard`였다. 최초 validator inspection은 exact 0·missing 2,758·mismatch 0·orphan 0으로 통과했다. 이어 첫 key에 create-only PUT을 최대 1회 수행했으나 post-HEAD에서 `x-amz-version-id` 부재를 당시 parser가 거부해 admission receipt는 만들어지지 않았다. 호환 commit 뒤 PUT 없이 다시 검사해 해당 객체 1개가 exact이고 missing 2,757·mismatch 0·orphan 0임을 확인했다. 두 번째 읽기 전용 검사 기록 SHA-256은 `27bf50a94fb6166a01201f3fb3a4a2dfc954b3d983e29a47f53ea38cbab31cd3`이다. 당시 exact bucket 한정 Object Read & Write uploader와 별도 Object Read validator는 Active·TTL 2026-09-03이었고 실패 uploader v2는 revoked했으며, 사용 불가능한 기존 두 token도 Active로 관측됐다. 이는 당시 상태의 역사 기록이다. 현재는 기존 validator 하나가 Inactive였던 관측만 확정됐고 나머지 기존 원격 token 상태·정리는 미해결이다. staging media·release Ed25519 private key는 macOS Keychain에만 보관하고 public fingerprint를 policy에 고정했다. staging Worker, smoke token, version, activation은 없다.
 
@@ -339,4 +341,4 @@ private-exposure 설정 확인에 쓰려고 만든 읽기 전용 API token 두 �
 - cache/WAF 관측 정책과 provider purge 방어 심화 절차
 - 실제 `dwnc.me` 도메인·DNS·route·traffic 연결과 Git push
 
-승인된 순서의 앞 단계가 통과하면 직전 preflight를 거쳐 계속하고, 단순히 추가 승인을 받기 위해 임의로 중단하지 않는다. 실제 도메인·DNS는 연결되지 않았으므로 Cloudflare의 `production` 이름을 쓰는 Worker·R2·version 작업도 현재 방문자에게 영향을 주지 않으며 승인 범위 안에서 계속할 수 있다. 단, 실제 도메인·DNS 변경, Git push, 보호 절차 없는 `wrangler deploy`, 객체 덮어쓰기·삭제, 비밀값 기록은 하지 않는다.
+2026-09-05 현재 `PLAN-05`부터 `PLAN-08`까지 완료됐다. production private R2는 2,758개·2,346,220,246바이트와 full object-set SHA-256 일치를 확인했고, 준비된 production Worker version을 100% 활성화했다. 기존 apex CNAME은 삭제하지 않고 DNS only에서 Proxied로 전환해 Worker route `dwnc.me/*`를 추가했다. 기존 Proxied `www` CNAME은 유지했다. Custom Domain은 기존 DNS와 충돌해 사용하지 않았고 DNS 삭제도 하지 않았다. 기존 redirect 설정이 HTTP apex와 HTTPS `www`를 HTTPS apex의 같은 경로·query로 이동시키므로 새 redirect rule은 만들지 않았다. 실제 루트, Naver·Tistory 대표 글, 두 legacy alias, 대표 GIF와 데스크톱·390×844 모바일 화면이 정상이고 가로 넘침·핵심 잘림·깨진 이미지가 없다. 이후 DNS·route·traffic 변경, Git push, 보호 절차 없는 `wrangler deploy`, R2 객체 덮어쓰기·삭제와 비밀값 기록은 별도 승인 없이 하지 않는다.

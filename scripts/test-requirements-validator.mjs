@@ -83,7 +83,7 @@ function assertPlainLanguageSummary({ current = sourceCurrent } = {}) {
   for (const requiredPhrase of [
     '시험용 사이트 프로그램',
     '실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하지 않는다',
-    '실제 `dwnc.me` 주소가 가리키는 곳과 주소 연결 설정을 바꾸는 일',
+    '승인 없이 실제 `dwnc.me`의 주소 연결 설정과 방문자 흐름을 다시 바꾸는 일',
   ]) {
     assert.ok(
       userSummary.includes(requiredPhrase),
@@ -234,7 +234,7 @@ withFixture(
   {
     archive: `${sourceArchive}\n\n${archivedRequirement({
       id: 'DWNC-P2-999',
-      updatedAt: '2026-08-26',
+      updatedAt: '2026-08-27',
     })}\n`,
   },
   (result) => assertRejected(result, /oldest-first movement violated/),
@@ -302,7 +302,7 @@ assert.throws(
   () =>
     assertPlainLanguageSummary({
     current: sourceCurrent.replace(
-      '실제 `dwnc.me` 주소가 가리키는 곳과 주소 연결 설정을 바꾸는 일',
+      '승인 없이 실제 `dwnc.me`의 주소 연결 설정과 방문자 흐름을 다시 바꾸는 일',
       '실제 `dwnc.me` 도메인 연결과 DNS 변경',
     ),
     }),
@@ -327,9 +327,9 @@ withFixture(
 withFixture(
   {
     current: sourceCurrent
-      .replace(/^(\| `PLAN-07` \|[^\n]*\| )`대기` \|$/m, '$1`진행 중` |')
+      .replace(/^(\| `PLAN-07` \|[^\n]*\| )`완료` \|$/m, '$1`진행 중` |')
       .replace(
-        /^(\| `PLAN-08` \|[^\n]*\| )`사용자 결정 필요` \|$/m,
+        /^(\| `PLAN-08` \|[^\n]*\| )`완료` \|$/m,
         '$1`진행 중` |',
       ),
   },

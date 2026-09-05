@@ -1,6 +1,6 @@
 # dwnc.me 프로젝트 공식 상태
 
-최종 갱신: 2026-09-05 KST — PLAN-05·PLAN-06·PLAN-07 완료 / production R2·비활성 Worker version 준비 완료, PLAN-08 사용자 결정 대기
+최종 갱신: 2026-09-05 KST — PLAN-05부터 PLAN-08까지 완료 / `dwnc.me` 운영 전환 및 실제 화면 확인 완료, PLAN-09 사용자 결정 대기
 
 사용자가 확인할 현재 목표·결정·진행을 막는 조건·다음 단계와 stable requirement ID는 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)를 기준으로 한다. 이 문서는 구현 세부사항, 검증 수치, Git·Cloudflare 상태 재확인 결과와 인수인계를 보존하는 기술 기준점이다. 완료 이력은 요구사항 원장의 보관 정책에 따라 [`docs/REQUIREMENTS_ARCHIVE.md`](docs/REQUIREMENTS_ARCHIVE.md)로 이동하되 이 기술 증거를 삭제하지 않는다.
 
@@ -8,7 +8,7 @@
 
 네이버 블로그 `blog.naver.com/tsusai`와 티스토리 기반 `dwnc.me`의 직접 작성 콘텐츠를 소유자가 통제하는 새 블로그로 이전한다. 원문, 이미지, 게시일, 카테고리, 태그, 기존 주소, 공개 범위를 보존하며 이후 새 글도 지속해서 작성할 수 있어야 한다.
 
-비개발자용 현재 요약: `PLAN-05`와 `PLAN-06`에 이어 운영용 자원과 비활성 사이트 버전을 준비하는 `PLAN-07`도 완료했다. production 저장소는 외부 공개 기능이 꺼진 상태로 사진과 GIF 2,758개·2,346,220,246바이트를 create-only로 채웠고, 전체 파일을 다시 읽어 SHA-256과 orphan 0을 확인했다. 운영용 artifact `be178dbe3618d3f1c9300bae265780a3d77841bac2120457d985f88393a34615`는 version `476acc86-b11d-4ba4-a699-cb26c551a93d`으로 version-only 업로드했지만 방문자 트래픽에는 적용하지 않았다. 기존 active production version `f0a8bec2-b57b-45af-b2f6-227dd045b3f8`은 계속 100%이고, DNS·route·traffic·public endpoint 변화와 R2 덮어쓰기·삭제, Git push는 모두 0이다. 다음은 사용자가 실제 `dwnc.me` 연결 여부를 결정하는 `PLAN-08`이며 아직 시작하지 않았다.
+비개발자용 현재 요약: 운영 전환을 승인받아 준비된 production Worker 버전을 100% 활성화하고 `dwnc.me/*` Worker route를 연결했다. 기존 apex CNAME은 삭제하지 않고 DNS only에서 Proxied로 바꿨으며 기존 Proxied `www` CNAME도 그대로 유지했다. Custom Domain은 기존 DNS와 충돌해 사용하지 않았고 DNS 삭제도 하지 않았다. 이미 있던 redirect 설정이 HTTP apex와 HTTPS `www`를 HTTPS apex의 같은 경로·query로 정상 이동시키므로 새 redirect rule은 만들지 않았다. 실제 `dwnc.me`에서 홈, Naver·Tistory 대표 글, 두 종류의 예전 주소 이동, 대표 GIF, 데스크톱과 390×844 모바일 화면을 확인했고 깨진 이미지·핵심 잘림·가로 넘침이 없었다. 이로써 `PLAN-08`은 완료됐고 다음은 새 글 작성과 비공개 백업 방식을 정하는 `PLAN-09`다.
 
 전체 프로젝트 완료 조건은 다음과 같다.
 
@@ -18,7 +18,7 @@
 - 네이버 공개 목록과 직접 작성 글 목록의 차이 10개(공유·스크랩 추정)는 저작권과 출처를 검토해 링크형 기록 또는 제외로 개별 결정한다.
 - 원문 HTML과 정규화 본문을 분리하고, 미디어마다 원주소·SHA-256·크기·MIME·로컬 경로를 기록한다.
 - 글 목록, 상세, 카테고리, 연도별 아카이브, 검색, RSS, 사이트맵, 데스크톱·모바일 화면을 검증한다.
-- 기존 블로그를 수정·삭제하지 않는다. 현재 승인된 준비 단계에서는 실제 `dwnc.me` 도메인·DNS와 Git 원격 저장소를 변경하지 않는다. 나중에 사용자가 운영 전환을 결정하면 실제 도메인을 연결하고 글·예전 주소 349개·미디어·모바일과 데스크톱 화면을 실제 주소에서 다시 검증해야 전체 운영 전환이 완료된다.
+- 기존 블로그를 수정·삭제하지 않는다. 실제 `dwnc.me`는 새 사이트에 연결됐으며 대표 글·예전 주소·미디어·모바일과 데스크톱 화면 확인을 통과했다. 이후 DNS·route·traffic 추가 변경과 Git 원격 저장소 변경은 별도 승인 없이 수행하지 않는다.
 
 ## 현재 단계
 
@@ -55,7 +55,7 @@
 - 공개 미디어 최종 범위: **B 선택 반영. 사용자 소유 사진 2,757개 + 직접 제작 SBS GIF 1개 = 2,758개. 지도 99개는 장소 카드 16개(원 장소 네이버지도 15+네이버지도 검색 1)로 대체, LINE 스티커 5개·placeholder 27개 제외 / final 검증 PASS**
 - 네이버 세 편집기 세대 대표·비디오 대표 데스크톱·모바일 브라우저 QA: **모두 PASS**
 - 이전 기술 완료 조건: **달성**
-- 운영 방식·호스팅·도메인 전환: **private R2+same-origin Worker 구조 확정 / 전체 업로드·실제 파일 내용 감사와 staging version upload·100% activation·live smoke 완료 / 실제 `dwnc.me` 도메인·DNS 미연결**
+- 운영 방식·호스팅·도메인 전환: **private R2+same-origin Worker 구조 확정 / production version 100% 활성화와 `dwnc.me/*` route 연결 / 실제 도메인 대표 화면·주소 이동·미디어 확인 완료**
 
 ## 전체 계획과 현재 위치
 
@@ -67,10 +67,10 @@
 - `PLAN-05` 시험용 R2 실제 내용 확인과 열쇠 정리: **완료**. 계정 결속, 저장소 비공개 확인, 실제 2,758개 GET/SHA-256 비교, 이번 validator 원격 폐기·로컬 Keychain 정리와 2026-08-25의 사용 불가능한 기존 token 두 개의 정확한 식별·삭제·목록 부재 확인을 모두 마쳤다.
 - `PLAN-06` 시험용 사이트 프로그램·버전·사이트 점검: **완료**. `DWNC-S3-009`와 `DWNC-S3-010`을 마쳤고, runtime source `05962c4c0872b5234d3a45298ab0e44d123d03da`의 artifact `81cf14fc…`를 version `bb59f4ee-55f5-4626-858b-0653d7e79900`으로 100% 적용해 live 종합 점검을 통과했다.
 - `PLAN-07` 운영용 이름의 Cloudflare 자원·버전 준비: **완료**. private production R2에 2,758개를 create-only로 올리고 전수 감사·서명·production artifact와 비활성 Worker version 준비를 마쳤다. 기존 active version과 production DNS·route·traffic은 바꾸지 않았다.
-- `PLAN-08` 실제 도메인 연결과 운영 전환 검증: 사용자 결정 필요
+- `PLAN-08` 실제 도메인 연결과 운영 전환 검증: **완료**. production version을 100% 활성화하고 기존 DNS를 보존한 Worker route 방식으로 연결한 뒤 실제 주소의 대표 글·예전 주소·미디어·모바일·데스크톱 화면을 확인했다.
 - `PLAN-09` 새 글 작성·비공개 백업 운영 결정: 사용자 결정 필요. 두 항목은 최종 운영에 필요하고, 공유 글 10개·댓글·추가 개선은 사용자 선택 후속으로 Stage 3를 막지 않는다.
 
-인수인계 상태: `PLAN-05`·`PLAN-06`·`PLAN-07`과 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`은 완료됐다. production R2는 private이고 2,758개 전수 감사가 통과했으며, 새 production version `476acc86-b11d-4ba4-a699-cb26c551a93d`은 업로드만 되어 비활성이다. 기존 active production version `f0a8bec2-b57b-45af-b2f6-227dd045b3f8` 100%는 그대로다. 다음 공식 단계 `PLAN-08`은 실제 도메인 연결에 대한 사용자 결정 전까지 시작하지 않는다.
+인수인계 상태: `PLAN-05`부터 `PLAN-08`까지와 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`는 완료됐다. production R2는 private이고 2,758개 전수 감사가 통과했으며 production version `476acc86-b11d-4ba4-a699-cb26c551a93d`이 100% 활성 상태다. `dwnc.me/*` Worker route와 기존 Proxied DNS를 통해 새 사이트가 실제 운영 중이다. 다음 공식 단계 `PLAN-09`는 새 글 작성과 비공개 백업 방식에 대한 사용자 결정을 기다린다.
 
 요구사항과 계획의 자세한 연결은 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)를 기준으로 한다. 최종 결과·완료조건·범위·순서·승인 범위가 실제로 바뀔 때만 요구사항 번호, 관련 계획, 우선순위, 완료 기준, 상태와 근거 및 현재 위치를 갱신한다. 단순 질문·설명·진행 확인과 이미 기록된 작업의 계속 지시는 새 요구사항으로 만들지 않는다.
 
@@ -145,8 +145,8 @@
 53. production release는 결정적 core artifact와 시한부 승인/attestation을 분리한다. core는 clean Git/CI SHA, stable `worker.js`, static tree, upload/promotion 전용 config, media·redirect receipt만 담고 시각·build UUID·version ID를 금지한다. 별도 signed upload authorization 뒤 no-bundle version-only upload를 수행하고, Cloudflare version-detail attestation과 staging 동일-payload smoke를 거쳐 exact version ID traffic activation을 다시 승인받는다.
 54. promotion은 signed active head의 단조 generation과 전체 artifact request-surface·누적 withdrawn path hash를 대조한다. 철회된 media/article/alias/static을 포함한 과거 version 직접 재승격과 raw rollback은 금지하며, 되돌리기도 최신 deny floor를 합성한 새 version으로 forward 적용한다.
 55. 사용자는 플레이스홀더 정리에 B를 선택했다. 1×1 placeholder 27개는 공개 manifest에서 제외하되 재생 불가 안내·재생시간 53개와 작성자 캡션 23개는 유지하고, placeholder cover 13개의 파생 cover는 `null`로 둔다.
-56. 실제 `dwnc.me` 도메인·DNS·route가 Cloudflare Worker에 연결되지 않았으므로 `production`이라는 이름의 Worker·R2·version 작업도 현재 방문자 트래픽에 영향을 주지 않는다. 다만 실제 도메인·DNS 변경은 하지 않는다.
-57. 이미 승인된 작업 순서는 앞 단계의 기술적 조건이 통과하면 직전 사전점검 후 계속하며, 단순히 추가 승인을 받기 위해 임의로 중단하지 않는다. Git push·실제 도메인/DNS 변경·보호 절차 없는 `wrangler deploy`·덮어쓰기·삭제·비밀값 기록은 여전히 하지 않는다.
+56. 실제 운영 연결은 기존 DNS를 삭제하거나 Custom Domain이 소유하도록 바꾸지 않는다. 기존 apex CNAME을 Proxied로 전환하고 `dwnc.me/*` Worker route를 얹었으며, 기존 Proxied `www` CNAME과 이미 작동하던 HTTPS apex redirect는 유지했다. 이 선택은 기존 DNS와 충돌한 Custom Domain 방식보다 기존 레코드를 보존하면서 새 Worker로 트래픽을 전환하는 직접적인 방법이다.
+57. 승인된 `PLAN-08` 범위에서 production version 활성화와 route·apex proxy 변경을 완료했다. 이후 Git push·추가 도메인/DNS/route/traffic 변경·보호 절차 없는 `wrangler deploy`·R2 덮어쓰기·삭제·비밀값 기록은 별도 승인 없이 하지 않는다.
 58. Cloudflare R2의 S3 `x-amz-version-id`는 Workers binding의 `R2Object.version`과 같은 필수값으로 간주하지 않는다. 현재 공식 호환표에서 bucket versioning API는 미지원이므로 S3 HEAD/GET에서 없으면 canonical `null`로 기록한다. 양쪽 모두 있으면 exact 일치, 양쪽 모두 없으면 ETag·Last-Modified와 전체 integrity metadata exact 일치, 한쪽에만 있거나 값이 다르면 generation mismatch로 거부한다.
 59. bulk `dwnc-public-media-r2-bulk-sync-v1` receipt는 업로드·재시도·post-HEAD 운영 증거일 뿐 `media-receipt` signer나 release artifact 입력이 아니다. `dwnc-public-media-r2-receipt-v1`의 `full-get-sha256` 결과만 별도 서명할 수 있다. staging receipt·서명은 staging에만 유효하며 향후 production은 별도 bucket/account 전수 감사와 production 전용 신뢰값이 필요하다.
 60. 업로드 전 bucket 설정 확인 capture와 full audit capture를 분리한다. bulk와 strict post-inspection 뒤 새 900초 capture를 수집해 곧바로 전수 감사를 시작하고, 첫 원격 요청 전에 capture가 fresh·private이며 exact account/Git/bucket에 결속됐는지 강제한다. 이 시작 검사를 통과한 단일 실행은 2,758개 GET/SHA-256 처리 중 capture가 만료돼도 완료할 수 있지만, 만료된 capture로 새 실행은 시작하지 않는다.
@@ -406,6 +406,15 @@
 - 업로드 뒤에도 active version `f0a8bec2-b57b-45af-b2f6-227dd045b3f8` 한 개가 100%로 유지됐다. 새 version은 비활성이며 DNS·route·traffic·public endpoint 변화는 0이다.
 - 주요 로컬 기록은 production R2 제어 경로 `b632c10`, OAuth release control `b61501a`, exposure runtime parsing `acd6cd0`, Wrangler banner 처리 `0eb8b5a`, production full audit timeout `c3f2414`, 중단된 R2 read retry `48efb5b`, audit-start exposure freshness `68f2225`, production state read OAuth `c3d1c86`, current Wrangler version detail `f88aac2`다.
 
+### PLAN-08 실제 운영 전환 검증
+
+- 준비된 production version `476acc86-b11d-4ba4-a699-cb26c551a93d`을 100% 활성화하고 Worker route `dwnc.me/*`를 추가했다.
+- 기존 apex CNAME은 삭제·교체하지 않고 DNS only에서 Proxied로 전환했다. 기존 `www` CNAME은 Proxied 상태를 유지했다. Custom Domain은 기존 DNS와 충돌해 사용하지 않았고 관련 DNS 삭제도 0회다.
+- 기존 redirect 설정이 `http://dwnc.me/173?from=check`와 `https://www.dwnc.me/173?from=check`를 모두 `https://dwnc.me/173?from=check`로 이동시키고 같은 글 제목을 표시했다. 새 redirect rule은 만들지 않았다.
+- 실제 HTTPS 루트가 정상이며 `/posts/596`의 제목·본문·이미지 10개, `/posts/411`의 제목·이미지 25개, `/1`→`/posts/433`, `/naver/220404726308`→`/posts/1`, 대표 GIF 표시를 확인했다.
+- 데스크톱 화면이 정상이고 390×844 모바일의 홈과 `/posts/596`은 모바일형 레이아웃, 가로 넘침 0, 핵심 잘림 0, 깨진 이미지 0이다.
+- 이 전환은 DNS 원본 대상이나 R2 객체를 삭제·덮어쓰지 않았고 Git push도 0회다. 실제 방문자는 이제 새 사이트를 보며 이후 도메인·route·traffic 변경은 새 승인 경계다.
+
 ### 네이버 raw·importer·미디어 최종 검증
 
 - 네이버 인벤토리: 432개, 고유 ID 432개
@@ -519,7 +528,7 @@
 - 콘텐츠 이전 정확성·완전성 측면의 알려진 문제는 없다. Stage 3 R2 전체 2,758개 업로드, 사후 목록 확인, 실제 전체 내용·bytes·SHA-256 검증이 완료됐다.
 - 별도 로컬 진단 실수로 loopback 회귀시험을 한 번 잘못 호출했다. sandbox에서 bind를 1회 시도한 뒤 `BRIDGE_E_BIND`로 즉시 끝났고 accepted connection·payload·initialize·Keychain·Cloudflare는 모두 0회였다. 재시도는 하지 않았다.
 - 현재 전체 Cloudflare 검사 묶음에는 `scripts/test-r2-client-entrypoints.mjs` 343행의 감사 진입점 불일치로 실패하는 기존 항목 하나가 있다. 이번 연결 변경보다 먼저 존재한 별도 문제이며, 연결 전용 212개와 계정 전용 698개 검사는 모두 통과했다. 이번에는 범위를 넓혀 고치지 않았다.
-- HTTP→HTTPS, www→apex, trailing slash와 `/index.html` 정규화는 현재 로컬 소스가 아니라 운영 edge의 승인 항목이다. `docs/URL_CONTRACT.md` 체크리스트에 따라 배포·호스팅 승인 뒤 301/308 단일 hop, chain·loop 0을 검증해야 한다.
+- HTTP apex와 HTTPS `www`의 HTTPS apex 이동은 기존 redirect 설정으로 실제 경로·query 보존을 확인했다. trailing slash와 `/index.html`의 전체 edge 정규화 점검은 운영 중 후속 확인으로 남지만 `PLAN-08`에서 확인한 대표 화면과 주소 이동의 완료를 막지 않는다.
 - 현재 imported 공개 349글의 다른 글 fragment 링크는 0건이다. 알려진 Naver 플랫폼 fragment와 향후 native deep link fragment는 target rendered ID map을 production 빌드에서 전수 생성·검증하기 전까지 버린다. fragment 보존 map 구현은 사용자가 요청할 때만 진행하는 P2 후속이며 현재 완료조건과 Stage 3를 막지 않는다.
 - 태그 660개는 현재 `/tags` 검색 입력으로 즉시 걸러지지만 전체 노드를 한 페이지에 렌더한다. 초성·주제별 추가 filter나 분할 탐색은 사용자가 요청할 때만 진행하는 P2 후속이며 현재 완료조건과 Stage 3를 막지 않는다.
 - 공개 이미지의 대체텍스트 품질·누락 개선은 사용자가 요청할 때만 진행하는 P2 후속이다. 원문·정규화 본문을 일괄 수정하지 않으며 현재 완료조건과 Stage 3를 막지 않는다.
@@ -553,7 +562,7 @@
 ## 다음 단계
 
 1. `PLAN-05`는 실제 staging 비공개 확인, 2,758개 전수 GET/SHA-256, 이번 validator 원격·로컬 정리와 사용 불가능한 기존 원격 token 두 개의 exact identity 확인·승인된 삭제·부재 확인까지 완료했다. 보존 receipt와 capture는 유지한다.
-2. `PLAN-06`과 `PLAN-07`, `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`은 완료됐다. `PLAN-08`은 아직 시작하지 않았으며, 다음 행동은 사용자가 실제 `dwnc.me` 도메인 연결과 production traffic 전환 여부를 결정하는 것이다. 그 결정 전에는 DNS·route·traffic·public endpoint를 바꾸지 않는다.
+2. `PLAN-06`·`PLAN-07`·`PLAN-08`과 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`는 완료됐다. 다음 공식 단계는 `PLAN-09`이며 사용자가 새 글 작성 방식과 비공개 자료의 백업·복구 방식을 결정한다.
 
 ## 중요한 제약과 주의사항
 
@@ -569,10 +578,10 @@
 - legacy raw를 덮어쓰지 않는다. 재캡처나 복구는 버전 경로와 no-replace 의미를 유지하고 canonical 선택 근거를 별도 매니페스트에 기록한다.
 - legacy `page.html`은 비정본 진단 파일이다. 본문 변환·원문 완전성 증거로 사용하지 않는다.
 - `src/data/posts/naver/`, `public/media/naver/`, `dist/`는 최종 통합 QA를 통과한 로컬 후보다. 공개 R2에는 최종 manifest 2,758개만 create-only로 올리고 전수 검증 전에 서비스하지 않는다.
-- 실제 `dwnc.me` 도메인·DNS·route 연결과 traffic 전환, Git push는 하지 않는다. 현재 실제 도메인은 Cloudflare에 연결되지 않았으므로 production 이름 R2·Worker·version 준비도 현재 방문자에게 영향을 주지 않는다. 승인된 순서에서는 각 단계별 새 승인 대기나 반복 독립검토 때문에 멈추지 않는다.
+- 승인된 `PLAN-08`의 production version 활성화, `dwnc.me/*` route 추가와 apex CNAME Proxied 전환은 완료됐다. 이후 실제 도메인·DNS·route·traffic 추가 변경과 Git push는 새 승인 없이 하지 않는다.
 - 보호 절차 없이 직접 실행하는 `wrangler deploy`, 파일·R2 객체 덮어쓰기·삭제, orphan 자동 삭제, 자격증명·token·private key 값 기록을 하지 않는다.
 - 기존 로컬 안전체계·복구체계·서명·영수증·장애주입·모의훈련·독립감사 증거는 보존하되 더 확장하거나 반복하지 않는다. 실제 실행에서 완료를 막는 문제가 발견될 때만 최소 수정과 관련 검사 한 묶음을 수행한다.
-- `wrangler.jsonc`의 staging bucket 이름은 실제 private bucket과 일치하며 staging Worker의 ASSETS·R2 binding과 live 점검을 완료했다. production bucket도 실제 private 상태로 생성·전수 감사했지만, 새 production version은 비활성이며 실제 도메인·route·traffic 연결을 의미하지 않는다.
+- `wrangler.jsonc`의 staging bucket 이름은 실제 private bucket과 일치하며 staging Worker의 ASSETS·R2 binding과 live 점검을 완료했다. production bucket도 실제 private 상태로 생성·전수 감사했고 production version은 100% 활성화되어 `dwnc.me/*` route로 실제 서비스한다.
 - R2 key mismatch는 자동 overwrite하지 않고 orphan은 자동 삭제하지 않는다. public→private/tombstone은 cache 조회보다 먼저 작동하는 최신 allowlist deny release를 forward 적용한다. exact URL cache purge는 보장할 수 없으므로 보안 경계로 삼지 않고, privacy rollback에서도 최신 deny 상태를 유지한다.
 - 실제 배포 전 기존 `dwnc.me/{숫자}` 164개 전수 응답·리디렉션 회귀 검증이 필요하다.
 - 본문 링크 호환은 `src/lib/public-links.ts`의 공개 registry와 표현 transformer에서만 유지한다. raw·normalized·frontmatter·importer에 canonical 링크를 역기록하지 않는다.
