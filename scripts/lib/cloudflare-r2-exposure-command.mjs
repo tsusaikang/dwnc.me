@@ -3,6 +3,7 @@ import {
   canonicalR2ExposureCapturePayload,
   canonicalR2ExposureEvidencePayload,
   fetchR2ExposureCapture,
+  fetchProductionR2ExposureCapture,
   inspectR2ExposureGit,
   R2_EXPOSURE_TARGETS,
   STAGING_R2_EXPOSURE_BUCKET,
@@ -115,6 +116,7 @@ export async function runR2ExposureCommand({
   writeEvidence = writeCanonicalEvidenceCreateOnly,
 } = {}) {
   const options = parseR2ExposureCommand({ argv, environment, root });
+  if (options.environment !== 'staging') fail('CLOUDFLARE_E_R2_EXPOSURE_ARGUMENT');
   await Promise.all([
     assertDestination(options.capturePath),
     assertDestination(options.evidencePath),
@@ -146,6 +148,66 @@ export async function runR2ExposureCommand({
   await writeEvidence(
     options.evidencePath, capture.evidence, canonicalR2ExposureEvidencePayload,
   );
+  return {
+    contract: capture.evidence.contract,
+    purpose: capture.evidence.purpose,
+    environment: capture.evidence.environment,
+    bucket: capture.evidence.bucket,
+    accountIdSha256: capture.evidence.accountIdSha256,
+    sourceCommit: capture.evidence.sourceCommit,
+    sourceTree: capture.evidence.sourceTree,
+    gitCheckCount: capture.evidence.gitCheckCount,
+    jurisdiction: capture.evidence.jurisdiction,
+    location: capture.evidence.location,
+    storageClass: capture.evidence.storageClass,
+    r2DevEnabled: capture.evidence.r2DevEnabled,
+    customDomainCount: capture.evidence.customDomainCount,
+    requestAudit: capture.evidence.requestAudit,
+    responseSha256: {
+      bucketProperties: capture.evidence.bucketPropertiesSha256,
+      managedDomain: capture.evidence.managedDomainSha256,
+      customDomains: capture.evidence.customDomainsSha256,
+    },
+    captureWritten: true,
+    receiptWritten: true,
+    signed: false,
+  };
+}
+
+export async function runProductionR2ExposureCommand({
+  argv = process.argv.slice(2),
+  environment = process.env,
+  root = process.cwd(),
+  loadPolicy = loadTrackedPublicMediaReleasePolicy,
+  assertDestination = assertSecureCreateOnlyDestination,
+  fetchCapture = fetchProductionR2ExposureCapture,
+  writeEvidence = writeCanonicalEvidenceCreateOnly,
+} = {}) {
+  const options = parseR2ExposureCommand({ argv, environment, root });
+  if (options.environment !== 'production') fail('CLOUDFLARE_E_R2_EXPOSURE_ARGUMENT');
+  await Promise.all([
+    assertDestination(options.capturePath),
+    assertDestination(options.evidencePath),
+  ]);
+  const configuredTarget = R2_EXPOSURE_TARGETS.production;
+  const target = (await loadPolicy(root))?.production;
+  if (!target || target.environment !== 'production'
+    || target.bucket !== configuredTarget.bucket
+    || !SHA256.test(target.accountIdSha256 ?? '')) {
+    fail('CLOUDFLARE_E_R2_EXPOSURE_TARGET');
+  }
+  const capture = await fetchCapture({
+    purpose: options.purpose,
+    environment: 'production',
+    bucket: target.bucket,
+    expectedAccountIdSha256: target.accountIdSha256,
+    expectedGitCommit: options.expectedGitCommit,
+    expectedGitTree: options.expectedGitTree,
+    root,
+    environmentVariables: environment,
+  });
+  await writeEvidence(options.capturePath, capture, canonicalR2ExposureCapturePayload);
+  await writeEvidence(options.evidencePath, capture.evidence, canonicalR2ExposureEvidencePayload);
   return {
     contract: capture.evidence.contract,
     purpose: capture.evidence.purpose,

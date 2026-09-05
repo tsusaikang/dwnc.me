@@ -190,7 +190,7 @@ assert.equal(packageJson.scripts['media:r2:production:sync:secure'],
 assert.equal(packageJson.scripts['media:r2:production:audit:full:secure'],
   'node scripts/run-with-r2-credentials.mjs --command=production-audit-full --');
 assert.equal(packageJson.scripts['cloudflare:r2:production:exposure:fetch'],
-  'node scripts/run-cloudflare-read-control-plane.mjs --command=production-r2-exposure');
+  'node scripts/fetch-public-media-r2-production-exposure.mjs --purpose=production-r2-private-exposure-read');
 assertions += 5;
 const releasePolicy = await loadTrackedPublicMediaReleasePolicy(ROOT);
 assert.equal(releasePolicy.production.bucket, 'dwnc-me-public-media-production');
@@ -203,13 +203,15 @@ assert.equal(releasePolicy.staging.releasePublicKeySpkiSha256,
   '2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2');
 assert.equal(releasePolicy.staging.smokeAccessPolicySha256,
   'd6c554c1d80c68c08605636f12f26a411f7826bc40eddaee9233a30b6551781a');
-assert.equal(releasePolicy.production.accountIdSha256, null);
-assert.equal(releasePolicy.production.publicKeySpkiSha256, null);
-assertions += 8;
-throwsCode(
-  () => validatePublicMediaReleasePolicy(releasePolicy, { requireComplete: true }),
-  'MEDIA_E_RELEASE_POLICY_INCOMPLETE',
-);
+assert.equal(releasePolicy.production.accountIdSha256,
+  '6ef9d1a2e2a398e755e1d4108acabacde0f5218f9f455abf79f1af56a154ea0f');
+assert.equal(releasePolicy.production.publicKeySpkiSha256,
+  '3277f416d8657bebaff3dcfcbe57dafd683fdfc6cefe36306b5046ca48ff890a');
+assert.equal(releasePolicy.production.releasePublicKeySpkiSha256,
+  '11b44ae3c3c8743ede7881ea40ebf59243711246d100e3383ad23b220c5cc0bb');
+assert.equal(validatePublicMediaReleasePolicy(releasePolicy, { requireComplete: true }),
+  releasePolicy);
+assertions += 10;
 
 {
   const syntheticEnvironment = {
@@ -272,7 +274,7 @@ await spawnFailure('scripts/sync-public-media-r2.mjs', ['--environment=staging']
     R2_RUNNER_ENVIRONMENT: 'staging', R2_RUNNER_ROLE: 'uploader',
   }, validSyntheticR2Environment);
 await spawnFailure('scripts/sync-public-media-r2.mjs', ['--environment=production'],
-  'MEDIA_E_RELEASE_POLICY_INCOMPLETE', {
+  'MEDIA_E_RELEASE_TARGET', {
     R2_RUNNER_ENVIRONMENT: 'production', R2_RUNNER_ROLE: 'uploader',
   }, {
     ...validSyntheticR2Environment, bucket: 'dwnc-me-public-media-production',

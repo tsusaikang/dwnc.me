@@ -14,10 +14,10 @@ import {
   verifySignedPayload,
 } from './lib/cloudflare-release.mjs';
 import {
-  assertCloudflareAccountTarget,
   assertPinnedWranglerInstalled,
-  cloudflareWranglerEnvironment,
+  cloudflareOAuthWranglerEnvironment,
   claimOneTimeAuthorization,
+  inspectCloudflareOAuthAccount,
   installStructuredErrorHandler,
   runChecked,
 } from './lib/cloudflare-process.mjs';
@@ -50,11 +50,14 @@ const authorizationFiles = await loadSignedJsonFiles({
     'CLOUDFLARE_E_UPLOAD_AUTHORIZATION'),
 });
 const policy = await loadTrackedPublicMediaReleasePolicy(ROOT, { requireComplete: true });
-assertCloudflareAccountTarget(process.env.CLOUDFLARE_ACCOUNT_ID, receipt.accountIdSha256);
 if (policy.production.accountIdSha256 !== receipt.accountIdSha256) {
   throw new Error('CLOUDFLARE_E_ACCOUNT_TARGET');
 }
 await assertPinnedWranglerInstalled(ROOT);
+await inspectCloudflareOAuthAccount({
+  root: ROOT,
+  expectedAccountIdSha256: receipt.accountIdSha256,
+});
 verifySignedPayload({
   payload: authorizationFiles.receipt,
   canonicalPayload: canonicalUploadAuthorizationPayload,
@@ -93,7 +96,7 @@ await outputHandle.close();
 const args = productionVersionUploadArguments({ artifactDirectory, artifact: receipt });
 await runChecked(path.join(ROOT, 'node_modules/.bin/wrangler'), args, {
   cwd: ROOT,
-  env: cloudflareWranglerEnvironment(process.env, {
+  env: cloudflareOAuthWranglerEnvironment(process.env, {
     CI: '1', WRANGLER_OUTPUT_FILE_PATH: outputPath, WRANGLER_WRITE_LOGS: '0',
     WRANGLER_SEND_METRICS: 'false', WRANGLER_NO_SKILLS_UPDATE_PROMPTS: 'true',
   }),

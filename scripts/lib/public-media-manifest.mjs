@@ -460,18 +460,20 @@ export function validateRemoteReceipt(receipt, manifest) {
 }
 
 export function validateConfiguredReleaseTarget({
-  policy, environment, accountId, bucket, wranglerConfig,
+  policy, environment, accountId, accountIdSha256, bucket, wranglerConfig,
 }) {
   validatePublicMediaReleasePolicy(policy);
   if (!RELEASE_ENVIRONMENTS.has(environment)) fail('MEDIA_E_RELEASE_TARGET');
   const target = policy[environment];
   const binding = wranglerConfig?.env?.[target.wranglerEnvironment]?.r2_buckets;
+  const selectedAccountIdSha256 = typeof accountId === 'string'
+    ? cloudflareAccountIdSha256(accountId) : accountIdSha256;
   if (!SHA256_PATTERN.test(target.accountIdSha256 ?? '')) fail('MEDIA_E_RELEASE_POLICY_INCOMPLETE');
   if (!Array.isArray(binding) || binding.length !== 1
     || binding[0]?.binding !== target.binding
     || binding[0]?.bucket_name !== target.bucket
     || bucket !== target.bucket
-    || cloudflareAccountIdSha256(accountId) !== target.accountIdSha256) {
+    || selectedAccountIdSha256 !== target.accountIdSha256) {
     fail('MEDIA_E_RELEASE_TARGET');
   }
   return target;
@@ -491,20 +493,23 @@ export function verifyRemoteReceiptSignature(receipt, signature, publicKeyPem) {
 }
 
 export function validateProductionReleaseTarget({
-  policy, receipt, accountId, bucket, publicKeyPem, wranglerConfig, now = new Date(),
+  policy, receipt, accountId, accountIdSha256, bucket, publicKeyPem, wranglerConfig,
+  now = new Date(),
 }) {
   validatePublicMediaReleasePolicy(policy, { requireComplete: true });
   const production = policy.production;
   validateConfiguredReleaseTarget({
-    policy, environment: 'production', accountId, bucket, wranglerConfig,
+    policy, environment: 'production', accountId, accountIdSha256, bucket, wranglerConfig,
   });
+  const selectedAccountIdSha256 = typeof accountId === 'string'
+    ? cloudflareAccountIdSha256(accountId) : accountIdSha256;
   const nowTimestamp = now instanceof Date ? now.getTime() : Number.NaN;
   const exposureTimestamp = Date.parse(receipt.bucketExposure?.verifiedAt ?? '');
   const exposureAge = nowTimestamp - exposureTimestamp;
   if (receipt.target.environment !== production.environment
     || receipt.target.bucket !== production.bucket
     || receipt.target.accountIdSha256 !== production.accountIdSha256
-    || cloudflareAccountIdSha256(accountId) !== production.accountIdSha256
+    || selectedAccountIdSha256 !== production.accountIdSha256
     || publicKeySpkiSha256(publicKeyPem) !== production.publicKeySpkiSha256
     || receipt.verificationLevel !== production.requiredVerificationLevel
     || production.requiredBucketExposure !== 'cloudflare-control-plane-private'

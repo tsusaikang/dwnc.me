@@ -1,10 +1,11 @@
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { constants as fsConstants, fstatSync, readSync } from 'node:fs';
 import {
   chmod, copyFile, lstat, mkdir, readFile, readdir, realpath, writeFile,
 } from 'node:fs/promises';
 import path from 'node:path';
+import { promisify } from 'node:util';
 import {
   BOOTSTRAP_ATTEMPT_IDENTITY_KEYS,
   validateBootstrapAttemptIdentity,
@@ -117,6 +118,7 @@ const CLOUDFLARE_STAGING_CONTROL_OPERATION_SET
   = new Set(CLOUDFLARE_STAGING_CONTROL_OPERATIONS);
 const SHA256 = /^[a-f0-9]{64}$/u;
 const ACCOUNT_ID = /^[a-f0-9]{32}$/u;
+const execFileAsync = promisify(execFile);
 
 function isContainedPath(parent, candidate) {
   const relative = path.relative(parent, candidate);
@@ -178,6 +180,68 @@ export function cloudflareWranglerEnvironment(source = process.env, extra = {}) 
       ? { CLOUDFLARE_COMPLIANCE_REGION: source.CLOUDFLARE_COMPLIANCE_REGION } : {}),
     ...extra,
   });
+}
+
+export function cloudflareOAuthWranglerEnvironment(source = process.env, extra = {}) {
+  const forbidden = [
+    'CLOUDFLARE_ACCOUNT_ID', 'CF_ACCOUNT_ID',
+    'CLOUDFLARE_API_TOKEN', 'CF_API_TOKEN',
+    'CLOUDFLARE_API_KEY', 'CF_API_KEY', 'CLOUDFLARE_EMAIL',
+  ];
+  if (forbidden.some((name) => Object.hasOwn(source, name) || Object.hasOwn(extra, name))) {
+    throw new Error('CLOUDFLARE_E_WRANGLER_OAUTH_ENV_FORBIDDEN');
+  }
+  return sanitizedEnvironment(source, {
+    ...(typeof source.CLOUDFLARE_COMPLIANCE_REGION === 'string'
+      ? { CLOUDFLARE_COMPLIANCE_REGION: source.CLOUDFLARE_COMPLIANCE_REGION } : {}),
+    ...extra,
+  });
+}
+
+export async function inspectCloudflareOAuthAccount({
+  root = process.cwd(),
+  expectedAccountIdSha256,
+  environment = process.env,
+  execFileImpl = execFileAsync,
+} = {}) {
+  if (typeof root !== 'string' || !path.isAbsolute(root)
+    || !SHA256.test(expectedAccountIdSha256 ?? '')
+    || typeof execFileImpl !== 'function') {
+    throw new Error('CLOUDFLARE_E_WRANGLER_OAUTH_ACCOUNT');
+  }
+  let stdout = '';
+  try {
+    ({ stdout } = await execFileImpl(path.join(root, 'node_modules/.bin/wrangler'), [
+      'whoami', '--json',
+    ], {
+      cwd: root,
+      env: cloudflareOAuthWranglerEnvironment(environment, {
+        WRANGLER_WRITE_LOGS: '0', WRANGLER_SEND_METRICS: 'false',
+        WRANGLER_NO_SKILLS_UPDATE_PROMPTS: 'true', NO_COLOR: '1',
+      }),
+      encoding: 'utf8',
+      maxBuffer: 1024 * 1024,
+    }));
+    const value = JSON.parse(stdout);
+    if (value?.loggedIn !== true || value.authType !== 'OAuth Token'
+      || !Array.isArray(value.accounts) || value.accounts.length !== 1
+      || !ACCOUNT_ID.test(value.accounts[0]?.id ?? '')
+      || cloudflareAccountIdSha256(value.accounts[0].id.toLowerCase())
+        !== expectedAccountIdSha256) {
+      throw new Error('CLOUDFLARE_E_WRANGLER_OAUTH_ACCOUNT');
+    }
+    return Object.freeze({
+      authenticated: true,
+      authType: 'OAuth Token',
+      accountCount: 1,
+      accountIdSha256: expectedAccountIdSha256,
+    });
+  } catch (error) {
+    if (error?.message === 'CLOUDFLARE_E_WRANGLER_OAUTH_ACCOUNT') throw error;
+    throw new Error('CLOUDFLARE_E_WRANGLER_OAUTH_ACCOUNT');
+  } finally {
+    stdout = '';
+  }
 }
 
 export function assertStagingControlOperationEnvelope(source = process.env, expectedOperation) {

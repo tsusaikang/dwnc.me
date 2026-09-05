@@ -1,6 +1,11 @@
 import { execFile } from 'node:child_process';
+import path from 'node:path';
 import { promisify, TextDecoder } from 'node:util';
 import { canonicalJson, sha256Hex } from './cloudflare-release.mjs';
+import {
+  cloudflareOAuthWranglerEnvironment,
+  inspectCloudflareOAuthAccount,
+} from './cloudflare-process.mjs';
 import { cloudflareAccountIdSha256 } from './public-media-manifest.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -172,10 +177,64 @@ export function r2ExposureRequestAudit(bucket = STAGING_R2_EXPOSURE_BUCKET,
   };
 }
 
+export function productionR2ExposureRequestAudit(
+  bucket = PRODUCTION_R2_EXPOSURE_BUCKET,
+  jurisdiction = STAGING_R2_EXPOSURE_JURISDICTION,
+) {
+  const base = `/accounts/{account_id}/r2/buckets/${bucket}`;
+  return {
+    scope: 'r2-state-calls-after-oauth-preflight',
+    authenticationPreflight: {
+      includedInCount: false,
+      kind: 'wrangler',
+      argv: ['whoami', '--json'],
+    },
+    attempts: 1,
+    count: 4,
+    methods: { GET: 3, HEAD: 0, POST: 1, PUT: 0, PATCH: 0, DELETE: 0 },
+    requests: [
+      {
+        attempt: 1, method: 'GET', transport: 'REST',
+        path: base, jurisdiction, command: 'r2 bucket info --json',
+      },
+      {
+        attempt: 1, method: 'POST', transport: 'GraphQL',
+        path: '/graphql', jurisdiction, command: 'r2 bucket info --json',
+        operation: 'getR2StorageMetrics',
+      },
+      {
+        attempt: 1, method: 'GET', transport: 'REST',
+        path: `${base}/domains/managed`, jurisdiction, command: 'r2 bucket dev-url get',
+      },
+      {
+        attempt: 1, method: 'GET', transport: 'REST',
+        path: `${base}/domains/custom`, jurisdiction, command: 'r2 bucket domain list',
+      },
+    ],
+    commands: [
+      { attempt: 1, kind: 'wrangler', argv: ['r2', 'bucket', 'info', bucket, '--json'] },
+      { attempt: 1, kind: 'wrangler', argv: ['r2', 'bucket', 'dev-url', 'get', bucket] },
+      { attempt: 1, kind: 'wrangler', argv: ['r2', 'bucket', 'domain', 'list', bucket] },
+    ],
+  };
+}
+
 export function validateR2ExposureRequestAudit(audit, {
   bucket = STAGING_R2_EXPOSURE_BUCKET,
   jurisdiction = STAGING_R2_EXPOSURE_JURISDICTION,
+  environment = 'staging',
 } = {}) {
+  if (environment === 'production') {
+    const expected = productionR2ExposureRequestAudit(bucket, jurisdiction);
+    if (!exactKeys(audit, [
+      'scope', 'authenticationPreflight', 'attempts', 'count', 'methods', 'requests', 'commands',
+    ])
+      || canonicalJson(audit) !== canonicalJson(expected)) {
+      fail('CLOUDFLARE_E_R2_EXPOSURE_METHODS');
+    }
+    return audit;
+  }
+  if (environment !== 'staging') fail('CLOUDFLARE_E_R2_EXPOSURE_METHODS');
   const expected = r2ExposureRequestAudit(bucket, jurisdiction);
   if (!exactKeys(audit, ['attempts', 'count', 'methods', 'requests'])
     || audit.attempts !== 1 || audit.count !== 3
@@ -240,7 +299,7 @@ export function r2ExposureRequestSha256({
     || !GIT_OID.test(sourceCommit ?? '') || !GIT_OID.test(sourceTree ?? '')) {
     fail('CLOUDFLARE_E_R2_EXPOSURE_REQUEST');
   }
-  validateR2ExposureRequestAudit(requestAudit, { bucket });
+  validateR2ExposureRequestAudit(requestAudit, { bucket, environment });
   return sha256Hex(canonicalJson({
     purpose, environment, bucket, accountIdSha256, sourceCommit, sourceTree, requestAudit,
   }));
@@ -280,7 +339,10 @@ export function validateR2ExposureEvidence(evidence, {
     || !SHA256.test(evidence.customDomainsSha256 ?? '')
     || Number.isNaN(Date.parse(evidence.observedAt ?? ''))
     || Number.isNaN(Date.parse(evidence.expiresAt ?? ''))) fail('CLOUDFLARE_E_R2_EXPOSURE');
-  validateR2ExposureRequestAudit(evidence.requestAudit, { bucket: evidence.bucket });
+  validateR2ExposureRequestAudit(evidence.requestAudit, {
+    bucket: evidence.bucket,
+    environment: evidence.environment,
+  });
   for (const [key, value] of Object.entries(expected)) {
     if (!keys.includes(key) || evidence[key] !== value) fail('CLOUDFLARE_E_R2_EXPOSURE_EXPECTED');
   }
@@ -301,6 +363,49 @@ export function validateR2ExposureEvidence(evidence, {
 
 export function canonicalR2ExposureCapturePayload(capture) { return canonicalJson(capture); }
 
+function parseProductionBucketInfo(rawBody) {
+  let parsed;
+  try { parsed = JSON.parse(rawBody); }
+  catch { fail('CLOUDFLARE_E_R2_EXPOSURE_RESPONSE'); }
+  const keys = ['name', 'created', 'location', 'default_storage_class',
+    'object_count', 'bucket_size'];
+  if (!exactKeys(parsed, keys)
+    || !BUCKET.test(parsed.name ?? '')
+    || typeof parsed.created !== 'string' || Number.isNaN(Date.parse(parsed.created))
+    || typeof parsed.location !== 'string' || !SAFE_BUCKET_PROPERTY.test(parsed.location)
+    || typeof parsed.default_storage_class !== 'string'
+    || !SAFE_BUCKET_PROPERTY.test(parsed.default_storage_class)
+    || typeof parsed.object_count !== 'string' || !/^[0-9][0-9,]*$/u.test(parsed.object_count)
+    || typeof parsed.bucket_size !== 'string' || !/^[0-9]+(?:\.[0-9]+)? [A-Za-z]+$/u.test(parsed.bucket_size)) {
+    fail('CLOUDFLARE_E_R2_EXPOSURE_RESPONSE');
+  }
+  return {
+    name: parsed.name,
+    createdAt: new Date(Date.parse(parsed.created)).toISOString(),
+    jurisdiction: STAGING_R2_EXPOSURE_JURISDICTION,
+    location: parsed.location.toLowerCase(),
+    storageClass: parsed.default_storage_class,
+  };
+}
+
+function parseProductionManagedOutput(rawBody) {
+  const output = rawBody.trim();
+  if (output === 'Public access via the r2.dev URL is disabled.') return { enabled: false };
+  if (/^Public access is enabled at 'https:\/\/[^']+'\.$/u.test(output)) return { enabled: true };
+  fail('CLOUDFLARE_E_R2_EXPOSURE_RESPONSE');
+}
+
+function parseProductionCustomDomainsOutput(rawBody, bucket) {
+  const output = rawBody.trim();
+  const empty = `Listing custom domains connected to bucket '${bucket}'...\n`
+    + 'There are no custom domains connected to this bucket.';
+  if (output === empty) return { domains: [] };
+  if (output.startsWith(`Listing custom domains connected to bucket '${bucket}'...`)) {
+    return { domains: [{}] };
+  }
+  fail('CLOUDFLARE_E_R2_EXPOSURE_RESPONSE');
+}
+
 export function validateR2ExposureCapture(capture, options = {}) {
   const keys = ['schemaVersion', 'contract', 'requestSha256', 'bucketRawBody',
     'bucketRawBodySha256', 'managedRawBody', 'managedRawBodySha256', 'customRawBody',
@@ -318,11 +423,16 @@ export function validateR2ExposureCapture(capture, options = {}) {
     || sha256Hex(capture.customRawBody) !== capture.customRawBodySha256) {
     fail('CLOUDFLARE_E_R2_EXPOSURE_CAPTURE');
   }
-  const bucketProperties = parseEnvelope(
-    capture.bucketRawBody, 'bucket', capture.evidence?.jurisdiction,
-  );
-  const managed = parseEnvelope(capture.managedRawBody, 'managed');
-  const custom = parseEnvelope(capture.customRawBody, 'custom');
+  const production = capture.evidence?.environment === 'production';
+  const bucketProperties = production
+    ? parseProductionBucketInfo(capture.bucketRawBody)
+    : parseEnvelope(capture.bucketRawBody, 'bucket', capture.evidence?.jurisdiction);
+  const managed = production
+    ? parseProductionManagedOutput(capture.managedRawBody)
+    : parseEnvelope(capture.managedRawBody, 'managed');
+  const custom = production
+    ? parseProductionCustomDomainsOutput(capture.customRawBody, capture.evidence?.bucket)
+    : parseEnvelope(capture.customRawBody, 'custom');
   validateR2ExposureEvidence(capture.evidence, options);
   if (bucketProperties.name !== capture.evidence.bucket
     || bucketProperties.createdAt !== capture.evidence.bucketCreatedAt
@@ -356,7 +466,8 @@ export async function fetchR2ExposureCapture({
   ttlSeconds = 900,
 }) {
   const target = exposureTarget(environment);
-  if (!target || purpose !== target.purpose || bucket !== target.bucket
+  if (!target || environment !== 'staging'
+    || purpose !== target.purpose || bucket !== target.bucket
     || !ACCOUNT_ID.test(accountId ?? '')
     || !SHA256.test(expectedAccountIdSha256 ?? '')
     || cloudflareAccountIdSha256(accountId.toLowerCase()) !== expectedAccountIdSha256
@@ -365,7 +476,7 @@ export async function fetchR2ExposureCapture({
     || typeof fetchImpl !== 'function' || !Number.isSafeInteger(ttlSeconds)
     || ttlSeconds < 15 || ttlSeconds > 900) fail('CLOUDFLARE_E_R2_EXPOSURE_REQUEST');
   const requestAudit = r2ExposureRequestAudit(bucket);
-  validateR2ExposureRequestAudit(requestAudit, { bucket });
+  validateR2ExposureRequestAudit(requestAudit, { bucket, environment });
   const checkGit = async () => validateR2ExposureGitSnapshot(
     await inspectGit(root), expectedGitCommit, expectedGitTree,
   );
@@ -413,6 +524,118 @@ export async function fetchR2ExposureCapture({
   if (rawBodies.length !== 3) fail('CLOUDFLARE_E_R2_EXPOSURE_METHODS');
   const managed = parseEnvelope(managedRawBody, 'managed');
   const custom = parseEnvelope(customRawBody, 'custom');
+  if (managed.enabled !== false || custom.domains.length !== 0) {
+    fail('CLOUDFLARE_E_R2_EXPOSURE_PUBLIC');
+  }
+  await checkGit();
+  const observed = now();
+  if (!(observed instanceof Date) || Number.isNaN(observed.getTime())) {
+    fail('CLOUDFLARE_E_R2_EXPOSURE_RESPONSE');
+  }
+  const evidence = {
+    schemaVersion: 1,
+    contract: 'dwnc-cloudflare-r2-private-exposure-v1',
+    purpose,
+    environment,
+    bucket,
+    accountIdSha256: expectedAccountIdSha256,
+    sourceCommit: expectedGitCommit,
+    sourceTree: expectedGitTree,
+    gitCheckCount: 3,
+    requestAudit,
+    jurisdiction: bucketProperties.jurisdiction,
+    location: bucketProperties.location,
+    storageClass: bucketProperties.storageClass,
+    bucketCreatedAt: bucketProperties.createdAt,
+    bucketPropertiesSha256: sha256Hex(bucketRawBody),
+    r2DevEnabled: managed.enabled,
+    customDomainCount: custom.domains.length,
+    managedDomainSha256: sha256Hex(managedRawBody),
+    customDomainsSha256: sha256Hex(customRawBody),
+    observedAt: observed.toISOString(),
+    expiresAt: new Date(observed.getTime() + ttlSeconds * 1000).toISOString(),
+  };
+  const capture = {
+    schemaVersion: 1,
+    contract: 'dwnc-cloudflare-r2-private-exposure-capture-v1',
+    requestSha256: r2ExposureRequestSha256(evidence),
+    bucketRawBody,
+    bucketRawBodySha256: evidence.bucketPropertiesSha256,
+    managedRawBody,
+    managedRawBodySha256: evidence.managedDomainSha256,
+    customRawBody,
+    customRawBodySha256: evidence.customDomainsSha256,
+    evidence,
+  };
+  validateR2ExposureCapture(capture, { now: observed, requirePrivate: true });
+  await checkGit();
+  return capture;
+}
+
+export async function fetchProductionR2ExposureCapture({
+  purpose,
+  environment,
+  bucket,
+  expectedAccountIdSha256,
+  expectedGitCommit,
+  expectedGitTree,
+  root = process.cwd(),
+  environmentVariables = process.env,
+  inspectGit = inspectR2ExposureGit,
+  inspectOAuthAccount = inspectCloudflareOAuthAccount,
+  execFileImpl = execFileAsync,
+  now = () => new Date(),
+  ttlSeconds = 900,
+}) {
+  const target = exposureTarget(environment);
+  if (!target || environment !== 'production' || purpose !== target.purpose
+    || bucket !== target.bucket || !SHA256.test(expectedAccountIdSha256 ?? '')
+    || !GIT_OID.test(expectedGitCommit ?? '') || !GIT_OID.test(expectedGitTree ?? '')
+    || typeof root !== 'string' || !path.isAbsolute(root)
+    || typeof inspectGit !== 'function' || typeof inspectOAuthAccount !== 'function'
+    || typeof execFileImpl !== 'function' || !Number.isSafeInteger(ttlSeconds)
+    || ttlSeconds < 15 || ttlSeconds > 900) {
+    fail('CLOUDFLARE_E_R2_EXPOSURE_REQUEST');
+  }
+  const requestAudit = productionR2ExposureRequestAudit(bucket);
+  validateR2ExposureRequestAudit(requestAudit, { bucket, environment });
+  const checkGit = async () => validateR2ExposureGitSnapshot(
+    await inspectGit(root), expectedGitCommit, expectedGitTree,
+  );
+  await checkGit();
+  const account = await inspectOAuthAccount({
+    root, expectedAccountIdSha256, environment: environmentVariables, execFileImpl,
+  });
+  if (account?.authenticated !== true || account.authType !== 'OAuth Token'
+    || account.accountCount !== 1 || account.accountIdSha256 !== expectedAccountIdSha256) {
+    fail('CLOUDFLARE_E_WRANGLER_OAUTH_ACCOUNT');
+  }
+  const wrangler = `${root}/node_modules/.bin/wrangler`;
+  const wranglerEnvironment = cloudflareOAuthWranglerEnvironment(environmentVariables, {
+    CI: '1', WRANGLER_WRITE_LOGS: '0', WRANGLER_SEND_METRICS: 'false',
+    WRANGLER_NO_SKILLS_UPDATE_PROMPTS: 'true', NO_COLOR: '1',
+  });
+  const outputs = [];
+  for (const command of requestAudit.commands) {
+    let result;
+    try {
+      result = await execFileImpl(wrangler, command.argv, {
+        cwd: root, env: wranglerEnvironment, encoding: 'utf8', maxBuffer: MAXIMUM_RESPONSE_BODY_BYTES,
+      });
+    } catch { fail('CLOUDFLARE_E_R2_EXPOSURE_FETCH'); }
+    if (typeof result?.stdout !== 'string' || result.stdout.length === 0
+      || Buffer.byteLength(result.stdout) > MAXIMUM_RESPONSE_BODY_BYTES
+      || typeof result.stderr !== 'string' || result.stderr.length !== 0) {
+      fail('CLOUDFLARE_E_R2_EXPOSURE_FETCH');
+    }
+    outputs.push(result.stdout);
+  }
+  if (outputs.length !== 3) fail('CLOUDFLARE_E_R2_EXPOSURE_METHODS');
+  const [bucketRawBody, managedRawBody, customRawBody] = outputs;
+  const bucketProperties = parseProductionBucketInfo(bucketRawBody);
+  const managed = parseProductionManagedOutput(managedRawBody);
+  const custom = parseProductionCustomDomainsOutput(customRawBody, bucket);
+  if (bucketProperties.name !== bucket) fail('CLOUDFLARE_E_R2_EXPOSURE_EXPECTED');
   if (managed.enabled !== false || custom.domains.length !== 0) {
     fail('CLOUDFLARE_E_R2_EXPOSURE_PUBLIC');
   }

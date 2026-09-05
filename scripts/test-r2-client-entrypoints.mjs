@@ -325,7 +325,7 @@ try {
     },
   });
   equal(remoteResult.code === 0, false);
-  equal(remoteResult.output.includes('MEDIA_E_RELEASE_POLICY_INCOMPLETE'), true,
+  equal(remoteResult.output.includes('MEDIA_E_RELEASE_TARGET'), true,
     remoteResult.output);
   equal(/MEDIA_E_R2_CREDENTIALS_(?:FD|CANONICAL)/u.test(remoteResult.output), false);
 

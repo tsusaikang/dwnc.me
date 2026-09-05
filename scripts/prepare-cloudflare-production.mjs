@@ -22,6 +22,10 @@ import { loadRemoteReceiptFiles } from './lib/public-media-remote.mjs';
 
 const ROOT = process.cwd();
 installStructuredErrorHandler('cloudflare-prepare-production');
+if (['R2_ACCOUNT_ID', 'R2_BUCKET_NAME', 'CLOUDFLARE_ACCOUNT_ID', 'CF_ACCOUNT_ID']
+  .some((name) => Object.hasOwn(process.env, name))) {
+  throw new Error('CLOUDFLARE_E_PREPARE_ACCOUNT_ENV_FORBIDDEN');
+}
 const execFileAsync = promisify(execFile);
 const requireAbsolute = (value) => {
   if (typeof value !== 'string' || !path.isAbsolute(value)) throw new Error('CLOUDFLARE_E_PREPARE_PATH');
@@ -48,8 +52,8 @@ validateRemoteReceipt(remoteFiles.receipt, manifest);
 validateProductionReleaseTarget({
   policy,
   receipt: remoteFiles.receipt,
-  accountId: process.env.R2_ACCOUNT_ID,
-  bucket: process.env.R2_BUCKET_NAME,
+  accountIdSha256: remoteFiles.receipt.target.accountIdSha256,
+  bucket: policy.production.bucket,
   publicKeyPem: remoteFiles.publicKeyPem,
   wranglerConfig,
 });

@@ -25,6 +25,7 @@ const TESTS = Object.freeze([
   'test-cloudflare-workers-dev.mjs',
   'test-cloudflare-artifact.mjs',
   'test-cloudflare-release.mjs',
+  'test-cloudflare-upload-authorization-creator.mjs',
   'test-cloudflare-promotion-store.mjs',
   'test-cloudflare-promotion-executor.mjs',
   'test-cloudflare-staging-activation-store.mjs',

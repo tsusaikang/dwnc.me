@@ -7,8 +7,10 @@ import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import {
   cloudflareControlPlaneReadCredentials,
+  cloudflareOAuthWranglerEnvironment,
   cloudflareWranglerEnvironment,
   encodeCloudflareControlPlaneTokenFrame,
+  inspectCloudflareOAuthAccount,
 } from './lib/cloudflare-process.mjs';
 import { cloudflareAccountIdSha256 } from './lib/public-media-manifest.mjs';
 import { runCloudflareReadControlPlane } from './run-cloudflare-read-control-plane.mjs';
@@ -75,6 +77,46 @@ assertions += 1;
 assert.throws(() => cloudflareWranglerEnvironment({}, { CF_API_TOKEN: apiToken }),
   /CLOUDFLARE_E_WRANGLER_TOKEN_ENV_FORBIDDEN/u);
 assertions += 1;
+
+const oauthEnvironment = cloudflareOAuthWranglerEnvironment({
+  PATH: '/usr/bin:/bin', HOME: '/synthetic/oauth-home', UNRELATED_SECRET: apiToken,
+}, { CI: '1' });
+equal(oauthEnvironment, {
+  PATH: '/usr/bin:/bin', HOME: '/synthetic/oauth-home', CI: '1',
+});
+let oauthWhoamiCalls = 0;
+const oauthAccount = await inspectCloudflareOAuthAccount({
+  root: process.cwd(),
+  expectedAccountIdSha256: cloudflareAccountIdSha256(accountId),
+  environment: { PATH: '/usr/bin:/bin', HOME: '/synthetic/oauth-home' },
+  execFileImpl: async (command, argv, options) => {
+    oauthWhoamiCalls += 1;
+    equal(argv, ['whoami', '--json']);
+    equal(Object.hasOwn(options.env, 'CLOUDFLARE_ACCOUNT_ID'), false);
+    return {
+      stdout: JSON.stringify({
+        loggedIn: true, authType: 'OAuth Token', accounts: [{ id: accountId }],
+      }),
+      stderr: '',
+    };
+  },
+});
+equal(oauthWhoamiCalls, 1);
+equal(oauthAccount, {
+  authenticated: true, authType: 'OAuth Token', accountCount: 1,
+  accountIdSha256: cloudflareAccountIdSha256(accountId),
+});
+await rejects(() => inspectCloudflareOAuthAccount({
+  root: process.cwd(),
+  expectedAccountIdSha256: '0'.repeat(64),
+  environment: { PATH: '/usr/bin:/bin', HOME: '/synthetic/oauth-home' },
+  execFileImpl: async () => ({
+    stdout: JSON.stringify({
+      loggedIn: true, authType: 'OAuth Token', accounts: [{ id: accountId }],
+    }),
+    stderr: '',
+  }),
+}), 'CLOUDFLARE_E_WRANGLER_OAUTH_ACCOUNT');
 
 const runnerDirectory = await realpath(await mkdtemp(path.join(
   os.tmpdir(), 'dwnc-control-runner-test-',

@@ -14,9 +14,11 @@ import path from 'node:path';
 import {
   canonicalR2ExposureCapturePayload,
   canonicalR2ExposureEvidencePayload,
+  fetchProductionR2ExposureCapture,
   fetchR2ExposureCapture,
   PRODUCTION_R2_EXPOSURE_BUCKET,
   PRODUCTION_R2_EXPOSURE_PURPOSE,
+  productionR2ExposureRequestAudit,
   r2ExposureRequestAudit,
   remoteReceiptBucketExposure,
   STAGING_R2_EXPOSURE_BUCKET,
@@ -30,6 +32,7 @@ import {
   parseStagingR2ExposureCommand,
   parseStagingR2ExposureRecoveryCommand,
   runR2ExposureCommand,
+  runProductionR2ExposureCommand,
   runStagingR2ExposureCommand,
   runStagingR2ExposureRecoveryCommand,
   STAGING_R2_EXPOSURE_RECOVERY_PURPOSE,
@@ -184,21 +187,72 @@ throws(() => remoteReceiptBucketExposure(capture, {
   now: new Date(capture.evidence.expiresAt),
 }), 'CLOUDFLARE_E_R2_EXPOSURE_EXPIRED');
 
-const productionFixture = createFixture({
-  bucketName: PRODUCTION_R2_EXPOSURE_BUCKET,
-  bucketResult: { location: 'ENAM', storage_class: 'InfrequentAccess' },
-});
-const productionCapture = await fetchR2ExposureCapture(baseOptions(productionFixture, {
+let productionGitChecks = 0;
+const productionCalls = [];
+const productionOutputs = [
+  `${JSON.stringify({
+    name: PRODUCTION_R2_EXPOSURE_BUCKET,
+    created: '2026-08-27T00:00:00.000Z',
+    location: 'ENAM',
+    default_storage_class: 'InfrequentAccess',
+    object_count: '0',
+    bucket_size: '0 B',
+  })}\n`,
+  'Public access via the r2.dev URL is disabled.\n',
+  `Listing custom domains connected to bucket '${PRODUCTION_R2_EXPOSURE_BUCKET}'...\n`
+    + 'There are no custom domains connected to this bucket.\n',
+];
+const productionCapture = await fetchProductionR2ExposureCapture({
   purpose: PRODUCTION_R2_EXPOSURE_PURPOSE,
   environment: 'production',
   bucket: PRODUCTION_R2_EXPOSURE_BUCKET,
-}));
-equal(productionFixture.calls.length, 3);
+  expectedAccountIdSha256: accountIdSha256,
+  expectedGitCommit: sourceCommit,
+  expectedGitTree: sourceTree,
+  root: process.cwd(),
+  environmentVariables: { PATH: '/usr/bin:/bin', HOME: '/synthetic/oauth-home' },
+  inspectGit: async () => {
+    productionGitChecks += 1;
+    return { commit: sourceCommit, tree: sourceTree, clean: true };
+  },
+  inspectOAuthAccount: async (options) => {
+    equal(options.expectedAccountIdSha256, accountIdSha256);
+    equal(Object.hasOwn(options.environment, 'CLOUDFLARE_ACCOUNT_ID'), false);
+    return {
+      authenticated: true, authType: 'OAuth Token', accountCount: 1, accountIdSha256,
+    };
+  },
+  execFileImpl: async (command, argv, options) => {
+    productionCalls.push({ command, argv, options });
+    return { stdout: productionOutputs[productionCalls.length - 1], stderr: '' };
+  },
+  now: () => now,
+});
+equal(productionCalls.length, 3);
+equal(productionGitChecks, 3);
+equal(productionCalls.map(({ argv }) => argv),
+  productionR2ExposureRequestAudit().commands.map(({ argv }) => argv));
+equal(productionCalls.every(({ argv, options }) => !argv.includes(accountId)
+  && !Object.values(options.env).includes(accountId)
+  && !Object.values(options.env).includes(apiToken)), true);
 equal(productionCapture.evidence.purpose, PRODUCTION_R2_EXPOSURE_PURPOSE);
 equal(productionCapture.evidence.environment, 'production');
 equal(productionCapture.evidence.bucket, PRODUCTION_R2_EXPOSURE_BUCKET);
 equal(productionCapture.evidence.location, 'enam');
 equal(productionCapture.evidence.storageClass, 'InfrequentAccess');
+equal(productionCapture.evidence.requestAudit.methods,
+  { GET: 3, HEAD: 0, POST: 1, PUT: 0, PATCH: 0, DELETE: 0 });
+equal(productionCapture.evidence.requestAudit.scope,
+  'r2-state-calls-after-oauth-preflight');
+equal(productionCapture.evidence.requestAudit.authenticationPreflight, {
+  includedInCount: false,
+  kind: 'wrangler',
+  argv: ['whoami', '--json'],
+});
+equal(productionCapture.evidence.requestAudit.requests[1].transport, 'GraphQL');
+equal(productionCapture.evidence.requestAudit.requests[1].operation, 'getR2StorageMetrics');
+equal(canonicalR2ExposureCapturePayload(productionCapture).includes(accountId), false);
+equal(canonicalR2ExposureCapturePayload(productionCapture).includes(apiToken), false);
 validateR2ExposureCapture(productionCapture, {
   expected: {
     purpose: PRODUCTION_R2_EXPOSURE_PURPOSE,
@@ -212,21 +266,47 @@ validateR2ExposureCapture(productionCapture, {
 });
 assertions += 1;
 
-for (const bucketResult of [
-  { location: 123 },
-  { storage_class: { value: 'InfrequentAccess' } },
-]) {
-  const fixture = createFixture({
-    bucketName: PRODUCTION_R2_EXPOSURE_BUCKET,
-    bucketResult,
-  });
-  await rejects(() => fetchR2ExposureCapture(baseOptions(fixture, {
+async function rejectProductionOutputs(outputs, code, environmentVariables = {
+  PATH: '/usr/bin:/bin', HOME: '/synthetic/oauth-home',
+}) {
+  let calls = 0;
+  await rejects(() => fetchProductionR2ExposureCapture({
     purpose: PRODUCTION_R2_EXPOSURE_PURPOSE,
     environment: 'production',
     bucket: PRODUCTION_R2_EXPOSURE_BUCKET,
-  })), 'CLOUDFLARE_E_R2_EXPOSURE_RESPONSE');
-  equal(fixture.calls.length, 1);
+    expectedAccountIdSha256: accountIdSha256,
+    expectedGitCommit: sourceCommit,
+    expectedGitTree: sourceTree,
+    root: process.cwd(),
+    environmentVariables,
+    inspectGit: async () => ({ commit: sourceCommit, tree: sourceTree, clean: true }),
+    inspectOAuthAccount: async () => ({
+      authenticated: true, authType: 'OAuth Token', accountCount: 1, accountIdSha256,
+    }),
+    execFileImpl: async () => ({ stdout: outputs[calls++], stderr: '' }),
+    now: () => now,
+  }), code);
+  return calls;
 }
+
+equal(await rejectProductionOutputs([
+  `${JSON.stringify({
+    ...JSON.parse(productionOutputs[0]), location: 123,
+  })}\n`, ...productionOutputs.slice(1),
+], 'CLOUDFLARE_E_R2_EXPOSURE_RESPONSE'), 3);
+equal(await rejectProductionOutputs([
+  productionOutputs[0], "Public access is enabled at 'https://public.example.invalid'.\n",
+  productionOutputs[2],
+], 'CLOUDFLARE_E_R2_EXPOSURE_PUBLIC'), 3);
+equal(await rejectProductionOutputs([
+  productionOutputs[0], productionOutputs[1],
+  `Listing custom domains connected to bucket '${PRODUCTION_R2_EXPOSURE_BUCKET}'...\n`
+    + 'domain: public.example.invalid\n',
+], 'CLOUDFLARE_E_R2_EXPOSURE_PUBLIC'), 3);
+equal(await rejectProductionOutputs(productionOutputs,
+  'CLOUDFLARE_E_WRANGLER_OAUTH_ENV_FORBIDDEN', {
+    PATH: '/usr/bin:/bin', HOME: '/synthetic/oauth-home', CLOUDFLARE_API_TOKEN: apiToken,
+  }), 0);
 for (const evidenceOverride of [
   { location: 123 },
   { storageClass: { value: 'InfrequentAccess' } },
@@ -470,13 +550,14 @@ throws(() => parseStagingR2ExposureCommand({
   environment: productionCommandEnvironment,
   root: process.cwd(),
 }), 'CLOUDFLARE_E_R2_EXPOSURE_ARGUMENT');
-const productionSummary = await runR2ExposureCommand({
+let productionFetchOptions;
+const productionSummary = await runProductionR2ExposureCommand({
   argv: productionCommandArgv,
   environment: productionCommandEnvironment,
   root: process.cwd(),
-  readCredentials: () => ({ accountId, apiToken }),
   loadPolicy: async () => syntheticPolicy,
   fetchCapture: async (options) => {
+    productionFetchOptions = options;
     equal(options.environment, 'production');
     equal(options.bucket, PRODUCTION_R2_EXPOSURE_BUCKET);
     equal(options.purpose, PRODUCTION_R2_EXPOSURE_PURPOSE);
@@ -487,6 +568,14 @@ equal(productionSummary.environment, 'production');
 equal(productionSummary.bucket, PRODUCTION_R2_EXPOSURE_BUCKET);
 equal(productionSummary.location, 'enam');
 equal(productionSummary.storageClass, 'InfrequentAccess');
+equal(productionFetchOptions.expectedAccountIdSha256, accountIdSha256);
+equal(Object.hasOwn(productionFetchOptions, 'accountId'), false);
+equal(Object.hasOwn(productionFetchOptions, 'apiToken'), false);
+await rejects(() => runR2ExposureCommand({
+  argv: productionCommandArgv,
+  environment: productionCommandEnvironment,
+  root: process.cwd(),
+}), 'CLOUDFLARE_E_R2_EXPOSURE_ARGUMENT');
 
 const failureCases = [
   { name: 'preexisting', prepare: async (directory, env) => {
