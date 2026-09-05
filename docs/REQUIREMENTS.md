@@ -36,15 +36,15 @@
 | `PLAN-04` | 공개할 미디어를 정리하고 최종 목록을 확정한다. | 사용자 소유 사진 2,757개와 직접 제작 GIF 1개를 확정하고 제외·대체 결정을 반영한다. | `완료` |
 | `PLAN-05` | 시험용 저장소의 실제 파일 내용을 한 번 전수 확인하고 작업용 열쇠를 정리한다. | 올바른 계정 확인, `Account ID` 한 번 복사·전용 보관, 저장소 비공개 확인, 2,758개 실제 내용·전체 용량 비교, 작업용·사용 불가능한 활성 열쇠 정리를 마치며 R2 객체 덮어쓰기·삭제가 없다. | `완료` |
 | `PLAN-06` | 실제 도메인과 연결되지 않은 시험용 사이트를 올려 최종 동작을 확인한다. | 사이트 프로그램이 없을 때만 최소 차단용 프로그램을 만들고, 확정된 Git 기록의 빌드·검사 한 묶음과 새 버전만 올려 시험용으로 적용한 뒤 대표 페이지, 예전 주소 GET·HEAD 698회와 사진 응답을 확인하고 정확한 Git SHA와 버전 번호를 기록한다. | `완료` |
-| `PLAN-07` | 시험용 확인 뒤 최종 운영에 실제 필요한 Cloudflare 자원만 준비한다. | 시험용에서 통과한 절차로 필요한 저장소와 사이트 버전만 준비하고, 새 보조 도구·모의훈련·반복 검증은 추가하지 않는다. 실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하지 않는다. | `대기` |
+| `PLAN-07` | 시험용 확인 뒤 최종 운영에 실제 필요한 Cloudflare 자원만 준비한다. | 시험용에서 통과한 절차로 필요한 저장소와 사이트 버전만 준비하고, 새 보조 도구·모의훈련·반복 검증은 추가하지 않는다. 실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하지 않는다. | `완료` |
 | `PLAN-08` | 실제 `dwnc.me` 주소를 연결하고 운영 전환을 확인한다. | 사용자 결정 후 실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하고 실제 주소의 글·예전 주소·사진·화면을 다시 검사한다. | `사용자 결정 필요` |
 | `PLAN-09` | 최종 운영에 필요한 새 글 작성 방식과 비공개 백업 방식을 정한다. | 새 글 작성과 비공개 백업·복구 방식을 정한다. 공유 글 10개, 댓글과 추가 개선은 사용자가 원할 때 진행하는 후속 선택으로 두며 Stage 3를 막지 않는다. | `사용자 결정 필요` |
 
 ### 현재 위치
 
-**현재 실행 중인 계획은 없고 다음 공식 계획은 `PLAN-07`이다.** runtime source commit `05962c4c0872b5234d3a45298ab0e44d123d03da`의 artifact `81cf14fcaab0245c380d6e4e8d274df14dee41dde7bacfa19d510449a180d501`를 version `bb59f4ee-55f5-4626-858b-0653d7e79900`으로 올려 staging에 100% 적용하고 live 종합 점검을 통과했다. smoke collector fix commit `ab5489a91c5f6b159a344e49f9d0e066cfb5eaa4`에서는 streaming Content-Length false-negative를 바로잡았다.
+**현재 실행 중인 계획은 없고 다음 공식 계획은 `PLAN-08`이다.** production private R2에 2,758개·2,346,220,246바이트를 create-only로 준비하고 전체 GET/SHA-256 감사를 통과했다. source commit `68f2225bf647061e4740f2dc136cc9fd8f937fdb`의 artifact `be178dbe3618d3f1c9300bae265780a3d77841bac2120457d985f88393a34615`를 version `476acc86-b11d-4ba4-a699-cb26c551a93d`으로 version-only 업로드했지만 활성화하지 않았다.
 
-사용자에게 이는 **실제 주소와 분리된 시험용 사이트의 적용과 종합 점검까지 끝났다는 뜻**이다. 다음에는 `PLAN-07`에서 최종 운영에 필요한 Cloudflare 자원만 준비하며, 실제 `dwnc.me` 주소는 아직 연결하지 않는다.
+사용자에게 이는 **운영 전환에 필요한 비공개 저장소와 비활성 사이트 버전까지 준비됐지만 현재 방문자에게 보이는 사이트는 바뀌지 않았다는 뜻**이다. 다음에는 사용자가 `PLAN-08`의 실제 `dwnc.me` 연결 여부를 결정한다.
 
 ### 미디어 정리 결과
 
@@ -61,15 +61,15 @@
 
 ### 아직 결정할 일과 진행을 막는 조건
 
-1. `PLAN-07`은 아직 실무를 시작하지 않았다. 실제 `dwnc.me` 주소 연결은 `PLAN-08`의 사용자 결정 전에는 진행하지 않는다.
+1. `PLAN-07`은 완료됐다. 실제 `dwnc.me` 주소 연결은 `PLAN-08`의 사용자 결정 전에는 진행하지 않는다.
 2. 새 글 작성 방식과 비공개 자료의 백업·복구 방식은 최종 운영 전에 결정해야 한다. 공유·스크랩 글 10개, 과거 댓글과 추가 개선은 사용자가 원할 때 정하는 후속 선택이며 Stage 3를 막지 않는다.
 
 ### 바로 다음 작업
 
-1. `PLAN-07`을 시작할 때 staging에서 통과한 절차로 최종 운영에 실제 필요한 Cloudflare 자원만 준비한다.
-2. 새 보조 도구·복구 체계·서명 체계·영수증 체계·장애주입·모의훈련·반복 독립검토는 추가하지 않으며, 실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하지 않는다.
+1. 사용자가 `PLAN-08`의 실제 `dwnc.me` 연결과 production traffic 전환 여부를 결정한다.
+2. 결정 전에는 DNS·route·traffic·public endpoint를 변경하지 않는다.
 
-현재 `PLAN-05`·`PLAN-06`과 `DWNC-S3-009`·`DWNC-S3-010`은 완료됐다. `PLAN-07`은 아직 대기 중이며, 실제 `dwnc.me` 주소 연결은 `PLAN-08`에서 사용자가 결정할 때만 진행한다.
+현재 `PLAN-05`·`PLAN-06`·`PLAN-07`과 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`은 완료됐다. `PLAN-08`은 아직 시작하지 않았으며 실제 `dwnc.me` 주소 연결은 사용자가 결정할 때만 진행한다.
 
 ### 최근 완료
 
@@ -121,19 +121,6 @@
 ## 요구사항 원장
 
 
-
-### `DWNC-S3-011` — production 이름 Cloudflare 자원·버전 준비
-- **Status:** `planned`
-- **Updated-at:** `2026-08-27`
-- **Plans:** `PLAN-07`
-- **Priority:** `P1`
-- **Acceptance:**
-  - staging 결과, full Git SHA와 Cloudflare version ID를 기록한다.
-  - staging이 통과한 뒤 최종 운영에 실제 필요한 production 이름의 R2·Worker version만 같은 절차로 준비한다. 새 보조 도구·모의훈련·반복 검증은 추가하지 않고 각 단계별 새 승인 대기 때문에 멈추지 않는다.
-  - production이라는 이름은 현재 실제 도메인 트래픽을 뜻하지 않으며, `dwnc.me` 도메인·DNS·route는 연결하지 않는다.
-- **Evidence:**
-  - 현재 production R2·자격증명·새 Worker version 변경은 0이고 `dwnc.me` 도메인과 DNS는 Cloudflare Worker에 미연결 상태다.
-  - [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 two-phase production 안전 절차.
 
 ### `DWNC-OPS-001` — 공유·스크랩 추정 10개 처리 결정
 - **Status:** `decision-needed`
@@ -236,18 +223,6 @@
 
 ## 최근 완료된 요구사항
 
-
-### `DWNC-S3-001` — guarded local Cloudflare media release pipeline
-- **Status:** `done`
-- **Updated-at:** `2026-08-25`
-- **Plans:** `PLAN-05`, `PLAN-06`, `PLAN-07`
-- **Priority:** `P0`
-- **Acceptance:**
-  - create-only R2 client, same-origin Worker, version-only upload와 staging/production 분리 gate를 구현한다.
-  - local mock·artifact·release·bootstrap·staging 회귀를 통과한다.
-- **Evidence:**
-  - source commit `a541803bcf35fe95f761f0964e21ceff405c048b`.
-  - [`PROJECT_STATE.md`](../PROJECT_STATE.md)의 12 suites·463 assertions PASS 기록.
 
 ### `DWNC-S3-002` — Cloudflare Builds raw deploy 제거
 - **Status:** `done`
@@ -420,3 +395,18 @@
   - 앞선 `debfe664…`는 path normalization 결함으로 `/`가 404였고 `4bd84ef8…`는 이를 고친 뒤 full collector의 과도한 고정 Content-Length 비교에서 멈췄다. 실제 live 응답은 의도한 streaming 계약을 충족했으며 smoke collector fix commit `ab5489a91c5f6b159a344e49f9d0e066cfb5eaa4`에서 이 false-negative를 교정했다. staging smoke unit 181개와 media-worker 5,796개가 PASS했다.
   - 최종 `workers.dev`·preview는 off이고 custom domain·route는 0이며 ASSETS와 staging R2 binding은 유지됐다. 2026-08-27 account token은 `DWNC-S3-012` 대상이 아니므로 보존했다. production DNS·route·traffic, R2 overwrite·delete, Git push는 모두 0회다.
   - [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 version-only와 staging smoke 계약.
+
+### `DWNC-S3-011` — production 이름 Cloudflare 자원·버전 준비
+- **Status:** `done`
+- **Updated-at:** `2026-09-05`
+- **Plans:** `PLAN-07`
+- **Priority:** `P1`
+- **Acceptance:**
+  - staging 결과, full Git SHA와 Cloudflare version ID를 기록한다.
+  - staging이 통과한 뒤 최종 운영에 실제 필요한 production 이름의 R2·Worker version만 같은 절차로 준비한다. 새 보조 도구·모의훈련·반복 검증은 추가하지 않고 각 단계별 새 승인 대기 때문에 멈추지 않는다.
+  - production이라는 이름은 현재 실제 도메인 트래픽을 뜻하지 않으며, `dwnc.me` 도메인·DNS·route는 연결하지 않는다.
+- **Evidence:**
+  - private production R2에 2,758개·2,346,220,246바이트를 create-only로 준비했고 전체 GET/SHA-256 감사에서 orphan 0·retry 0·PUT 0·DELETE 0과 object-set SHA-256 `9345d2f06c8bd7cda457a9d4335cdc2213e71dcd30bb9e11e6f3e1f8e11ae467` 일치를 확인했다. production uploader·validator 자격과 signing private key는 Keychain에만 보관했다.
+  - source commit `68f2225bf647061e4740f2dc136cc9fd8f937fdb`의 artifact `be178dbe3618d3f1c9300bae265780a3d77841bac2120457d985f88393a34615`를 version `476acc86-b11d-4ba4-a699-cb26c551a93d`으로 version-only 업로드하고 bindings·assets·ETag·runtime attestation과 서명을 완료했다.
+  - 기존 active version `f0a8bec2-b57b-45af-b2f6-227dd045b3f8` 100%는 그대로이고 DNS·route·traffic·public endpoint 변화는 0이다. 현재 tooling 기준은 commit `f88aac20ec98426539b9450299d7c84b31d8ba4f`이며 artifact source와 구분한다.
+  - [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 two-phase production 안전 절차.

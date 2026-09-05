@@ -17,3 +17,15 @@
 - **Evidence:**
   - [`PROJECT_STATE.md`](../PROJECT_STATE.md)의 현재 검증 결과.
   - [`MIGRATION_PLAN.md`](MIGRATION_PLAN.md)의 완료 기준선.
+
+### `DWNC-S3-001` — guarded local Cloudflare media release pipeline
+- **Status:** `done`
+- **Updated-at:** `2026-08-25`
+- **Plans:** `PLAN-05`, `PLAN-06`, `PLAN-07`
+- **Priority:** `P0`
+- **Acceptance:**
+  - create-only R2 client, same-origin Worker, version-only upload와 staging/production 분리 gate를 구현한다.
+  - local mock·artifact·release·bootstrap·staging 회귀를 통과한다.
+- **Evidence:**
+  - source commit `a541803bcf35fe95f761f0964e21ceff405c048b`.
+  - [`PROJECT_STATE.md`](../PROJECT_STATE.md)의 12 suites·463 assertions PASS 기록.

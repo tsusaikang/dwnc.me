@@ -1,6 +1,6 @@
 # dwnc.me 프로젝트 공식 상태
 
-최종 갱신: 2026-09-05 KST — PLAN-05·PLAN-06 완료 / DWNC-S3-010 live staging 점검 완료, PLAN-07 대기
+최종 갱신: 2026-09-05 KST — PLAN-05·PLAN-06·PLAN-07 완료 / production R2·비활성 Worker version 준비 완료, PLAN-08 사용자 결정 대기
 
 사용자가 확인할 현재 목표·결정·진행을 막는 조건·다음 단계와 stable requirement ID는 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)를 기준으로 한다. 이 문서는 구현 세부사항, 검증 수치, Git·Cloudflare 상태 재확인 결과와 인수인계를 보존하는 기술 기준점이다. 완료 이력은 요구사항 원장의 보관 정책에 따라 [`docs/REQUIREMENTS_ARCHIVE.md`](docs/REQUIREMENTS_ARCHIVE.md)로 이동하되 이 기술 증거를 삭제하지 않는다.
 
@@ -8,7 +8,7 @@
 
 네이버 블로그 `blog.naver.com/tsusai`와 티스토리 기반 `dwnc.me`의 직접 작성 콘텐츠를 소유자가 통제하는 새 블로그로 이전한다. 원문, 이미지, 게시일, 카테고리, 태그, 기존 주소, 공개 범위를 보존하며 이후 새 글도 지속해서 작성할 수 있어야 한다.
 
-비개발자용 현재 요약: 공개할 사진과 GIF 2,758개의 시험용 비공개 저장소 감사와 token 정리를 마쳐 `PLAN-05`는 완료 상태를 유지한다. `DWNC-S3-009`와 `DWNC-S3-010`도 완료됐다. runtime source commit `05962c4c0872b5234d3a45298ab0e44d123d03da`의 artifact `81cf14fcaab0245c380d6e4e8d274df14dee41dde7bacfa19d510449a180d501`를 staging version `bb59f4ee-55f5-4626-858b-0653d7e79900`으로 올려 100% 적용했고, 실제 시험용 주소에서 대표 페이지·이전 주소 349개 GET·HEAD 698회·사진 응답·404·cache가 모두 통과했다. smoke collector fix commit `ab5489a91c5f6b159a344e49f9d0e066cfb5eaa4`에서는 마지막 점검기의 과도한 고정 Content-Length 비교를 streaming 응답 계약에 맞게 고쳤다. `workers.dev`와 preview는 다시 껐고 custom domain·route는 0이다. 오늘 확인한 2026-08-27 account token은 `DWNC-S3-012` 삭제 대상이 아니므로 보존했다. production DNS·route·traffic, R2 덮어쓰기·삭제, Git push는 모두 0이다.
+비개발자용 현재 요약: `PLAN-05`와 `PLAN-06`에 이어 운영용 자원과 비활성 사이트 버전을 준비하는 `PLAN-07`도 완료했다. production 저장소는 외부 공개 기능이 꺼진 상태로 사진과 GIF 2,758개·2,346,220,246바이트를 create-only로 채웠고, 전체 파일을 다시 읽어 SHA-256과 orphan 0을 확인했다. 운영용 artifact `be178dbe3618d3f1c9300bae265780a3d77841bac2120457d985f88393a34615`는 version `476acc86-b11d-4ba4-a699-cb26c551a93d`으로 version-only 업로드했지만 방문자 트래픽에는 적용하지 않았다. 기존 active production version `f0a8bec2-b57b-45af-b2f6-227dd045b3f8`은 계속 100%이고, DNS·route·traffic·public endpoint 변화와 R2 덮어쓰기·삭제, Git push는 모두 0이다. 다음은 사용자가 실제 `dwnc.me` 연결 여부를 결정하는 `PLAN-08`이며 아직 시작하지 않았다.
 
 전체 프로젝트 완료 조건은 다음과 같다.
 
@@ -50,7 +50,7 @@
 - Cloudflare Stage 3 로컬 안전장치: **commit `ccec8bb855e45ef679a4b99faf0f0633a99e089e`·tree `241a654acc387233d4e2d5e076754b345619e9ac`로 업로드·사후 확인·전체 내용 감사의 보호 절차를 기록했고 push는 0**
 - Cloudflare 계정 선택 안전장치: **자체 브라우저의 계정이 staging 확인값과 정확히 일치함을 확인했다. 이전 URL 확인에서 계정 식별자가 내부 출력에 1회 표시된 사실은 유지하되, 원문과 URL을 프로젝트 문서·파일·argv·명령줄·환경변수에 넣지 않았다. 계정 전달 경로는 commit `b66798ff3ad7907e3fd43bdcb62328f2319cf5fe`에서 계정 검사 698개, 한 번만 여는 연결은 commit `bb0a250344d3c2f8d991b73bab11e2fd3a281833`·tree `edb439b2bfb33cf9940a07c9883c057f40191f6c`에서 연결 검사 212개와 계정 검사 698개를 통과했다. 60초 변경은 commit `5a49c79fbd1e4d76d22fe736f6d22940aa6c856e`·tree `f246b062473f5544d3ea432dbd7d2864a2d63086`에 저장했고 push는 0회다. 이전 `BRIDGE_E_BIND`는 일반 격리 환경의 localhost bind 제한이 원인으로 확인됐고 권한 확장 host가 ready를 반환했으므로 해소됐다. 이번 host 실행은 1회, 브라우저 client send도 1회였지만 client는 `BRIDGE_E_CLIENT_CONNECT`, host는 accepted connection 0회 후 60초 만료로 `BRIDGE_E_TIMEOUT`이었다. 원문은 브라우저 메모리 Buffer에서만 처리했고 출력·파일·argv·환경변수로 남기지 않았다. `durableState=none`, clipboard read·clear false, raw printed false였고 계정 초기화·Keychain·metadata 작성·재시도·복구·삭제는 모두 0회다. 사후 preflight는 `ready`, primary·recovery·Keychain은 모두 없음, clipboard read·clear false를 다시 확인했다.**
 - Cloudflare Stage 3 staging R2 상태: **최종 2,758개 업로드와 비공개 설정 확인, 실제 전체 full GET/SHA-256 감사 완료. 객체 2,758개·2,346,220,246바이트·orphan 0·전체 object-set SHA-256 일치, 논리 LIST/HEAD/GET 3/2,758/2,758, 실제 전송 시도 3/2,760/2,758, HEAD retry 2·PUT/DELETE 0이다. staging active version은 `bb59f4ee-55f5-4626-858b-0653d7e79900` 100%이고 ASSETS와 `MEDIA_BUCKET → dwnc-me-public-media-staging` binding은 유지됐다.**
-- Cloudflare Stage 3 staging signing trust: **media public fingerprint `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`, release public fingerprint `2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2` policy 고정 / private key는 macOS Keychain에만 보관·export 0 / production fingerprint `null` 유지**
+- Cloudflare Stage 3 signing trust: **staging media/release public fingerprint와 production account/media/release fingerprint를 policy에 고정했다. production media fingerprint는 `3277f416d8657bebaff3dcfcbe57dafd683fdfc6cefe36306b5046ca48ff890a`, release fingerprint는 `11b44ae3c3c8743ede7881ea40ebf59243711246d100e3383ad23b220c5cc0bb`이며 private key와 uploader·validator 자격은 macOS Keychain에만 보관하고 export하지 않았다.**
 - Cloudflare Stage 3 deny-only Worker 로컬 검사: **생성 전후 account `workers.dev=dwnc`, 생성 뒤 공개·미리보기 주소 꺼짐, 전체 로그·trace 설정, `content/v2`의 정확히 한 module 바이트·SHA-256, deploy 가능한 version 정확히 1개와 deployment 정확히 1개·100%, 연속 두 현재 상태의 일치를 함께 강제한다. 인터넷·외부 프로그램 차단 보강 전 전체 Cloudflare 모의시험 27개·15,076 assertions PASS, 보강 뒤 R2 전량 예행연습 194 assertions·차단 경계 전용 152 assertions·영향 범위 829 assertions PASS / 금지 시도 24종은 연결·실행 직전에 차단하고, 허용한 읽기 전용 Git 15회·격리 Python 5회만 원래 프로그램을 실행 / 계정 보관함 read command 사고 1, second read·저장·변경 0, guard 뒤 추가 native spawn 0 / 최소 권한 열쇠 전달과 생성 중단 복구의 로컬 안전장치 완료**
 - 공개 미디어 최종 범위: **B 선택 반영. 사용자 소유 사진 2,757개 + 직접 제작 SBS GIF 1개 = 2,758개. 지도 99개는 장소 카드 16개(원 장소 네이버지도 15+네이버지도 검색 1)로 대체, LINE 스티커 5개·placeholder 27개 제외 / final 검증 PASS**
 - 네이버 세 편집기 세대 대표·비디오 대표 데스크톱·모바일 브라우저 QA: **모두 PASS**
@@ -66,11 +66,11 @@
 - `PLAN-04` 공개 미디어 정리: 완료
 - `PLAN-05` 시험용 R2 실제 내용 확인과 열쇠 정리: **완료**. 계정 결속, 저장소 비공개 확인, 실제 2,758개 GET/SHA-256 비교, 이번 validator 원격 폐기·로컬 Keychain 정리와 2026-08-25의 사용 불가능한 기존 token 두 개의 정확한 식별·삭제·목록 부재 확인을 모두 마쳤다.
 - `PLAN-06` 시험용 사이트 프로그램·버전·사이트 점검: **완료**. `DWNC-S3-009`와 `DWNC-S3-010`을 마쳤고, runtime source `05962c4c0872b5234d3a45298ab0e44d123d03da`의 artifact `81cf14fc…`를 version `bb59f4ee-55f5-4626-858b-0653d7e79900`으로 100% 적용해 live 종합 점검을 통과했다.
-- `PLAN-07` 운영용 이름의 Cloudflare 자원·버전 준비: 대기. `PLAN-06` 통과 뒤 최종 운영에 실제 필요한 자원만 준비하며 새 보조 도구·모의훈련·반복 검증은 추가하지 않는다.
+- `PLAN-07` 운영용 이름의 Cloudflare 자원·버전 준비: **완료**. private production R2에 2,758개를 create-only로 올리고 전수 감사·서명·production artifact와 비활성 Worker version 준비를 마쳤다. 기존 active version과 production DNS·route·traffic은 바꾸지 않았다.
 - `PLAN-08` 실제 도메인 연결과 운영 전환 검증: 사용자 결정 필요
 - `PLAN-09` 새 글 작성·비공개 백업 운영 결정: 사용자 결정 필요. 두 항목은 최종 운영에 필요하고, 공유 글 10개·댓글·추가 개선은 사용자 선택 후속으로 Stage 3를 막지 않는다.
 
-인수인계 상태: `PLAN-05`와 `PLAN-06`, `DWNC-S3-009`와 `DWNC-S3-010`은 완료됐다. active staging version은 `bb59f4ee-55f5-4626-858b-0653d7e79900` 100%이고 `workers.dev`·preview는 꺼져 있으며 custom domain·route는 없다. 다음 공식 단계는 아직 실무를 시작하지 않은 `PLAN-07`이다.
+인수인계 상태: `PLAN-05`·`PLAN-06`·`PLAN-07`과 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`은 완료됐다. production R2는 private이고 2,758개 전수 감사가 통과했으며, 새 production version `476acc86-b11d-4ba4-a699-cb26c551a93d`은 업로드만 되어 비활성이다. 기존 active production version `f0a8bec2-b57b-45af-b2f6-227dd045b3f8` 100%는 그대로다. 다음 공식 단계 `PLAN-08`은 실제 도메인 연결에 대한 사용자 결정 전까지 시작하지 않는다.
 
 요구사항과 계획의 자세한 연결은 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)를 기준으로 한다. 최종 결과·완료조건·범위·순서·승인 범위가 실제로 바뀔 때만 요구사항 번호, 관련 계획, 우선순위, 완료 기준, 상태와 근거 및 현재 위치를 갱신한다. 단순 질문·설명·진행 확인과 이미 기록된 작업의 계속 지시는 새 요구사항으로 만들지 않는다.
 
@@ -137,7 +137,7 @@
 45. production 배포 gate는 Ed25519 signed remote receipt와 승인·봉인된 final manifest 전체의 HEAD exact 검증, exact Wrangler `4.125.0`, source-only build·Worker·redirect fixture를 모두 요구한다. Wrangler는 로컬 dependency와 lock에 설치됐지만 실제 receipt·signature·credential·trust anchor가 없으면 의도적으로 fail closed한다.
 46. `public/_redirects`는 provider-neutral `docs/EDGE_REDIRECTS_V1.json`에서 결정적으로 만든 exact 349개 308 rule이다. `/media/*`와 wildcard는 포함하지 않고 Static Assets의 `drop-trailing-slash`를 Astro의 no-trailing-slash 계약과 맞춘다.
 47. R2 객체 metadata는 객체별 SHA·MIME·cache 계약만 고정한다. 전체 manifest digest는 signed release receipt에 결속해 공개 파일 append·철회가 기존 immutable 객체 전체의 재업로드를 요구하지 않게 한다.
-48. production receipt는 target environment·bucket·Cloudflare account fingerprint·검증 수준과 `r2.dev 비활성·custom domain 0` control-plane 감사 증거를 서명 범위에 포함하고, tracked release policy의 account/public-key fingerprint와 exact 일치해야 한다. exposure 증거는 gate 기준 최대 900초·미래 편차 120초만 유효하다. 현재 trust 값은 미승인 `null`이므로 production gate는 fail closed한다.
+48. production receipt는 target environment·bucket·Cloudflare account fingerprint·검증 수준과 `r2.dev 비활성·custom domain 0` control-plane 감사 증거를 서명 범위에 포함하고, tracked release policy의 확정된 account/public-key fingerprint와 exact 일치해야 한다. exposure 증거는 audit 시작 기준 최대 900초·미래 편차 120초만 유효하며, 이 결속을 통과한 production 전수 감사와 서명을 완료했다.
 49. top-level Wrangler target의 다른 이름은 안전장치가 아니다. Workers Builds가 Worker 이름을 override할 수 있으므로 raw `wrangler deploy`는 production overwrite P0로 금지한다. production은 exact `--env production` wrapper와 version-only upload만 허용한다.
 50. Cloudflare source build는 R2 credential·receipt path를 child에 상속하지 않는 strict env allowlist를 사용한다. full `200`만 객체-SHA cache key로 Cache API에 저장하고 Range·오류 응답은 edge cache에 저장하지 않는다.
 51. Worker는 manifest entry SHA와 R2 platform checksum·version ID·HTTP ETag를 HEAD와 GET에서 상호 결속하며, GET 사이 race나 checksum drift는 bytes를 내보내지 않고 구조화된 `502 no-store`로 닫는다.
@@ -335,6 +335,12 @@
 
 ## 주요 산출물
 
+- production R2 sync receipt: `/private/tmp/dwnc-r2-production-rd4WtD/production-sync-receipt.json`
+- production 최종 full audit receipt와 서명: `/private/tmp/dwnc-r2-production-rd4WtD/production-full-audit-receipt-v2.json`, `/private/tmp/dwnc-r2-production-rd4WtD/production-full-audit-receipt-v2.sig`, `/private/tmp/dwnc-r2-production-rd4WtD/production-media-public-key-v2.pem`
+- production artifact: `/private/tmp/dwnc-r2-production-rd4WtD/artifacts-v2/artifact-be178dbe3618d3f1c9300bae265780a3d77841bac2120457d985f88393a34615`
+- production version upload·detail·attestation: `/private/tmp/dwnc-r2-production-rd4WtD/production-version-upload-result-v2.json`, `/private/tmp/dwnc-r2-production-rd4WtD/production-version-detail-v2.json`, `/private/tmp/dwnc-r2-production-rd4WtD/production-version-attestation-v2.json`, 대응 `.sig`와 public key
+- production 최종 traffic·private exposure: `/private/tmp/dwnc-r2-production-rd4WtD/production-deployment-status-after-v2.evidence.json`, `/private/tmp/dwnc-r2-production-rd4WtD/production-exposure-evidence-v7.json`
+
 - `src/`: 새 블로그 화면, 콘텐츠 스키마, 검색·RSS·사이트맵 구현
 - `src/lib/public-post.ts`: 보존 본문을 변경하지 않는 공개 메타 정제와 Naver 비디오 표시 정책
 - `src/lib/public-links.ts`: 공개 전용 URL registry, strict legacy parser, 공통 HTML 링크 transformer와 unavailable 정책
@@ -389,6 +395,16 @@
 - `scripts/test-r2-bulk-hardening.mjs`: 혼합 원격 상태, 안전 재실행, 412 복구, orphan/Git/output 경계, 최종 receipt 경합과 비밀값 비노출을 실제 entrypoint로 검증하는 142 assertions fixture
 
 ## 현재 검증 결과
+
+### PLAN-07 production 준비 최종 검증
+
+- production bucket은 `default` jurisdiction·`apac` location·`Standard` storage class이며 r2.dev disabled, custom domain 0으로 private 상태다.
+- create-only sync는 2,758개·2,346,220,246바이트를 만들었고 orphan 0·overwrite 0·delete 0이다.
+- 최종 full audit는 2,758개 전부를 GET/SHA-256으로 확인해 manifest SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`, object-set SHA-256 `9345d2f06c8bd7cda457a9d4335cdc2213e71dcd30bb9e11e6f3e1f8e11ae467`, orphan 0과 정확히 일치했다. retry 0, PUT 0, DELETE 0이며 receipt를 production media key로 서명했다.
+- source commit `68f2225bf647061e4740f2dc136cc9fd8f937fdb`·tree `00593c756618ebf4e52dbcf618be5cf379a8a5a1`로 artifact SHA-256 `be178dbe3618d3f1c9300bae265780a3d77841bac2120457d985f88393a34615`를 만들었다. 이후 도구 수정 기준 HEAD는 `f88aac20ec98426539b9450299d7c84b31d8ba4f`·tree `8755db25a09f83dab73f25ef8800cd7bf4b3c869`이며 artifact source와 구분한다.
+- version `476acc86-b11d-4ba4-a699-cb26c551a93d`을 version-only로 업로드했다. attestation은 bindings SHA-256 `3ef2cd37aefcdfdfa0fc4a09eea89168799291519f98557c8c5425ce123cd9c7`, assets SHA-256 `526b8018a8498a073b87b328d98b77bf6b21682c2980aedab91f9e36f3e14ae1`, ETag `6d080c55ed510576c748bf9fe6395111cd9544cd60224f90d515ed926cb8ebcf`, `fetch` handler, compatibility date `2026-08-24`, flags `[]`, runtime assets present를 확인했고 release-control key로 서명했다.
+- 업로드 뒤에도 active version `f0a8bec2-b57b-45af-b2f6-227dd045b3f8` 한 개가 100%로 유지됐다. 새 version은 비활성이며 DNS·route·traffic·public endpoint 변화는 0이다.
+- 주요 로컬 기록은 production R2 제어 경로 `b632c10`, OAuth release control `b61501a`, exposure runtime parsing `acd6cd0`, Wrangler banner 처리 `0eb8b5a`, production full audit timeout `c3f2414`, 중단된 R2 read retry `48efb5b`, audit-start exposure freshness `68f2225`, production state read OAuth `c3d1c86`, current Wrangler version detail `f88aac2`다.
 
 ### 네이버 raw·importer·미디어 최종 검증
 
@@ -517,7 +533,7 @@
 - 현재 최종 공개 미디어는 실제 private staging bucket의 보존 receipt로 2,758개·2,346,220,246바이트·orphan 0·manifest SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`·full object-set SHA-256 `9345d2f06c8bd7cda457a9d4335cdc2213e71dcd30bb9e11e6f3e1f8e11ae467` 일치를 확인했다. 논리 LIST/HEAD/GET 3/2,758/2,758, 실제 시도 3/2,760/2,758, HEAD retry 2·PUT/DELETE 0이며 receipt storage SHA-256은 `ce4e4f38b35063ec425c2ba5e65cc1d3a89355def51486542e6bccd3c1909bdd`다. 2,889개는 2026-08-25 정리 전 역사 기준선이고 2,785개는 B 결정 전 중간 수치다.
 - 2026-09-04 Cloudflare R2 Account API token 표에서 tracked staging account 확인값이 정확히 일치했고 pagination control 없이 정확히 두 행만 있었다. `dwnc-me-staging-r2-validator`는 exact staging bucket의 Object Read only·2026-08-25 생성·Active, `dwnc-me-staging-r2-uploader`는 같은 bucket의 Object Read & Write·2026-08-25 생성·Active로 각 이름·범위·생성 시점·상태가 한 행에 결속됐으며 보존된 생성 증거와도 정확히 일치했다. 사용자 승인 후 validator와 uploader를 이 순서로 각각 한 번만 삭제했고 각 삭제 뒤 해당 행 0, 최종 목록에서 두 이름 모두 부재를 확인했다. 이전 관측 User API token 다섯 개 이름은 그대로이며 다른 Cloudflare 변경은 0회다. 이로써 S3-012는 완료됐다.
 - Cloudflare Builds의 P0 raw-deploy blocker는 해소했다. 2026-08-25 exact readback은 `SKIP_DEPENDENCY_INSTALL=1`, Build `npm ci && npm run cloudflare:prepare:production`, Deploy `npm run cloudflare:upload:production-version`, Version `npx wrangler versions upload`, root `/`, branch `main`, include `*`이고 raw live `wrangler deploy` 설정은 0이었다. 다음 외부 변경 전 다시 읽으며 traffic promotion은 계속 Git trigger 밖에서 signed evidence와 exact version ID를 다시 승인한 job으로만 수행한다.
-- tracked release policy의 staging account fingerprint는 domain-separated SHA-256 `6ef9d1a2e2a398e755e1d4108acabacde0f5218f9f455abf79f1af56a154ea0f`이고 실제 account와 exact 일치했다. `smokeAccessPolicySha256`는 `d6c554c1d80c68c08605636f12f26a411f7826bc40eddaee9233a30b6551781a`, staging `publicKeySpkiSha256`는 `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`, `releasePublicKeySpkiSha256`는 `2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2`로 확정했다. private key는 Keychain에만 보관했고 export하지 않았다. production account/media/release fingerprint는 모두 `null`로 유지한다.
+- tracked release policy의 account fingerprint는 domain-separated SHA-256 `6ef9d1a2e2a398e755e1d4108acabacde0f5218f9f455abf79f1af56a154ea0f`이고 실제 account와 exact 일치했다. staging `smokeAccessPolicySha256`는 `d6c554c1d80c68c08605636f12f26a411f7826bc40eddaee9233a30b6551781a`, media fingerprint는 `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`, release fingerprint는 `2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2`다. production media fingerprint는 `3277f416d8657bebaff3dcfcbe57dafd683fdfc6cefe36306b5046ca48ff890a`, release fingerprint는 `11b44ae3c3c8743ede7881ea40ebf59243711246d100e3383ad23b220c5cc0bb`로 확정했다. private key는 Keychain에만 보관했고 export하지 않았다.
 - single-object create-only, 실제 `head()` probe, staging-only artifact와 admission smoke의 production 의존 분리는 로컬 구현·negative fixture·전체 회귀와 source commit까지 완료했다. push는 계속 승인되지 않았다.
 - `DWNC-S3-010`은 runtime source commit `05962c4c0872b5234d3a45298ab0e44d123d03da`의 artifact SHA-256 `81cf14fcaab0245c380d6e4e8d274df14dee41dde7bacfa19d510449a180d501`를 version-only로 올리고 version `bb59f4ee-55f5-4626-858b-0653d7e79900`을 staging에 100% 적용해 완료했다. 이전 `debfe664…`는 path normalization 결함으로 `/`가 404였고, `4bd84ef8…`는 이를 고친 뒤 full collector의 고정 Content-Length 비교에서 멈췄다. 실제 live 응답은 의도한 streaming 계약을 충족했으며 smoke collector fix commit `ab5489a91c5f6b159a344e49f9d0e066cfb5eaa4`에서 그 false-negative를 교정했다.
 - 실제 `npm ci`부터 시작하는 isolated clean-install fixture는 npm registry만 허용한 임시 Git-style tree에서 PASS했다. private/raw/local media는 0이었고 source-only build·공개 validator·exact Wrangler lock까지 통과했으며 권위 작업공간은 변경하지 않았다.
@@ -537,7 +553,7 @@
 ## 다음 단계
 
 1. `PLAN-05`는 실제 staging 비공개 확인, 2,758개 전수 GET/SHA-256, 이번 validator 원격·로컬 정리와 사용 불가능한 기존 원격 token 두 개의 exact identity 확인·승인된 삭제·부재 확인까지 완료했다. 보존 receipt와 capture는 유지한다.
-2. `PLAN-06`, `DWNC-S3-009`, `DWNC-S3-010`은 완료됐다. 다음 공식 단계인 `PLAN-07`은 아직 실무를 시작하지 않았으며, staging을 통과한 절차로 최종 운영에 실제 필요한 Cloudflare 자원만 준비한다. 새 보조 도구·복구 체계·서명·영수증·장애주입·모의훈련·반복 독립감사는 추가하지 않는다. 실제 `dwnc.me` 도메인·DNS·route 연결은 사용자가 결정할 때만 수행한다.
+2. `PLAN-06`과 `PLAN-07`, `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`은 완료됐다. `PLAN-08`은 아직 시작하지 않았으며, 다음 행동은 사용자가 실제 `dwnc.me` 도메인 연결과 production traffic 전환 여부를 결정하는 것이다. 그 결정 전에는 DNS·route·traffic·public endpoint를 바꾸지 않는다.
 
 ## 중요한 제약과 주의사항
 
@@ -556,7 +572,7 @@
 - 실제 `dwnc.me` 도메인·DNS·route 연결과 traffic 전환, Git push는 하지 않는다. 현재 실제 도메인은 Cloudflare에 연결되지 않았으므로 production 이름 R2·Worker·version 준비도 현재 방문자에게 영향을 주지 않는다. 승인된 순서에서는 각 단계별 새 승인 대기나 반복 독립검토 때문에 멈추지 않는다.
 - 보호 절차 없이 직접 실행하는 `wrangler deploy`, 파일·R2 객체 덮어쓰기·삭제, orphan 자동 삭제, 자격증명·token·private key 값 기록을 하지 않는다.
 - 기존 로컬 안전체계·복구체계·서명·영수증·장애주입·모의훈련·독립감사 증거는 보존하되 더 확장하거나 반복하지 않는다. 실제 실행에서 완료를 막는 문제가 발견될 때만 최소 수정과 관련 검사 한 묶음을 수행한다.
-- `wrangler.jsonc`의 staging bucket 이름은 실제 private bucket과 일치하며 staging Worker의 ASSETS·R2 binding과 live 점검을 완료했다. production 이름의 bucket·binding은 현재 실제 생성·연결을 의미하지 않는다.
+- `wrangler.jsonc`의 staging bucket 이름은 실제 private bucket과 일치하며 staging Worker의 ASSETS·R2 binding과 live 점검을 완료했다. production bucket도 실제 private 상태로 생성·전수 감사했지만, 새 production version은 비활성이며 실제 도메인·route·traffic 연결을 의미하지 않는다.
 - R2 key mismatch는 자동 overwrite하지 않고 orphan은 자동 삭제하지 않는다. public→private/tombstone은 cache 조회보다 먼저 작동하는 최신 allowlist deny release를 forward 적용한다. exact URL cache purge는 보장할 수 없으므로 보안 경계로 삼지 않고, privacy rollback에서도 최신 deny 상태를 유지한다.
 - 실제 배포 전 기존 `dwnc.me/{숫자}` 164개 전수 응답·리디렉션 회귀 검증이 필요하다.
 - 본문 링크 호환은 `src/lib/public-links.ts`의 공개 registry와 표현 transformer에서만 유지한다. raw·normalized·frontmatter·importer에 canonical 링크를 역기록하지 않는다.
