@@ -4,6 +4,7 @@ import path from 'node:path';
 import {
   expectedProductionAssetsResource,
   expectedProductionVersionBindings,
+  nativeReleaseResourcesFromConfig,
   productionPromotionConfig,
   productionUploadConfig,
 } from './lib/cloudflare-artifact.mjs';
@@ -24,7 +25,10 @@ const temporary = await mkdtemp(path.join(os.tmpdir(), 'dwnc-wrangler-artifact-'
 const bundleDirectory = path.join(temporary, 'bundle');
 const secondBundleDirectory = path.join(temporary, 'bundle-second');
 const verifyDirectory = path.join(temporary, 'verify');
-const uploadConfig = productionUploadConfig('dwnc-me-public-media-production');
+const rootConfig = JSON.parse(await readFile(path.join(ROOT, 'wrangler.jsonc'), 'utf8'));
+const nativeResources = nativeReleaseResourcesFromConfig(rootConfig, 'production');
+const uploadConfig = productionUploadConfig(
+  'dwnc-me-public-media-production', nativeResources);
 const promotionConfig = productionPromotionConfig();
 const uploadConfigPath = path.join(temporary, 'wrangler-upload.jsonc');
 const emptyEnvironmentPath = path.join(temporary, 'wrangler-empty.env');
@@ -85,7 +89,7 @@ try {
     uploadConfigSha256: sha256Hex(canonicalJson(uploadConfig)),
     promotionConfigSha256: sha256Hex(canonicalJson(promotionConfig)),
     bindingsSha256: cloudflareResourceDigest(expectedProductionVersionBindings(
-      'dwnc-me-public-media-production')),
+      'dwnc-me-public-media-production', nativeResources)),
     assetsConfigSha256: cloudflareResourceDigest(expectedProductionAssetsResource()),
   }, null, 2));
 } finally {

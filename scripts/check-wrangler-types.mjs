@@ -40,8 +40,12 @@ try {
   ]);
   if (!canonical.includes('interface ProductionEnv')
     || !canonical.includes('MEDIA_BUCKET: R2Bucket;')
+    || !canonical.includes('NATIVE_MEDIA_BUCKET: R2Bucket;')
+    || !canonical.includes('NATIVE_DB: D1Database;')
     || !canonical.includes('ASSETS: Fetcher;')
     || !production.includes('MEDIA_BUCKET: R2Bucket;')
+    || !production.includes('NATIVE_MEDIA_BUCKET: R2Bucket;')
+    || !production.includes('NATIVE_DB: D1Database;')
     || !production.includes('CF_VERSION_METADATA: WorkerVersionMetadata;')
     || canonical.includes('DWNC_STAGING_SMOKE_TOKEN: string;')
     || production.includes('DWNC_STAGING_SMOKE_TOKEN: string;')) {
@@ -50,7 +54,7 @@ try {
   console.log(JSON.stringify({
     wrangler: '4.125.0',
     canonicalTypesDrift: 0,
-    canonicalBindings: ['ASSETS', 'MEDIA_BUCKET'],
+    canonicalBindings: ['ASSETS', 'MEDIA_BUCKET', 'NATIVE_DB', 'NATIVE_MEDIA_BUCKET'],
     productionEnvironmentProbe: true,
   }, null, 2));
 } finally {

@@ -3,7 +3,10 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { createStagingPreuploadArtifact } from './lib/cloudflare-artifact.mjs';
+import {
+  createStagingPreuploadArtifact,
+  nativeReleaseResourcesFromConfig,
+} from './lib/cloudflare-artifact.mjs';
 import { directoryArtifactSha256 } from './lib/cloudflare-release.mjs';
 import {
   assertPinnedWranglerInstalled,
@@ -18,6 +21,8 @@ import {
 
 const ROOT = process.cwd();
 installStructuredErrorHandler('cloudflare-prepare-staging');
+const wranglerConfig = JSON.parse(await readFile(path.join(ROOT, 'wrangler.jsonc'), 'utf8'));
+const stagingNativeResources = nativeReleaseResourcesFromConfig(wranglerConfig, 'staging');
 const execFileAsync = promisify(execFile);
 const sourceGitSha = (await execFileAsync('git', ['rev-parse', 'HEAD'], { cwd: ROOT })).stdout.trim();
 const gitStatus = (await execFileAsync('git', ['status', '--porcelain=v1'], { cwd: ROOT })).stdout.trimEnd();
@@ -91,6 +96,7 @@ try {
     ciSourceGitSha,
     stagingAccountIdSha256: policy.staging.accountIdSha256,
     stagingBucket: policy.staging.bucket,
+    stagingNativeResources,
     mediaManifest: manifest,
   });
   console.log(JSON.stringify({

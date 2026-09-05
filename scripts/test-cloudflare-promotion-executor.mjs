@@ -309,6 +309,16 @@ process.exit(24);
     stagingAccountIdSha256: accountIdSha256,
     bucket: 'dwnc-me-public-media-production',
     stagingBucket: 'dwnc-me-public-media-staging',
+    productionNativeResources: {
+      nativeBucket: 'dwnc-me-native-media-production',
+      databaseName: 'dwnc-me-content-production',
+      databaseId: '11111111-1111-4111-8111-111111111111',
+    },
+    stagingNativeResources: {
+      nativeBucket: 'dwnc-me-native-media-staging',
+      databaseName: 'dwnc-me-content-staging',
+      databaseId: '22222222-2222-4222-8222-222222222222',
+    },
     mediaManifest: { manifestSha256: mediaReceipt.manifestSha256 },
     mediaRemoteReceipt: mediaReceipt,
     mediaReceiptFiles: { signaturePath: mediaSignaturePath, publicKeyPath },

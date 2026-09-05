@@ -100,6 +100,8 @@ const bindings = [
   { name: 'ASSETS', type: 'assets' },
   { name: 'CF_VERSION_METADATA', type: 'version_metadata' },
   { name: 'MEDIA_BUCKET', bucket_name: 'dwnc-me-public-media-production', type: 'r2_bucket' },
+  { name: 'NATIVE_DB', id: '11111111-1111-4111-8111-111111111111', type: 'd1' },
+  { name: 'NATIVE_MEDIA_BUCKET', bucket_name: 'dwnc-me-native-media-production', type: 'r2_bucket' },
   { name: 'DWNC_DEPLOYMENT_ENVIRONMENT', text: 'production', type: 'plain_text' },
 ];
 const assets = { html_handling: 'drop-trailing-slash', not_found_handling: '404-page', run_worker_first: true };
@@ -121,6 +123,8 @@ const stagingBindings = [
   { name: 'DWNC_STAGING_SMOKE_POLICY', text: 'bearer-token-non-access-origin', type: 'plain_text' },
   { name: 'DWNC_STAGING_SMOKE_TOKEN', type: 'secret_text' },
   { name: 'MEDIA_BUCKET', bucket_name: 'dwnc-me-public-media-staging', type: 'r2_bucket' },
+  { name: 'NATIVE_DB', id: '22222222-2222-4222-8222-222222222222', type: 'd1' },
+  { name: 'NATIVE_MEDIA_BUCKET', bucket_name: 'dwnc-me-native-media-staging', type: 'r2_bucket' },
 ];
 artifact.stagingBindingsSha256 = cloudflareResourceDigest(stagingBindings);
 artifact.stagingAssetsConfigSha256 = cloudflareResourceDigest(assets);

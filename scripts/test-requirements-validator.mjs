@@ -333,7 +333,7 @@ withFixture(
         '$1`진행 중` |',
       ),
   },
-  (result) => assertRejected(result, /overall plan must have at most one in-progress PLAN; found 2/),
+  (result) => assertRejected(result, /overall plan must have at most one in-progress PLAN; found 3/),
 );
 
 withFixture(

@@ -1,0 +1,260 @@
+import assert from 'node:assert/strict';
+import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { DatabaseSync } from 'node:sqlite';
+import { load } from 'cheerio';
+import adminWorker from '../src/admin-worker.ts';
+import { clearAccessKeyCacheForTests, verifyAccessIdentity } from '../src/lib/access-auth.ts';
+import { adminHtml } from '../src/lib/admin-ui.ts';
+import { nativeImagePaths, renderNativeMarkdown } from '../src/lib/native-content.ts';
+import { NativePostStore } from '../src/lib/native-post-store.ts';
+import { createNativePublicWorker } from '../src/lib/native-public-worker.ts';
+
+let assertions = 0;
+const equal = (actual, expected) => { assert.equal(actual, expected); assertions += 1; };
+const ok = (value) => { assert.ok(value); assertions += 1; };
+const rejects = async (callback, pattern) => { await assert.rejects(callback, pattern); assertions += 1; };
+
+class Statement {
+  constructor(database, sql, args = []) { this.database = database; this.sql = sql; this.args = args; }
+  bind(...args) { return new Statement(this.database, this.sql, args); }
+  first() { return this.database.prepare(this.sql).get(...this.args) ?? null; }
+  all() { return { success: true, results: this.database.prepare(this.sql).all(...this.args), meta: {} }; }
+  run() { const result = this.database.prepare(this.sql).run(...this.args); return { success: true, results: [], meta: { changes: Number(result.changes) } }; }
+}
+
+class Database {
+  constructor() { this.sqlite = new DatabaseSync(':memory:'); }
+  prepare(sql) { return new Statement(this.sqlite, sql); }
+  async batch(statements) {
+    this.sqlite.exec('BEGIN IMMEDIATE');
+    try {
+      const results = statements.map((statement) => {
+        const rows = this.sqlite.prepare(statement.sql).all(...statement.args);
+        return { success: true, results: rows, meta: { changes: this.sqlite.changes ?? 0 } };
+      });
+      this.sqlite.exec('COMMIT');
+      return results;
+    } catch (error) { this.sqlite.exec('ROLLBACK'); throw error; }
+  }
+}
+
+function createDatabase() {
+  const database = new Database();
+  database.sqlite.exec(awaitableMigration);
+  return database;
+}
+
+const awaitableMigration = await readFile(new URL('../migrations/0001_native_editor.sql', import.meta.url), 'utf8');
+const defaultInput = {
+  title: '웹에서 쓴 첫 글', description: '새 편집기 설명', bodyMarkdown: '# 본문\n\n안전한 **내용**',
+  categoryId: 'daily', tags: ['웹 기록'], coverMediaId: null,
+};
+
+equal(renderNativeMarkdown('<script>alert(1)</script>').includes('<script>'), false);
+equal(renderNativeMarkdown('![x](javascript:alert(1))').includes('<img'), false);
+equal(renderNativeMarkdown('![사진](/media/native/123e4567-e89b-42d3-a456-426614174000.webp)').includes('<img'), true);
+equal(nativeImagePaths('[다운로드](/media/native/123e4567-e89b-42d3-a456-426614174000.webp)').length, 0);
+equal(nativeImagePaths('![사진](/media/native/123e4567-e89b-42d3-a456-426614174000.webp)')[0], '/media/native/123e4567-e89b-42d3-a456-426614174000.webp');
+equal(nativeImagePaths('```\n![사진](/media/native/123e4567-e89b-42d3-a456-426614174000.webp)\n```').length, 0);
+
+const database = createDatabase();
+const clock = () => new Date('2026-09-06T03:00:00.000Z');
+const store = new NativePostStore(database, clock);
+const draft = await store.createDraft({ id: 'daily', slug: '일상', label: '일상' });
+equal(draft.status, 'draft'); equal(draft.globalSequence, null); equal(draft.revision, 0);
+const updated = await store.update(draft.id, 0, defaultInput);
+equal(updated.revision, 1); equal(updated.bodyHtml.includes('<strong>내용</strong>'), true);
+await rejects(() => store.update(draft.id, 0, defaultInput), /NATIVE_E_REVISION/u);
+const published = await store.publish(draft.id, 1);
+equal(published.globalSequence, 597); equal(published.status, 'published'); equal(published.revision, 2);
+const secondDraft = await store.createDraft({ id: 'daily', slug: '일상', label: '일상' });
+const secondSaved = await store.update(secondDraft.id, 0, { ...defaultInput, title: '두 번째 글' });
+const second = await store.publish(secondDraft.id, secondSaved.revision);
+equal(second.globalSequence, 598);
+equal((await store.listPublished()).map((post) => post.globalSequence).join(','), '598,597');
+
+const mediaId = '123e4567-e89b-42d3-a456-426614174000';
+const publicPath = `/media/native/${mediaId}.webp`;
+await store.addMedia({ id: mediaId, postId: draft.id, publicPath, objectKey: publicPath.slice(1), sha256: 'a'.repeat(64), bytes: 3, mime: 'image/webp', alt: '사진', createdAt: clock().toISOString() });
+equal(await store.getPublicMedia(publicPath), null);
+const withRawReference = await store.update(draft.id, published.revision, { ...defaultInput, bodyMarkdown: `[파일](${publicPath})` });
+equal(await store.getPublicMedia(publicPath), null);
+const withImage = await store.update(draft.id, withRawReference.revision, { ...defaultInput, bodyMarkdown: `![사진](${publicPath})` });
+equal((await store.getPublicMedia(publicPath))?.postId, draft.id);
+equal(withImage.status, 'published');
+const withCover = await store.update(draft.id, withImage.revision, { ...defaultInput, coverMediaId: mediaId });
+equal((await store.getPublicMedia(publicPath))?.coverMediaId, mediaId);
+await rejects(() => store.update(draft.id, withCover.revision, { ...defaultInput, title: '', bodyMarkdown: '' }), /NATIVE_E_INPUT/u);
+equal((await store.getForAdmin(draft.id))?.title, defaultInput.title);
+
+const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const jwk = publicKey.export({ format: 'jwk' }); Object.assign(jwk, { kid: 'key-1', alg: 'RS256', use: 'sig' });
+const teamDomain = 'https://dwnc-example.cloudflareaccess.com';
+const accessEnv = { ACCESS_TEAM_DOMAIN: teamDomain, ACCESS_AUD: 'abcdefghijklmnopqrstuvwx', ACCESS_ALLOWED_EMAIL: 'owner@example.com' };
+const b64 = (value) => Buffer.from(JSON.stringify(value)).toString('base64url');
+function accessToken(overrides = {}) {
+  const head = b64({ alg: 'RS256', kid: 'key-1' });
+  const payload = b64({ iss: teamDomain, aud: accessEnv.ACCESS_AUD, sub: 'user-1', email: 'owner@example.com', exp: 2_000_000_000, ...overrides });
+  return `${head}.${payload}.${sign('RSA-SHA256', Buffer.from(`${head}.${payload}`), privateKey).toString('base64url')}`;
+}
+const certFetch = async () => Response.json({ keys: [jwk] });
+clearAccessKeyCacheForTests();
+const identity = await verifyAccessIdentity(new Request('https://admin.example.test/', { headers: { 'cf-access-jwt-assertion': accessToken() } }), accessEnv, { fetcher: certFetch, now: () => 1_900_000_000_000 });
+equal(identity.email, 'owner@example.com');
+await rejects(() => verifyAccessIdentity(new Request('https://admin.example.test/', { headers: { 'cf-access-jwt-assertion': accessToken({ email: 'other@example.com' }) } }), accessEnv, { fetcher: certFetch, now: () => 1_900_000_000_000 }), /ACCESS_E_IDENTITY/u);
+
+const rotated = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const rotatedJwk = rotated.publicKey.export({ format: 'jwk' }); Object.assign(rotatedJwk, { kid: 'key-2', alg: 'RS256', use: 'sig' });
+function rotatedToken() {
+  const head = b64({ alg: 'RS256', kid: 'key-2' });
+  const payload = b64({ iss: teamDomain, aud: accessEnv.ACCESS_AUD, sub: 'user-1', email: 'owner@example.com', exp: 2_000_000_000 });
+  return `${head}.${payload}.${sign('RSA-SHA256', Buffer.from(`${head}.${payload}`), rotated.privateKey).toString('base64url')}`;
+}
+clearAccessKeyCacheForTests(); let keyFetches = 0;
+const rotatingFetch = async () => Response.json({ keys: [keyFetches++ === 0 ? jwk : rotatedJwk] });
+await verifyAccessIdentity(new Request('https://admin.example.test/', { headers: { 'cf-access-jwt-assertion': accessToken() } }), accessEnv, { fetcher: rotatingFetch, now: () => 1_900_000_000_000 });
+equal((await verifyAccessIdentity(new Request('https://admin.example.test/', { headers: { 'cf-access-jwt-assertion': rotatedToken() } }), accessEnv, { fetcher: rotatingFetch, now: () => 1_900_000_000_000 })).email, 'owner@example.com');
+equal(keyFetches, 2);
+
+const adminDatabase = createDatabase();
+const objects = new Map();
+const adminEnv = { ...accessEnv, NATIVE_DB: adminDatabase, NATIVE_MEDIA_BUCKET: {
+  async put(key, body, options) { const bytes = new Uint8Array(await new Response(body).arrayBuffer()); const sha256 = createHash('sha256').update(bytes).digest('hex'); if (sha256 !== options.sha256) return null; const object = { key, size: bytes.length, customMetadata: options.customMetadata }; objects.set(key, { ...object, bytes, httpMetadata: options.httpMetadata, httpEtag: '"native"', checksums: { sha256: Uint8Array.from(Buffer.from(sha256, 'hex')).buffer }, body: bytes }); return object; },
+  async get(key) { return objects.get(key) ?? null; },
+  async head(key) { return objects.get(key) ?? null; },
+} };
+const authHeaders = { 'cf-access-jwt-assertion': accessToken(), origin: 'https://admin.example.test', 'content-type': 'application/json' };
+clearAccessKeyCacheForTests();
+globalThis.fetch = certFetch;
+equal((await adminWorker.fetch(new Request('https://admin.example.test/'), adminEnv)).status, 401);
+const createResponse = await adminWorker.fetch(new Request('https://admin.example.test/api/posts', { method: 'POST', headers: authHeaders, body: '{}' }), adminEnv);
+equal(createResponse.status, 201);
+const adminDraft = (await createResponse.json()).post;
+const saveResponse = await adminWorker.fetch(new Request(`https://admin.example.test/api/posts/${adminDraft.id}`, { method: 'PUT', headers: authHeaders, body: JSON.stringify({ expectedRevision: 0, input: defaultInput }) }), adminEnv);
+equal(saveResponse.status, 200);
+const adminSaved = (await saveResponse.json()).post;
+const publishResponse = await adminWorker.fetch(new Request(`https://admin.example.test/api/posts/${adminDraft.id}/publish`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ expectedRevision: adminSaved.revision }) }), adminEnv);
+equal(publishResponse.status, 200); equal((await publishResponse.json()).post.globalSequence, 597);
+const imageBytes = Buffer.from('image-bytes');
+const imageSha = createHash('sha256').update(imageBytes).digest('hex');
+const beforeRejectedUploads = objects.size;
+equal((await adminWorker.fetch(new Request('https://admin.example.test/api/posts/123e4567-e89b-42d3-a456-426614174999/media', { method: 'POST', headers: { ...authHeaders, 'content-type': 'image/png', 'x-dwnc-file-size': String(imageBytes.length), 'x-dwnc-file-sha256': imageSha }, body: imageBytes }), adminEnv)).status, 400);
+equal((await adminWorker.fetch(new Request(`https://admin.example.test/api/posts/${adminDraft.id}/media`, { method: 'POST', headers: { ...authHeaders, 'content-type': 'image/png', 'x-dwnc-file-size': String(25 * 1024 * 1024 + 1), 'x-dwnc-file-sha256': imageSha }, body: imageBytes }), adminEnv)).status, 400);
+equal((await adminWorker.fetch(new Request(`https://admin.example.test/api/posts/${adminDraft.id}/media`, { method: 'POST', headers: { ...authHeaders, 'content-type': 'image/png', 'x-dwnc-file-size': String(imageBytes.length + 1), 'x-dwnc-file-sha256': imageSha }, body: imageBytes }), adminEnv)).status, 400);
+equal(objects.size, beforeRejectedUploads);
+const imageResponse = await adminWorker.fetch(new Request(`https://admin.example.test/api/posts/${adminDraft.id}/media`, { method: 'POST', headers: { ...authHeaders, 'content-type': 'image/png', 'x-dwnc-file-size': String(imageBytes.length), 'x-dwnc-file-sha256': imageSha, 'x-dwnc-file-name': 'photo.png' }, body: imageBytes }), adminEnv);
+equal(imageResponse.status, 201); const uploadedMedia = (await imageResponse.json()).media; ok(uploadedMedia.publicPath.endsWith('.png')); equal(objects.size, 1);
+equal((await adminWorker.fetch(new Request('https://admin.example.test/api/posts', { method: 'POST', headers: { ...authHeaders, origin: 'https://evil.example' }, body: '{}' }), adminEnv)).status, 403);
+
+const ui = adminHtml('owner@example.com');
+ok(ui.includes('while(current&&(dirty||saving))'));
+ok(ui.includes('if(change!==savedChange)dirty=true'));
+ok((ui.match(/if\(!await flush\(\)\)return/gu) ?? []).length >= 5);
+
+const publicStore = new NativePostStore(adminDatabase);
+const adminCurrent = await publicStore.getForAdmin(adminDraft.id);
+const publicPost = await publicStore.update(adminDraft.id, adminCurrent.revision, {
+  ...defaultInput, tags: ['A B', 'Native Only'], bodyMarkdown: `# 본문\n\n![사진](${uploadedMedia.publicPath})`,
+});
+
+class TestHtmlRewriter {
+  handlers = [];
+  on(selector, handler) { this.handlers.push([selector, handler]); return this; }
+  async transform(response) {
+    const headers = new Headers(response.headers); const status = response.status;
+    const $ = load(await response.text());
+    for (const [selector, handler] of this.handlers) {
+      $(selector).each((_index, node) => handler.element({
+        setInnerContent(value, options = {}) { options.html ? $(node).html(value) : $(node).text(value); },
+        setAttribute(name, value) { $(node).attr(name, value); },
+      }));
+    }
+    headers.delete('content-length');
+    return new Response($.html(), { status, headers });
+  }
+}
+globalThis.HTMLRewriter = TestHtmlRewriter;
+
+const legacyPosts = Array.from({ length: 16 }, (_unused, index) => ({
+  title: `예전 글 ${index + 1}`, description: `설명 ${index + 1}`, path: `/posts/${index + 1}`,
+  date: `2025.01.${String(16 - index).padStart(2, '0')}`, publishedAt: `2025-01-${String(16 - index).padStart(2, '0')}T00:00:00.000Z`,
+  categoryId: 'daily', categories: ['일상'], tags: [index % 2 ? 'A-B' : 'A B'], categoryPath: ['일상'],
+  leafCategory: { label: '일상', path: '/category/일상' }, searchText: `예전 글 ${index + 1} 일상`.toLocaleLowerCase('ko-KR'),
+}));
+Object.assign(legacyPosts[0], { featured: true, cover: '/media/legacy-feature.webp', coverAlt: '기존 대표 이미지' });
+const shellHtml = '<!doctype html><html><head><title>기존</title><meta name="description" content="기존"><link rel="canonical" href="https://dwnc.me/about"><meta property="og:title" content="기존"><meta property="og:description" content="기존"><meta property="og:url" content="https://dwnc.me/about"><meta property="og:type" content="website"></head><body><main id="main">기존</main></body></html>';
+const routeHtml = (name, script = '') => shellHtml.replace('기존</main>', `<p data-static-page="${name}">기존</p></main>${script}`);
+const staticRequests = [];
+const staticHandler = async (request) => {
+  const pathname = new URL(request.url).pathname;
+  staticRequests.push(pathname);
+  if (pathname === '/search-index.json') return Response.json(legacyPosts);
+  if (pathname === '/rss.xml') return new Response('<?xml version="1.0"?><rss><channel><item><title>old</title></item></channel></rss>', { headers: { 'content-type': 'application/rss+xml' } });
+  if (pathname === '/sitemap-0.xml') return new Response('<?xml version="1.0"?><urlset></urlset>', { headers: { 'content-type': 'application/xml' } });
+  if (pathname === '/') return new Response(routeHtml('home', '<script id="home-page-script">home()</script>'), { headers: { 'content-type': 'text/html; charset=utf-8' } });
+  if (pathname === '/tags') return new Response(routeHtml('tags', '<script id="tag-filter-script">filterTags()</script>'), { headers: { 'content-type': 'text/html; charset=utf-8' } });
+  if (pathname === '/tag/upstream-failure') return new Response('upstream failure', { status: 503, headers: { 'content-type': 'text/plain' } });
+  if (pathname === '/archive' || pathname === '/category' || pathname.startsWith('/category/%EC%9D%BC%EC%83%81') || pathname.startsWith('/tag/a-b--')) return new Response(routeHtml('known'), { headers: { 'content-type': 'text/html; charset=utf-8' } });
+  if (pathname === '/about') return new Response(shellHtml, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+  return new Response('not found', { status: 404, headers: { 'content-type': 'text/plain' } });
+};
+const publicWorker = createNativePublicWorker(staticHandler);
+const versionId = '123e4567-e89b-42d3-a456-426614174000';
+const publicEnv = { NATIVE_DB: adminDatabase, NATIVE_MEDIA_BUCKET: adminEnv.NATIVE_MEDIA_BUCKET, ASSETS: {}, MEDIA_BUCKET: {}, DWNC_DEPLOYMENT_ENVIRONMENT: 'staging', CF_VERSION_METADATA: { id: versionId } };
+const searchResponse = await publicWorker(new Request('https://dwnc.me/search-index.json'), publicEnv, {});
+equal(searchResponse.status, 200); equal((await searchResponse.json())[0].path, `/posts/${publicPost.globalSequence}`);
+equal(searchResponse.headers.get('x-dwnc-staging-version'), versionId);
+equal((await publicWorker(new Request('https://dwnc.me/posts/9999'), publicEnv, {})).status, 404);
+
+const home = await (await publicWorker(new Request('https://dwnc.me/'), publicEnv, {})).text();
+ok(home.includes(defaultInput.title));
+equal((home.match(/<li><a href="\/posts\//gu) ?? []).length, 7);
+ok(home.includes('/media/legacy-feature.webp')); ok(home.includes('기존 대표 이미지')); ok(home.includes('id="home-page-script"'));
+const archive = await (await publicWorker(new Request('https://dwnc.me/archive'), publicEnv, {})).text();
+ok(archive.includes('<h2>2026</h2>')); ok(archive.includes('<h2>2025</h2>'));
+
+const categoryOne = await (await publicWorker(new Request('https://dwnc.me/category/%EC%9D%BC%EC%83%81'), publicEnv, {})).text();
+equal((categoryOne.match(/class="post-card"/gu) ?? []).length, 15); ok(categoryOne.includes('Category · 17편'));
+const categoryTwoResponse = await publicWorker(new Request('https://dwnc.me/category/%EC%9D%BC%EC%83%81/page/2'), publicEnv, {});
+const categoryTwo = await categoryTwoResponse.text();
+equal((categoryTwo.match(/class="post-card"/gu) ?? []).length, 2);
+equal(load(categoryTwo)('link[rel="canonical"]').attr('href'), 'https://dwnc.me/category/%EC%9D%BC%EC%83%81/page/2');
+equal(load(categoryTwo)('meta[property="og:url"]').attr('content'), 'https://dwnc.me/category/%EC%9D%BC%EC%83%81/page/2');
+
+const suffix = (label) => Buffer.from(label, 'utf8').toString('base64url');
+const abSpaceSlug = `a-b--${suffix('A B')}`; const abDashSlug = `a-b--${suffix('A-B')}`;
+const tagsIndex = await (await publicWorker(new Request('https://dwnc.me/tags'), publicEnv, {})).text();
+ok(tagsIndex.includes(`/tag/${abSpaceSlug}`)); ok(tagsIndex.includes(`/tag/${abDashSlug}`));
+ok(tagsIndex.includes('data-tag-filter')); ok(tagsIndex.includes('data-tag-list')); ok(tagsIndex.includes('id="tag-filter-script"'));
+const exactTagPage = await (await publicWorker(new Request(`https://dwnc.me/tag/${abDashSlug}`), publicEnv, {})).text();
+ok(exactTagPage.includes('Tag · 8편')); equal((exactTagPage.match(/class="post-card"/gu) ?? []).length, 8); equal(exactTagPage.includes(defaultInput.title), false);
+
+const nativePostResponse = await publicWorker(new Request(`https://dwnc.me/posts/${publicPost.globalSequence}?from=test`), publicEnv, {});
+const nativePostHtml = await nativePostResponse.text();
+equal(nativePostResponse.status, 200); equal(nativePostResponse.headers.get('x-dwnc-staging-version'), versionId);
+equal(load(nativePostHtml)('link[rel="canonical"]').attr('href'), `https://dwnc.me/posts/${publicPost.globalSequence}`);
+equal(load(nativePostHtml)('meta[property="og:type"]').attr('content'), 'article');
+ok(nativePostHtml.includes(`/tag/${abSpaceSlug}`));
+
+const nativeOnlyTag = await (await publicWorker(new Request('https://dwnc.me/tag/native-only'), publicEnv, {})).text();
+ok(nativeOnlyTag.includes('Tag · 1편')); ok(nativeOnlyTag.includes(defaultInput.title));
+ok(staticRequests.includes('/tag/native-only')); ok(staticRequests.includes('/about'));
+const aboutBeforeFailure = staticRequests.filter((path) => path === '/about').length;
+equal((await publicWorker(new Request('https://dwnc.me/tag/upstream-failure'), publicEnv, {})).status, 503);
+equal(staticRequests.filter((path) => path === '/about').length, aboutBeforeFailure);
+
+const nativeMediaResponse = await publicWorker(new Request(`https://dwnc.me${uploadedMedia.publicPath}?download=1`), publicEnv, {});
+equal(nativeMediaResponse.status, 200); equal(nativeMediaResponse.headers.get('x-dwnc-staging-version'), versionId);
+equal(Buffer.from(await nativeMediaResponse.arrayBuffer()).toString(), imageBytes.toString());
+
+const rss = await (await publicWorker(new Request('https://dwnc.me/rss.xml'), publicEnv, {})).text();
+equal((rss.match(/<item>/gu) ?? []).length, 17); ok(rss.indexOf(defaultInput.title) < rss.indexOf('예전 글 1'));
+
+const aggregateGet = await publicWorker(new Request('https://dwnc.me/search-index.json'), publicEnv, {});
+const getHeaders = Object.fromEntries(aggregateGet.headers);
+const aggregateHead = await publicWorker(new Request('https://dwnc.me/search-index.json', { method: 'HEAD' }), publicEnv, {});
+equal(aggregateHead.status, aggregateGet.status); equal(await aggregateHead.text(), '');
+equal(JSON.stringify(Object.fromEntries(aggregateHead.headers)), JSON.stringify(getHeaders));
+
+console.log(JSON.stringify({ suite: 'native-editor', assertions, status: 'PASS' }, null, 2));

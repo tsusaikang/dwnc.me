@@ -6,14 +6,16 @@
 
 - 최초 배정 범위는 1–596이다. 티스토리 공개 164건, 네이버 공개 185건, 네이버 비공개 247건이 한 순번 공간을 함께 사용한다.
 - 최초 배정에서만 `publishedAt`의 UTC instant 오름차순, 같은 instant는 UTF-8 ASCII byte 순서의 `source:sourceId` 오름차순으로 정렬했다.
-- 최초 배정 뒤에는 날짜 수정이나 과거 글 추가로 기존 순번을 재정렬하지 않는다. 새 글은 항상 현재 최댓값 + 1을 쓴다. 현재 다음 순번은 597이다.
+- 최초 배정 뒤에는 날짜 수정이나 과거 글 추가로 기존 순번을 재정렬하지 않는다. 웹 편집기에서 처음 발행하는 글은 597이고 이후 글은 D1의 단일 원자적 순번 표에서 현재 최댓값 + 1을 받는다.
 - 삭제·취소 글은 tombstone으로 남기며 빈 번호를 재사용하지 않는다. 비공개 글이 공개로 바뀌어도 이미 받은 순번을 유지한다.
 - 공개 349건만 canonical route를 만든다. 비공개 247건이 예약한 번호는 일반 404이며 공개 projection에 그 번호·identity·날짜를 노출하지 않는다.
 - 가져온 frontmatter의 기존 `canonicalPath`는 provenance와 옛 주소 검증용으로 유지한다. raw, normalized, frontmatter, importer를 새 주소로 다시 쓰지 않는다.
 
 ## 2. 원장과 공개 projection
 
-전체 순번 원장은 `migration/private/sequence/global-sequence-v1.json`에만 둔다. 디렉터리는 mode 700, 파일은 mode 600인 단일 regular file이어야 하며 symlink·hardlink를 거부하고 동일 디렉터리 임시 파일을 거쳐 atomic rename한다. 원장 entry는 `globalSequence`, `source`, `sourceId`, `visibility`, `publishedAt`, `status`만 허용하고 제목·본문·HTML을 넣지 않는다.
+가져온 최초 1–596번의 순번 원장은 `migration/private/sequence/global-sequence-v1.json`에만 둔다. 디렉터리는 mode 700, 파일은 mode 600인 단일 regular file이어야 하며 symlink·hardlink를 거부하고 동일 디렉터리 임시 파일을 거쳐 atomic rename한다. 원장 entry는 `globalSequence`, `source`, `sourceId`, `visibility`, `publishedAt`, `status`만 허용하고 제목·본문·HTML을 넣지 않는다. 이 역사 원장은 웹 편집기 글의 번호를 배정하지 않는다.
+
+597번 이후 웹 편집기 글은 D1의 `native_posts`가 본문·공개 상태의 권위 자료이고 `native_sequence_claims`가 순번의 유일한 배정자다. migration은 기존 범위의 마지막 번호 596만 seed하고, 첫 발행 transaction부터 자동 증가값을 post ID에 한 번만 결속한다. 임시 글은 번호를 소비하지 않으며 동시에 발행해도 같은 번호가 생기지 않는다. 발행된 글의 제목·본문·카테고리·태그 수정은 같은 번호에서 즉시 반영된다.
 
 빌드는 `src/data/public-sequence-v1.json`만 읽는다. 이 projection은 공개 active 글에 한해 다음 다섯 필드만 포함한다.
 
@@ -33,7 +35,7 @@ projection에는 비공개 identity·날짜·순번 대응, `nextSequence`, 전�
 
 `migration/private/sequence/bootstrap-private-metadata-v1.json`은 최초 비공개 247건에 대해 `source/sourceId/visibility/publishedAt/canonicalPath`만 담는 mode 600 sidecar다. 최초 배정 채택이 끝난 뒤 순번 도구와 validator는 제목 등이 들어 있을 수 있는 글별 private migration manifest를 읽지 않고 이 sidecar·전체 원장·journal만 사용한다. sidecar에 제목·본문·HTML이나 추가 필드가 들어오면 fail closed한다.
 
-`src/data/public-asset-receipts-v1.json`은 공개 전환 또는 향후 native 글을 위한 build-safe asset 증거다. receipt는 공개 identity, content SHA-256, 렌더 가능한 로컬 참조의 정확한 경로·SHA-256·크기·MIME만 허용하며 제목·본문·HTML·비공개 경로를 허용하지 않는다. 참조 집합과 receipt asset 집합은 정확히 같아야 한다. 최초 imported 공개 349건의 면제 집합은 위의 불변 identity-set digest로 고정하며 mutable inventory에 행을 추가해 면제를 늘릴 수 없다. 그 밖의 identity는 asset이 0개여도 identity-bound receipt가 반드시 있어야 하고, 사용되지 않거나 중복된 receipt는 거부한다.
+`src/data/public-asset-receipts-v1.json`은 가져온 글을 로컬 정적 빌드에서 공개 전환할 때 쓰는 build-safe asset 증거다. receipt는 공개 identity, content SHA-256, 렌더 가능한 로컬 참조의 정확한 경로·SHA-256·크기·MIME만 허용하며 제목·본문·HTML·비공개 경로를 허용하지 않는다. 참조 집합과 receipt asset 집합은 정확히 같아야 한다. 최초 imported 공개 349건의 면제 집합은 위의 불변 identity-set digest로 고정하며 mutable inventory에 행을 추가해 면제를 늘릴 수 없다. 웹 편집기 글은 이 정적 receipt에 추가하지 않고 D1 글 row와 별도 native R2 media row의 결속을 사용한다.
 
 같은 로컬 전용 디렉터리에는 다음 내구성 자료를 둔다.
 
@@ -46,15 +48,15 @@ projection에는 비공개 identity·날짜·순번 대응, `nextSequence`, 전�
 
 읽기 전용 `verify`와 validator는 디렉터리 생성·권한 변경·파일 갱신을 하지 않는다. writer만 실제 경로의 모든 ancestor·directory·leaf를 `lstat`과 inode 재확인으로 검사한 뒤 symlink·hardlink·교체 경쟁을 거부한다. 초기화는 공개 projection을 마지막에 쓰는 marker 기반 transaction이며 `recover-init`으로만 재개한다. seal이나 journal이 존재하는데 원장이 사라졌다면 `bootstrap`으로 1부터 다시 만들 수 없고, seal·sidecar·journal을 검증한 `recover`만 원래 generation을 복원할 수 있다.
 
-### 순번 상태 변경 절차
+### 가져온 1–596번의 상태 변경 절차
 
 1. `npm run sequence -- verify`와 `lock-status`로 현재 `generation`, initialization/transaction/lock transfer pending 0을 확인한다.
-2. 새 글 또는 공개 전환에 필요한 공개 content entry, 로컬 media, identity-bound asset receipt를 먼저 준비한다. projection에 넣을 identity가 정확히 하나이고 draft가 아니며 모든 렌더 가능한 로컬 참조가 receipt·regular file·SHA와 일치할 때만 진행된다.
-3. 입력 JSON에 방금 확인한 `expectedGeneration`을 넣고 `allocate`, `set-visibility`, `tombstone` 중 하나를 실행한다. bootstrap 뒤 `allocate`는 `source=native`만 허용한다. imported `tistory`·`naver` namespace는 동결하며, 최초 원장에 이미 있는 비공개 Naver 글의 공개 전환만 `set-visibility`로 수행한다. 오래된 generation, 중복 identity, 안전하지 않은 sourceId, route collision은 commit 전에 실패한다.
+2. 기존 비공개 글의 공개 전환에 필요한 공개 content entry, 로컬 media, identity-bound asset receipt를 먼저 준비한다. projection에 넣을 identity가 정확히 하나이고 draft가 아니며 모든 렌더 가능한 로컬 참조가 receipt·regular file·SHA와 일치할 때만 진행된다.
+3. 입력 JSON에 방금 확인한 `expectedGeneration`을 넣고 기존 항목의 `set-visibility` 또는 `tombstone`을 실행한다. imported `tistory`·`naver` namespace는 동결하며, 최초 원장에 이미 있는 비공개 Naver 글의 공개 전환만 `set-visibility`로 수행한다. 기존 `allocate` 구현은 역사 fixture 호환을 위해 남지만 웹 편집기의 새 글 운영에는 사용하지 않는다.
 4. 초기화 marker가 남으면 `recover-init`, 일반 transaction marker가 남으면 `recover`만 실행한다. stale lock은 자동 삭제하지 않으며 먼저 `lock-status`로 최소 경과 시간과 owner process 부재를 확인한다. `unlock-stale --token <exact>` 도중 transfer receipt 생성 직후 중단돼 원 lock과 receipt가 함께 남아도 같은 token의 `recover-transfer --token <exact>`만 exact receipt·원 lock 증거를 다시 대조한다. recovery lock은 별도 exact schema `global-sequence-transfer-recovery`로 prebound recovery token·transfer ID·receipt SHA·observed generation을 함께 기록한다. recovery lock 취득 직후나 reconcile 완료 직후 다시 종료돼도, owner가 죽고 최소 age를 지난 linked lock만 device/inode/raw SHA를 재확인해 같은 recovery token으로 재획득한다. live lock, 잘못된 token, 바뀐 inode·generation·raw SHA, foreign lock은 삭제하지 않고 fail closed한다. 성공 시 state reconcile을 마친 뒤 linked recovery lock을 먼저 지우고 directory sync하며, receipt가 일반 writer를 막는 동안 권위 상태를 다시 검증한 다음 exact receipt를 마지막으로 지운다.
 5. authoritative transaction이 끝난 뒤 `npm run edge-redirects:generate`, 전체 build/validator를 실행한다. 공개 projection과 edge manifest를 검증한 결과물만 public-only CI/clone으로 내보낸다.
 
-private→public은 기존 sequence를 유지하며 준비된 안전한 공개 content와 asset receipt가 없으면 실패한다. tombstone은 sequence와 journal 이력을 유지하지만 projection·route·alias·검색·RSS·sitemap에서 글을 제거한다. 공개→비공개로 상태를 되돌리는 명령은 허용하지 않고 공개 철회는 tombstone으로만 표현한다. bootstrap 뒤 새 글은 `source=native`로만 배정하며 public/private 어느 visibility든 날짜와 무관하게 항상 `nextSequence`를 소비하고 취소 번호도 재사용하지 않는다.
+가져온 글의 private→public은 기존 sequence를 유지하며 준비된 안전한 공개 content와 asset receipt가 없으면 실패한다. tombstone은 sequence와 journal 이력을 유지하지만 projection·route·alias·검색·RSS·sitemap에서 글을 제거한다. 공개→비공개로 상태를 되돌리는 명령은 허용하지 않고 공개 철회는 tombstone으로만 표현한다. 597 이후 새 글 배정은 이 로컬 명령이 아니라 위 D1 transaction만 담당한다.
 
 `npm run sequence -- verify`, `npm run sequence:self-test`, `npm run sequence:cli-test`, `npm run sequence:validate`가 genesis 불변 증거, 현재 동적 projection, visibility 전환, tombstone, lock/CAS, 초기화·transaction 장애 복구, 경로 권한, asset receipt와 공개/비공개 경계를 검증한다. 순수 self-test는 synthetic promotion/tombstone, immutable genesis identity 면제, orphan/duplicate receipt 거부, 14개 렌더 asset 참조와 active embed·은닉 참조 거부, receipt-backed dist 누락·변조·HTML payload와 signature/MIME 불일치 거부, 모든 초기화 fault point, transfer receipt와 linked recovery lock의 이중 hard-exit·exact 재획득을 포함한 117개 fixture다. 별도 CLI test 5개는 제목·본문·HTML 없이 허용 메타데이터와 최소 공개 문서만 복제한 임시 `migration/private/sequence`에서 실제 `recover-transfer` argv를 실행해 recovery lock 취득 직후, reconcile 직후, recovery lock 제거 뒤 receipt 제거 전 강제 종료와 재실행 성공을 검증하고, 최종 `verify`와 lock·receipt pending 0을 확인한다. `npm run build:validate:public`은 private root가 존재하지 않는 경로를 주입해 현재 hydrated 공개 projection·content·media·dist 검증을 수행하고, private 디렉터리 생성 0과 권위 private root 무변경을 확인한다. 이 공개 전용 환경은 allocation·promotion·tombstone·authoritative recovery를 할 수 없다. projection과 edge manifest의 release/export는 authoritative transaction과 전체 검증이 끝난 뒤에만 한다.
 

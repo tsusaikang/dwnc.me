@@ -21,6 +21,58 @@ import { collectPublicRequestSurface } from './cloudflare-surface.mjs';
 const fail = (code) => { throw new Error(code); };
 const WRANGLER_VERSION = '4.125.0';
 const COMPATIBILITY_DATE = '2026-08-24';
+const D1_DATABASE_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
+
+const NATIVE_RELEASE_TARGETS = Object.freeze({
+  production: Object.freeze({
+    nativeBucket: 'dwnc-me-native-media-production',
+    databaseName: 'dwnc-me-content-production',
+  }),
+  staging: Object.freeze({
+    nativeBucket: 'dwnc-me-native-media-staging',
+    databaseName: 'dwnc-me-content-staging',
+  }),
+});
+
+function validateNativeReleaseResources(resources, environment) {
+  const target = NATIVE_RELEASE_TARGETS[environment];
+  if (!target || !resources || typeof resources !== 'object' || Array.isArray(resources)
+    || resources.nativeBucket !== target.nativeBucket
+    || resources.databaseName !== target.databaseName
+    || !D1_DATABASE_ID.test(resources.databaseId ?? '')) {
+    fail('CLOUDFLARE_E_NATIVE_RELEASE_BINDING');
+  }
+  return Object.freeze({
+    nativeBucket: resources.nativeBucket,
+    databaseName: resources.databaseName,
+    databaseId: resources.databaseId,
+  });
+}
+
+export function nativeReleaseResourcesFromConfig(config, environment) {
+  const target = NATIVE_RELEASE_TARGETS[environment];
+  const value = config?.env?.[environment];
+  if (!target || !value || !Array.isArray(value.r2_buckets)
+    || !Array.isArray(value.d1_databases)) {
+    fail('CLOUDFLARE_E_NATIVE_RELEASE_BINDING');
+  }
+  const nativeBuckets = value.r2_buckets.filter(
+    (entry) => entry?.binding === 'NATIVE_MEDIA_BUCKET');
+  const databases = value.d1_databases.filter((entry) => entry?.binding === 'NATIVE_DB');
+  if (nativeBuckets.length !== 1 || databases.length !== 1
+    || nativeBuckets[0].bucket_name !== target.nativeBucket
+    || databases[0].database_name !== target.databaseName) {
+    fail('CLOUDFLARE_E_NATIVE_RELEASE_BINDING');
+  }
+  if (!D1_DATABASE_ID.test(databases[0].database_id ?? '')) {
+    fail('CLOUDFLARE_E_NATIVE_DATABASE_ID_REQUIRED');
+  }
+  return validateNativeReleaseResources({
+    nativeBucket: nativeBuckets[0].bucket_name,
+    databaseName: databases[0].database_name,
+    databaseId: databases[0].database_id,
+  }, environment);
+}
 
 function smokeStaticEntryFromReceipt(receipt) {
   return Object.freeze({
@@ -31,10 +83,11 @@ function smokeStaticEntryFromReceipt(receipt) {
   });
 }
 
-export function productionUploadConfig(bucket) {
+export function productionUploadConfig(bucket, nativeResources) {
   if (typeof bucket !== 'string' || !/^dwnc-me-public-media-production$/u.test(bucket)) {
     fail('CLOUDFLARE_E_ARTIFACT_TARGET');
   }
+  const native = validateNativeReleaseResources(nativeResources, 'production');
   return {
     name: 'dwnc-me-upload-contract',
     main: './worker.js',
@@ -57,16 +110,25 @@ export function productionUploadConfig(bucket) {
         preview_urls: false,
         version_metadata: { binding: 'CF_VERSION_METADATA' },
         vars: { DWNC_DEPLOYMENT_ENVIRONMENT: 'production' },
-        r2_buckets: [{ binding: 'MEDIA_BUCKET', bucket_name: bucket }],
+        r2_buckets: [
+          { binding: 'MEDIA_BUCKET', bucket_name: bucket },
+          { binding: 'NATIVE_MEDIA_BUCKET', bucket_name: native.nativeBucket },
+        ],
+        d1_databases: [{
+          binding: 'NATIVE_DB',
+          database_name: native.databaseName,
+          database_id: native.databaseId,
+        }],
       },
     },
   };
 }
 
-export function stagingUploadConfig(bucket) {
+export function stagingUploadConfig(bucket, nativeResources) {
   if (typeof bucket !== 'string' || !/^dwnc-me-public-media-staging$/u.test(bucket)) {
     fail('CLOUDFLARE_E_ARTIFACT_TARGET');
   }
+  const native = validateNativeReleaseResources(nativeResources, 'staging');
   return {
     name: 'dwnc-me-staging-upload-contract',
     main: './worker.js',
@@ -91,7 +153,15 @@ export function stagingUploadConfig(bucket) {
         vars: {
           DWNC_DEPLOYMENT_ENVIRONMENT: 'staging',
         },
-        r2_buckets: [{ binding: 'MEDIA_BUCKET', bucket_name: bucket }],
+        r2_buckets: [
+          { binding: 'MEDIA_BUCKET', bucket_name: bucket },
+          { binding: 'NATIVE_MEDIA_BUCKET', bucket_name: native.nativeBucket },
+        ],
+        d1_databases: [{
+          binding: 'NATIVE_DB',
+          database_name: native.databaseName,
+          database_id: native.databaseId,
+        }],
       },
     },
   };
@@ -113,12 +183,15 @@ export function stagingPromotionConfig() {
   };
 }
 
-export function expectedProductionVersionBindings(bucket) {
+export function expectedProductionVersionBindings(bucket, nativeResources) {
+  const native = validateNativeReleaseResources(nativeResources, 'production');
   return [
     { name: 'ASSETS', type: 'assets' },
     { name: 'CF_VERSION_METADATA', type: 'version_metadata' },
     { name: 'DWNC_DEPLOYMENT_ENVIRONMENT', text: 'production', type: 'plain_text' },
     { name: 'MEDIA_BUCKET', bucket_name: bucket, type: 'r2_bucket' },
+    { name: 'NATIVE_DB', id: native.databaseId, type: 'd1' },
+    { name: 'NATIVE_MEDIA_BUCKET', bucket_name: native.nativeBucket, type: 'r2_bucket' },
   ];
 }
 
@@ -130,12 +203,15 @@ export function expectedProductionAssetsResource() {
   };
 }
 
-export function expectedStagingVersionBindings(bucket) {
+export function expectedStagingVersionBindings(bucket, nativeResources) {
+  const native = validateNativeReleaseResources(nativeResources, 'staging');
   return [
     { name: 'ASSETS', type: 'assets' },
     { name: 'CF_VERSION_METADATA', type: 'version_metadata' },
     { name: 'DWNC_DEPLOYMENT_ENVIRONMENT', text: 'staging', type: 'plain_text' },
     { name: 'MEDIA_BUCKET', bucket_name: bucket, type: 'r2_bucket' },
+    { name: 'NATIVE_DB', id: native.databaseId, type: 'd1' },
+    { name: 'NATIVE_MEDIA_BUCKET', bucket_name: native.nativeBucket, type: 'r2_bucket' },
   ];
 }
 
@@ -207,6 +283,8 @@ export async function createPreuploadArtifact({
   stagingAccountIdSha256,
   bucket,
   stagingBucket,
+  productionNativeResources,
+  stagingNativeResources,
   mediaManifest,
   mediaRemoteReceipt,
   mediaReceiptFiles,
@@ -227,8 +305,8 @@ export async function createPreuploadArtifact({
   try { await lstat(localMedia); fail('CLOUDFLARE_E_ARTIFACT_MEDIA'); }
   catch (error) { if (error?.code !== 'ENOENT') throw error; }
 
-  const uploadConfig = productionUploadConfig(bucket);
-  const stagingConfig = stagingUploadConfig(stagingBucket);
+  const uploadConfig = productionUploadConfig(bucket, productionNativeResources);
+  const stagingConfig = stagingUploadConfig(stagingBucket, stagingNativeResources);
   const promotionConfig = productionPromotionConfig();
   const stagingPromotion = stagingPromotionConfig();
   const pending = path.join(artifactRoot, `.pending-${sourceGitSha}`);
@@ -301,9 +379,11 @@ export async function createPreuploadArtifact({
       mediaRemoteReceiptSha256: sha256Hex(canonicalRemoteReceiptPayload(mediaRemoteReceipt)),
       mediaRemoteSignatureSha256: sha256Hex(mediaSignatureBytes),
       mediaRemotePublicKeySpkiSha256: publicKeySpkiSha256(mediaPublicKeyPem),
-      bindingsSha256: cloudflareResourceDigest(expectedProductionVersionBindings(bucket)),
+      bindingsSha256: cloudflareResourceDigest(expectedProductionVersionBindings(
+        bucket, productionNativeResources)),
       assetsConfigSha256: cloudflareResourceDigest(expectedProductionAssetsResource()),
-      stagingBindingsSha256: cloudflareResourceDigest(expectedStagingVersionBindings(stagingBucket)),
+      stagingBindingsSha256: cloudflareResourceDigest(expectedStagingVersionBindings(
+        stagingBucket, stagingNativeResources)),
       stagingAssetsConfigSha256: cloudflareResourceDigest(expectedProductionAssetsResource()),
       wranglerVersion: WRANGLER_VERSION,
       compatibilityDate: COMPATIBILITY_DATE,
@@ -333,6 +413,7 @@ export async function createStagingPreuploadArtifact({
   ciSourceGitSha,
   stagingAccountIdSha256,
   stagingBucket,
+  stagingNativeResources,
   mediaManifest,
 }) {
   if (![sourceRoot, artifactRoot, bundleDirectory].every(
@@ -351,7 +432,7 @@ export async function createStagingPreuploadArtifact({
   try { await lstat(path.join(staticSource, 'media')); fail('CLOUDFLARE_E_ARTIFACT_MEDIA'); }
   catch (error) { if (error?.code !== 'ENOENT') throw error; }
 
-  const stagingConfig = stagingUploadConfig(stagingBucket);
+  const stagingConfig = stagingUploadConfig(stagingBucket, stagingNativeResources);
   const stagingPromotion = stagingPromotionConfig();
   const pending = path.join(artifactRoot, `.pending-staging-${sourceGitSha}`);
   try {
@@ -409,7 +490,7 @@ export async function createStagingPreuploadArtifact({
       redirectsSha256: sha256Hex(staticRedirects),
       mediaManifestSha256: mediaManifest.manifestSha256,
       stagingBindingsSha256: cloudflareResourceDigest(
-        expectedStagingVersionBindings(stagingBucket)),
+        expectedStagingVersionBindings(stagingBucket, stagingNativeResources)),
       stagingAssetsConfigSha256: cloudflareResourceDigest(expectedProductionAssetsResource()),
       wranglerVersion: WRANGLER_VERSION,
       compatibilityDate: COMPATIBILITY_DATE,

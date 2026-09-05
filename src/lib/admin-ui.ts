@@ -1,0 +1,37 @@
+import { TAXONOMY } from './taxonomy.ts';
+
+function jsonForScript(value: unknown) {
+  return JSON.stringify(value).replace(/</gu, '\\u003c');
+}
+
+export function adminHtml(identityEmail: string) {
+  const categories = TAXONOMY.map(({ id, label }) => ({ id, label }));
+  return `<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>dwnc.me 글쓰기</title>
+<style>
+:root{font-family:system-ui,sans-serif;color:#171717;background:#f5f5f2}*{box-sizing:border-box}body{margin:0}header{padding:16px 24px;background:#171717;color:#fff;display:flex;justify-content:space-between}main{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 56px)}aside{padding:18px;border-right:1px solid #ccc}section{padding:24px;max-width:1000px}.row{display:flex;gap:10px;align-items:center}.grow{flex:1}input,textarea,select,button{font:inherit}input,textarea,select{width:100%;padding:10px;border:1px solid #aaa;border-radius:5px;background:#fff}textarea{min-height:42vh;resize:vertical}label{display:block;margin:14px 0 5px;font-weight:650}button{padding:9px 14px;border:0;border-radius:5px;background:#222;color:#fff;cursor:pointer}button.secondary{background:#666}button.publish{background:#075b2a}button:disabled{opacity:.5}.posts{list-style:none;padding:0}.posts button{width:100%;margin:3px 0;text-align:left;background:#fff;color:#222;border:1px solid #ddd}.status{min-height:1.5em;color:#555}.preview{padding:18px;background:#fff;border:1px solid #ccc;margin-top:16px}.preview img{max-width:100%;height:auto}@media(max-width:760px){main{display:block}aside{border-right:0;border-bottom:1px solid #ccc}}
+</style></head><body>
+<header><strong>dwnc.me 글쓰기</strong><span>${identityEmail.replace(/[&<>"']/gu, '')}</span></header>
+<main><aside><button id="new">새 글</button><ul id="posts" class="posts"></ul></aside>
+<section><div class="row"><h1 id="heading" class="grow">글을 선택하세요</h1><button id="preview" class="secondary" disabled>미리보기</button><button id="publish" class="publish" disabled>발행</button></div>
+<p id="status" class="status" aria-live="polite"></p>
+<form id="editor" hidden><label>제목<input id="title" maxlength="180"></label><label>요약<input id="description" maxlength="320"></label><div class="row"><label class="grow">카테고리<select id="category"></select></label><label class="grow">태그 (쉼표 구분)<input id="tags"></label></div><label>본문 (Markdown)<textarea id="body"></textarea></label><div class="row"><input id="image" type="file" accept="image/avif,image/gif,image/jpeg,image/png,image/webp"><button id="upload" type="button" class="secondary">이미지 올리고 본문에 넣기</button></div></form><article id="previewBox" class="preview" hidden></article></section></main>
+<script>
+const categories=${jsonForScript(categories)};let current=null,timer=null,saving=null,dirty=false,change=0;
+const $=id=>document.getElementById(id), status=m=>$('status').textContent=m;
+for(const c of categories){const o=document.createElement('option');o.value=c.id;o.textContent=c.label;$('category').append(o)}
+async function api(path,options={}){const r=await fetch('/api'+path,{...options,headers:{'content-type':'application/json',...(options.headers||{})}});const j=await r.json();if(!r.ok)throw new Error(j.error||'요청 실패');return j}
+function values(){return{title:$('title').value,description:$('description').value,bodyMarkdown:$('body').value,categoryId:$('category').value,tags:$('tags').value.split(',').map(v=>v.trim()).filter(Boolean),coverMediaId:null}}
+function fill(p){clearTimeout(timer);dirty=false;current=p;$('editor').hidden=false;$('heading').textContent=p.title||'제목 없는 임시 글';$('title').value=p.title;$('description').value=p.description;$('body').value=p.bodyMarkdown;$('category').value=p.categoryId;$('tags').value=p.tags.join(', ');$('preview').disabled=false;$('publish').disabled=false;$('previewBox').hidden=true;status(p.status==='published'?'공개 중 · 수정하면 곧바로 반영됩니다.':'임시저장됨')}
+async function list(){const {posts}=await api('/posts');const ul=$('posts');ul.replaceChildren();for(const p of posts){const li=document.createElement('li'),b=document.createElement('button');b.textContent=(p.status==='published'?'공개 ':'임시 ') +(p.title||'제목 없음');b.onclick=async()=>{if(!await flush())return;fill((await api('/posts/'+p.id)).post)};li.append(b);ul.append(li)}}
+async function flush(){clearTimeout(timer);while(current&&(dirty||saving)){if(saving){if(!await saving)return false;continue}const postId=current.id,expected=current.revision,snapshot=values(),savedChange=change;dirty=false;status('저장 중…');saving=(async()=>{try{const post=(await api('/posts/'+postId,{method:'PUT',body:JSON.stringify({expectedRevision:expected,input:snapshot})})).post;if(current?.id===postId){current=post;if(change!==savedChange)dirty=true;$('heading').textContent=current.title||'제목 없는 임시 글';status(current.status==='published'?'저장됨 · 공개 글에 반영됨':'임시저장됨')}await list();return true}catch(e){dirty=true;status(e.message);return false}})();const ok=await saving;saving=null;if(!ok)return false}return true}
+function schedule(){dirty=true;change+=1;clearTimeout(timer);timer=setTimeout(flush,800)}
+for(const id of ['title','description','body','category','tags'])$(id).addEventListener('input',schedule);
+$('new').onclick=async()=>{if(!await flush())return;fill((await api('/posts',{method:'POST',body:'{}'})).post);await list()};
+$('preview').onclick=async()=>{if(!await flush())return;const {html}=await api('/posts/'+current.id+'/preview',{method:'POST',body:JSON.stringify({input:values()})});$('previewBox').innerHTML=html;$('previewBox').hidden=false};
+$('publish').onclick=async()=>{if(!await flush())return;current=(await api('/posts/'+current.id+'/publish',{method:'POST',body:JSON.stringify({expectedRevision:current.revision})})).post;fill(current);await list()};
+$('upload').onclick=async()=>{const f=$('image').files[0];if(!f||!current){status('이미지를 선택하세요.');return}if(!await flush())return;status('이미지 올리는 중…');const bytes=new Uint8Array(await f.arrayBuffer()),hash=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes))).map(b=>b.toString(16).padStart(2,'0')).join('');const r=await fetch('/api/posts/'+current.id+'/media',{method:'POST',headers:{'content-type':f.type,'x-dwnc-file-size':String(f.size),'x-dwnc-file-sha256':hash,'x-dwnc-file-name':encodeURIComponent(f.name)},body:bytes});const j=await r.json();if(!r.ok){status(j.error||'업로드 실패');return}const area=$('body'),insert='\n!['+(f.name||'이미지').replace(/[\\[\\]]/g,'')+']('+j.media.publicPath+')\n';area.setRangeText(insert,area.selectionStart,area.selectionEnd,'end');schedule();status('이미지를 본문에 넣었습니다.')};
+list().catch(e=>status(e.message));
+</script></body></html>`;
+}

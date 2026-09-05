@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = process.cwd();
 const TESTS = Object.freeze([
+  'test-native-editor.mjs',
   'test-media-worker.mjs',
   'test-public-media-r2.mjs',
   'test-public-media-contract.mjs',

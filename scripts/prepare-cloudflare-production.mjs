@@ -3,7 +3,10 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { createPreuploadArtifact } from './lib/cloudflare-artifact.mjs';
+import {
+  createPreuploadArtifact,
+  nativeReleaseResourcesFromConfig,
+} from './lib/cloudflare-artifact.mjs';
 import { directoryArtifactSha256 } from './lib/cloudflare-release.mjs';
 import {
   assertPinnedWranglerInstalled,
@@ -22,6 +25,9 @@ import { loadRemoteReceiptFiles } from './lib/public-media-remote.mjs';
 
 const ROOT = process.cwd();
 installStructuredErrorHandler('cloudflare-prepare-production');
+const wranglerConfig = JSON.parse(await readFile(path.join(ROOT, 'wrangler.jsonc'), 'utf8'));
+const productionNativeResources = nativeReleaseResourcesFromConfig(wranglerConfig, 'production');
+const stagingNativeResources = nativeReleaseResourcesFromConfig(wranglerConfig, 'staging');
 if (['R2_ACCOUNT_ID', 'R2_BUCKET_NAME', 'CLOUDFLARE_ACCOUNT_ID', 'CF_ACCOUNT_ID']
   .some((name) => Object.hasOwn(process.env, name))) {
   throw new Error('CLOUDFLARE_E_PREPARE_ACCOUNT_ENV_FORBIDDEN');
@@ -42,11 +48,10 @@ const mediaReceiptFiles = {
   signaturePath: requireAbsolute(process.env.PUBLIC_MEDIA_REMOTE_SIGNATURE_PATH),
   publicKeyPath: requireAbsolute(process.env.PUBLIC_MEDIA_REMOTE_PUBLIC_KEY_PATH),
 };
-const [manifest, policy, remoteFiles, wranglerConfig] = await Promise.all([
+const [manifest, policy, remoteFiles] = await Promise.all([
   loadTrackedPublicMediaManifest(ROOT),
   loadTrackedPublicMediaReleasePolicy(ROOT, { requireComplete: true }),
   loadRemoteReceiptFiles(mediaReceiptFiles),
-  readFile(path.join(ROOT, 'wrangler.jsonc'), 'utf8').then(JSON.parse),
 ]);
 validateRemoteReceipt(remoteFiles.receipt, manifest);
 validateProductionReleaseTarget({
@@ -58,7 +63,6 @@ validateProductionReleaseTarget({
   wranglerConfig,
 });
 verifyRemoteReceiptSignature(remoteFiles.receipt, remoteFiles.signature, remoteFiles.publicKeyPem);
-
 const publicEnvironment = sanitizedEnvironment(process.env, { DWNC_MEDIA_MODE: 'remote' });
 await runChecked(process.execPath, ['scripts/build-cloudflare-source.mjs'], { cwd: ROOT, env: publicEnvironment });
 const firstStaticBuild = await directoryArtifactSha256(path.join(ROOT, 'dist'));
@@ -100,6 +104,8 @@ try {
     stagingAccountIdSha256: policy.staging.accountIdSha256,
     bucket: policy.production.bucket,
     stagingBucket: policy.staging.bucket,
+    productionNativeResources,
+    stagingNativeResources,
     mediaManifest: manifest,
     mediaRemoteReceipt: remoteFiles.receipt,
     mediaReceiptFiles,

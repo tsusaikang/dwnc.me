@@ -48,6 +48,17 @@
         {
           "binding": "MEDIA_BUCKET",
           "bucket_name": "dwnc-me-public-media-staging"
+        },
+        {
+          "binding": "NATIVE_MEDIA_BUCKET",
+          "bucket_name": "dwnc-me-native-media-staging"
+        }
+      ],
+      "d1_databases": [
+        {
+          "binding": "NATIVE_DB",
+          "database_name": "dwnc-me-content-staging",
+          "migrations_dir": "migrations"
         }
       ]
     },
@@ -65,6 +76,17 @@
         {
           "binding": "MEDIA_BUCKET",
           "bucket_name": "dwnc-me-public-media-production"
+        },
+        {
+          "binding": "NATIVE_MEDIA_BUCKET",
+          "bucket_name": "dwnc-me-native-media-production"
+        }
+      ],
+      "d1_databases": [
+        {
+          "binding": "NATIVE_DB",
+          "database_name": "dwnc-me-content-production",
+          "migrations_dir": "migrations"
         }
       ]
     }

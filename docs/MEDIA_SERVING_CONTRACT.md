@@ -73,6 +73,14 @@ npm run media:validate:local
 
 same-origin이므로 기본 CORS header는 넣지 않는다. CORS는 hotlink 방지 수단이 아니다. 공개 미디어 남용은 향후 cache·rate limit·WAF 관측을 통해 별도 결정한다.
 
+### 웹 편집기에서 추가하는 미디어
+
+- 위 2,758개와 그 manifest는 그대로 둔다. 웹 편집기에서 새로 올리는 이미지는 별도 private R2 binding `NATIVE_MEDIA_BUCKET`에 `media/native/{UUID}.{확장자}`라는 새 key로만 저장한다.
+- 관리자 Worker만 `PUT`을 가지며 Cloudflare Access JWT의 발급처·대상·만료·서명과 허용 이메일을 애플리케이션에서도 확인한다. 공개 Worker에는 이 bucket의 `GET`·`HEAD`만 있고 쓰기 경로는 없다.
+- 허용 형식은 AVIF·GIF·JPEG·PNG·WebP, 한 파일 최대 25MiB다. 브라우저가 계산한 SHA-256을 R2 checksum으로 검사하고, 응답 size와 metadata가 맞은 뒤 D1의 해당 글에 media row를 추가한다.
+- 공개 Worker는 D1에서 공개 상태인 글의 본문 또는 대표 이미지로 실제 참조된 media row만 제공한다. 임시 글이나 참조하지 않는 객체는 공개하지 않는다.
+- 기존 key와 새 native key 모두 덮어쓰기·삭제하지 않는다. 업로드는 성공했지만 D1 기록이 실패한 객체도 자동 삭제하지 않으며 공개 경로에서는 보이지 않는다.
+
 ## 3. upload-once sync
 
 `scripts/inspect-public-media-r2.mjs`는 validator 자격증명으로 remote `LIST` pagination과 manifest key 전수 `HEAD`만 수행한다. `scripts/sync-public-media-r2.mjs`는 uploader 자격증명의 기본 dry-run과 create-only 적용을 담당한다. 두 명령 모두 S3-compatible API를 SigV4로 서명하되 URL·credential을 출력하지 않는다.

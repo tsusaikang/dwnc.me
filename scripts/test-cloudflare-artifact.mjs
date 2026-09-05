@@ -13,10 +13,14 @@ import publicSequence from '../src/data/public-sequence-v1.json' with { type: 'j
 import {
   createPreuploadArtifact,
   createStagingPreuploadArtifact,
+  expectedProductionVersionBindings,
+  expectedStagingVersionBindings,
+  nativeReleaseResourcesFromConfig,
   validateArtifactDirectory,
   validateStagingArtifactDirectory,
   validateStagingUploadArtifactDirectory,
 } from './lib/cloudflare-artifact.mjs';
+import { cloudflareResourceDigest } from './lib/cloudflare-release.mjs';
 import { renderCloudflareRedirects } from './lib/cloudflare-redirects.mjs';
 import {
   STAGING_SMOKE_NATIVE_CHILD_GUARD,
@@ -32,6 +36,31 @@ import {
 } from './lib/public-media-manifest.mjs';
 
 const temporary = await mkdtemp(path.join(os.tmpdir(), 'dwnc-artifact-fixture-'));
+const releaseConfigFixture = {
+  env: {
+    production: {
+      r2_buckets: [{
+        binding: 'NATIVE_MEDIA_BUCKET', bucket_name: 'dwnc-me-native-media-production',
+      }],
+      d1_databases: [{
+        binding: 'NATIVE_DB', database_name: 'dwnc-me-content-production',
+        database_id: '11111111-1111-4111-8111-111111111111',
+      }],
+    },
+    staging: {
+      r2_buckets: [{
+        binding: 'NATIVE_MEDIA_BUCKET', bucket_name: 'dwnc-me-native-media-staging',
+      }],
+      d1_databases: [{
+        binding: 'NATIVE_DB', database_name: 'dwnc-me-content-staging',
+        database_id: '22222222-2222-4222-8222-222222222222',
+      }],
+    },
+  },
+};
+const productionNativeResources = nativeReleaseResourcesFromConfig(
+  releaseConfigFixture, 'production');
+const stagingNativeResources = nativeReleaseResourcesFromConfig(releaseConfigFixture, 'staging');
 async function unlock(directory) {
   await chmod(directory, 0o700).catch(() => undefined);
   for (const entry of await readdir(directory, { withFileTypes: true }).catch(() => [])) {
@@ -127,6 +156,8 @@ try {
     stagingAccountIdSha256: 'b'.repeat(64),
     bucket: 'dwnc-me-public-media-production',
     stagingBucket: 'dwnc-me-public-media-staging',
+    productionNativeResources,
+    stagingNativeResources,
     mediaManifest: { manifestSha256: 'a'.repeat(64) },
     mediaRemoteReceipt: remoteReceipt,
     mediaReceiptFiles: { signaturePath, publicKeyPath },
@@ -142,10 +173,36 @@ try {
   assert.equal((await readFile(path.join(first.directory, 'worker.js'), 'utf8')).includes('fetch'), true);
   assert.equal(first.receipt.publicRequestPaths, 2);
   assert.equal(first.receipt.publicRequestSurfaceSha256.length, 64);
+  assert.equal(first.receipt.bindingsSha256, cloudflareResourceDigest(
+    expectedProductionVersionBindings(
+      'dwnc-me-public-media-production', productionNativeResources)));
+  assert.equal(first.receipt.stagingBindingsSha256, cloudflareResourceDigest(
+    expectedStagingVersionBindings(
+      'dwnc-me-public-media-staging', stagingNativeResources)));
   assert.deepEqual(validated.staticEntry, {
     publicPath: '/about', size: 13,
     sha256: first.receipt.smokeStaticSha256, contentType: 'text/html',
   });
+  const productionUpload = JSON.parse(await readFile(
+    path.join(first.directory, 'wrangler-upload.jsonc'), 'utf8'));
+  assert.deepEqual(productionUpload.env.production.r2_buckets, [
+    { binding: 'MEDIA_BUCKET', bucket_name: 'dwnc-me-public-media-production' },
+    { binding: 'NATIVE_MEDIA_BUCKET', bucket_name: productionNativeResources.nativeBucket },
+  ]);
+  assert.deepEqual(productionUpload.env.production.d1_databases, [{
+    binding: 'NATIVE_DB', database_name: productionNativeResources.databaseName,
+    database_id: productionNativeResources.databaseId,
+  }]);
+  assert.throws(() => nativeReleaseResourcesFromConfig({
+    env: { production: {
+      r2_buckets: [{
+        binding: 'NATIVE_MEDIA_BUCKET', bucket_name: productionNativeResources.nativeBucket,
+      }],
+      d1_databases: [{
+        binding: 'NATIVE_DB', database_name: productionNativeResources.databaseName,
+      }],
+    } },
+  }, 'production'), /CLOUDFLARE_E_NATIVE_DATABASE_ID_REQUIRED/u);
   const secureRunnerDirectory = path.join(temporary, 'runner-secret');
   await mkdir(secureRunnerDirectory, { mode: 0o700 });
   const secureRunnerDirectoryResolved = await realpath(secureRunnerDirectory);
@@ -416,6 +473,7 @@ try {
     ciSourceGitSha: '1'.repeat(40),
     stagingAccountIdSha256: 'b'.repeat(64),
     stagingBucket: 'dwnc-me-public-media-staging',
+    stagingNativeResources,
     mediaManifest: stagingManifest,
     mediaRemoteReceipt: stagingRemoteReceipt,
     mediaReceiptFiles: { signaturePath: stagingSignaturePath, publicKeyPath },
@@ -429,6 +487,9 @@ try {
   assert.equal(stagingFirst.artifactSha256, stagingSecond.artifactSha256);
   assert.equal(stagingFirst.receipt.payloadSha256, stagingSecond.receipt.payloadSha256);
   assert.equal(stagingFirst.receipt.payloadSha256, first.receipt.payloadSha256);
+  assert.equal(stagingFirst.receipt.stagingBindingsSha256, cloudflareResourceDigest(
+    expectedStagingVersionBindings(
+      'dwnc-me-public-media-staging', stagingNativeResources)));
   assert.notEqual(stagingFirst.artifactSha256, first.artifactSha256);
   const stagingAuthority = { policy: stagingPolicy, manifest: stagingManifest };
   const stagingValidated = await validateStagingArtifactDirectory(
@@ -458,7 +519,7 @@ try {
   }));
 
   console.log(JSON.stringify({
-    suite: 'cloudflare-preupload-artifact', assertions: 132,
+    suite: 'cloudflare-preupload-artifact', assertions: 138,
     repeatedArtifactDigestStable: true, timestampInCore: false, buildUuidInCore: false,
     versionIdInCore: false, stagingPayloadComparable: true,
     productionValidatorRejectsStagingArtifact: true,
