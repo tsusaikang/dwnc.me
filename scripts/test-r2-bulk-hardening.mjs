@@ -35,6 +35,10 @@ const credentials = Object.freeze({
   accessKeyId: 'b'.repeat(32),
   secretAccessKey: 'c'.repeat(64),
 });
+const productionCredentials = Object.freeze({
+  ...credentials,
+  bucket: 'dwnc-me-public-media-production',
+});
 let assertions = 0;
 const equal = (actual, expected, message) => {
   assert.deepEqual(actual, expected, message);
@@ -68,15 +72,21 @@ try {
   );
   const policy = structuredClone(await loadTrackedPublicMediaReleasePolicy(ROOT));
   policy.staging.accountIdSha256 = cloudflareAccountIdSha256(credentials.accountId);
+  policy.production.accountIdSha256 = cloudflareAccountIdSha256(credentials.accountId);
   await writeFile(
     path.join(fixtureRoot, 'src/data/public-media-release-policy-v1.json'),
     `${JSON.stringify(policy, null, 2)}\n`,
   );
   const wranglerPath = path.join(fixtureRoot, 'wrangler.jsonc');
   const wranglerBytes = Buffer.from(`${JSON.stringify({
-    env: { staging: { r2_buckets: [{
-      binding: 'MEDIA_BUCKET', bucket_name: credentials.bucket,
-    }] } },
+    env: {
+      staging: { r2_buckets: [{
+        binding: 'MEDIA_BUCKET', bucket_name: credentials.bucket,
+      }] },
+      production: { r2_buckets: [{
+        binding: 'MEDIA_BUCKET', bucket_name: productionCredentials.bucket,
+      }] },
+    },
   }, null, 2)}\n`);
   await writeFile(wranglerPath, wranglerBytes);
 
@@ -227,13 +237,15 @@ try {
     statePath = null,
     args = null,
     environment = {},
+    targetEnvironment = 'staging',
+    targetCredentials = credentials,
   }) => {
     caseNumber += 1;
     const currentStatePath = statePath ?? path.join(evidenceDirectory, `${caseNumber}-${name}-state.json`);
     if (state !== null) await writeFile(currentStatePath, JSON.stringify(state), { mode: 0o600 });
     const methodsPath = path.join(evidenceDirectory, `${caseNumber}-${name}-methods.json`);
     const forwarded = args ?? [
-      '--apply', '--environment=staging', '--concurrency=1',
+      '--apply', `--environment=${targetEnvironment}`, '--concurrency=1',
       `--expected-manifest-sha256=${manifest.manifestSha256}`,
       '--expected-orphan-count=0',
       `--expected-git-commit=${gitCommit}`,
@@ -253,11 +265,11 @@ try {
         LANG: 'C',
         TZ: 'UTC',
         R2_CREDENTIALS_FD: '3',
-        R2_RUNNER_ENVIRONMENT: 'staging',
+        R2_RUNNER_ENVIRONMENT: targetEnvironment,
         R2_RUNNER_ROLE: role,
         R2_TEST_STATE_PATH: currentStatePath,
         R2_TEST_METHODS_PATH: methodsPath,
-        R2_TEST_BUCKET: credentials.bucket,
+        R2_TEST_BUCKET: targetCredentials.bucket,
         ...environment,
       },
       stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
@@ -268,7 +280,7 @@ try {
     child.stderr.on('data', (chunk) => { stderr += chunk; });
     const [, code] = await Promise.all([
       writeAnonymousInheritedInput(
-        child.stdio[3], Buffer.from(canonicalJson(credentials)),
+        child.stdio[3], Buffer.from(canonicalJson(targetCredentials)),
         { descriptor: 3, maximumBytes: 4096 },
       ),
       new Promise((resolve, reject) => {
@@ -277,9 +289,9 @@ try {
       }),
     ]);
     const combined = `${stdout}\n${stderr}`;
-    equal(combined.includes(credentials.accountId), false, `${name}: account id leaked`);
-    equal(combined.includes(credentials.accessKeyId), false, `${name}: access key leaked`);
-    equal(combined.includes(credentials.secretAccessKey), false, `${name}: secret leaked`);
+    equal(combined.includes(targetCredentials.accountId), false, `${name}: account id leaked`);
+    equal(combined.includes(targetCredentials.accessKeyId), false, `${name}: access key leaked`);
+    equal(combined.includes(targetCredentials.secretAccessKey), false, `${name}: secret leaked`);
     return {
       code,
       stdout,
@@ -326,6 +338,27 @@ try {
   equal(mixedReceipt.source, {
     gitCommit, gitTree, clean: true, gitCheckCount: 3,
   });
+
+  const productionOutput = path.join(evidenceDirectory, 'production-receipt.json');
+  const production = await runCommand({
+    name: 'production-positive',
+    output: productionOutput,
+    state: baseState({ missingKeys: selected.map((entry) => entry.key) }),
+    targetEnvironment: 'production',
+    targetCredentials: productionCredentials,
+  });
+  equal(production.code, 0, production.combined);
+  equal(production.state.nonConditionalPut, false);
+  equal(production.methods.filter((request) => request.method === 'PUT').length, 2);
+  equal(production.methods.some((request) => request.method === 'DELETE'), false);
+  const productionReceipt = JSON.parse(await readFile(productionOutput, 'utf8'));
+  equal(productionReceipt.target, {
+    environment: 'production',
+    bucket: productionCredentials.bucket,
+    accountIdSha256: cloudflareAccountIdSha256(productionCredentials.accountId),
+  });
+  equal(productionReceipt.writes.overwrite, 0);
+  equal(productionReceipt.writes.delete, 0);
 
   const partialOutput = path.join(evidenceDirectory, 'partial-receipt.json');
   const partial = await runCommand({

@@ -15,6 +15,8 @@ import {
   canonicalR2ExposureCapturePayload,
   canonicalR2ExposureEvidencePayload,
   fetchR2ExposureCapture,
+  PRODUCTION_R2_EXPOSURE_BUCKET,
+  PRODUCTION_R2_EXPOSURE_PURPOSE,
   r2ExposureRequestAudit,
   remoteReceiptBucketExposure,
   STAGING_R2_EXPOSURE_BUCKET,
@@ -24,8 +26,10 @@ import {
   validateR2ExposureRequestAudit,
 } from './lib/cloudflare-r2-exposure.mjs';
 import {
+  parseR2ExposureCommand,
   parseStagingR2ExposureCommand,
   parseStagingR2ExposureRecoveryCommand,
+  runR2ExposureCommand,
   runStagingR2ExposureCommand,
   runStagingR2ExposureRecoveryCommand,
   STAGING_R2_EXPOSURE_RECOVERY_PURPOSE,
@@ -62,12 +66,12 @@ function cloudflareEnvelope(result) {
 
 function createFixture({
   bucketResult = {}, managedResult = {}, customResult = {}, status = 200,
-  networkErrorAt = 0, rawBodyAt = {}, gitSnapshots = null,
+  networkErrorAt = 0, rawBodyAt = {}, gitSnapshots = null, bucketName = bucket,
 } = {}) {
   const calls = [];
   let gitChecks = 0;
   const bucketBody = cloudflareEnvelope({
-    name: bucket,
+    name: bucketName,
     creation_date: '2026-08-27T00:00:00.000Z',
     jurisdiction: 'default',
     location: 'APAC',
@@ -179,6 +183,59 @@ throws(() => remoteReceiptBucketExposure(capture, {
   expected: { environment, bucket, accountIdSha256 },
   now: new Date(capture.evidence.expiresAt),
 }), 'CLOUDFLARE_E_R2_EXPOSURE_EXPIRED');
+
+const productionFixture = createFixture({
+  bucketName: PRODUCTION_R2_EXPOSURE_BUCKET,
+  bucketResult: { location: 'ENAM', storage_class: 'InfrequentAccess' },
+});
+const productionCapture = await fetchR2ExposureCapture(baseOptions(productionFixture, {
+  purpose: PRODUCTION_R2_EXPOSURE_PURPOSE,
+  environment: 'production',
+  bucket: PRODUCTION_R2_EXPOSURE_BUCKET,
+}));
+equal(productionFixture.calls.length, 3);
+equal(productionCapture.evidence.purpose, PRODUCTION_R2_EXPOSURE_PURPOSE);
+equal(productionCapture.evidence.environment, 'production');
+equal(productionCapture.evidence.bucket, PRODUCTION_R2_EXPOSURE_BUCKET);
+equal(productionCapture.evidence.location, 'enam');
+equal(productionCapture.evidence.storageClass, 'InfrequentAccess');
+validateR2ExposureCapture(productionCapture, {
+  expected: {
+    purpose: PRODUCTION_R2_EXPOSURE_PURPOSE,
+    environment: 'production',
+    bucket: PRODUCTION_R2_EXPOSURE_BUCKET,
+    accountIdSha256,
+    sourceCommit,
+    sourceTree,
+  },
+  now,
+});
+assertions += 1;
+
+for (const bucketResult of [
+  { location: 123 },
+  { storage_class: { value: 'InfrequentAccess' } },
+]) {
+  const fixture = createFixture({
+    bucketName: PRODUCTION_R2_EXPOSURE_BUCKET,
+    bucketResult,
+  });
+  await rejects(() => fetchR2ExposureCapture(baseOptions(fixture, {
+    purpose: PRODUCTION_R2_EXPOSURE_PURPOSE,
+    environment: 'production',
+    bucket: PRODUCTION_R2_EXPOSURE_BUCKET,
+  })), 'CLOUDFLARE_E_R2_EXPOSURE_RESPONSE');
+  equal(fixture.calls.length, 1);
+}
+for (const evidenceOverride of [
+  { location: 123 },
+  { storageClass: { value: 'InfrequentAccess' } },
+]) {
+  throws(() => validateR2ExposureEvidence({
+    ...productionCapture.evidence,
+    ...evidenceOverride,
+  }, { now }), 'CLOUDFLARE_E_R2_EXPOSURE');
+}
 
 for (const [overrides, code] of [
   [{ purpose: 'production-r2-private-exposure-read' }, 'CLOUDFLARE_E_R2_EXPOSURE_REQUEST'],
@@ -363,6 +420,9 @@ const commandEnvironment = {
 const commandArgv = [`--purpose=${STAGING_R2_EXPOSURE_PURPOSE}`];
 const syntheticPolicy = {
   staging: { environment: 'staging', bucket, accountIdSha256 },
+  production: {
+    environment: 'production', bucket: PRODUCTION_R2_EXPOSURE_BUCKET, accountIdSha256,
+  },
 };
 const parsedCommand = parseStagingR2ExposureCommand({
   argv: commandArgv, environment: commandEnvironment, root: process.cwd(),
@@ -392,6 +452,41 @@ equal((await lstat(commandEnvironment.CLOUDFLARE_R2_EXPOSURE_CAPTURE_PATH)).mode
 equal((await lstat(commandEnvironment.CLOUDFLARE_R2_EXPOSURE_EVIDENCE_PATH)).mode & 0o777, 0o600);
 equal((await readFile(commandEnvironment.CLOUDFLARE_R2_EXPOSURE_EVIDENCE_PATH, 'utf8'))
   .includes(accountId), false);
+
+const productionCommandEnvironment = {
+  ...commandEnvironment,
+  CLOUDFLARE_R2_EXPOSURE_CAPTURE_PATH: path.join(commandDirectory, 'production-capture.json'),
+  CLOUDFLARE_R2_EXPOSURE_EVIDENCE_PATH: path.join(commandDirectory, 'production-evidence.json'),
+};
+const productionCommandArgv = [`--purpose=${PRODUCTION_R2_EXPOSURE_PURPOSE}`];
+const parsedProductionCommand = parseR2ExposureCommand({
+  argv: productionCommandArgv,
+  environment: productionCommandEnvironment,
+  root: process.cwd(),
+});
+equal(parsedProductionCommand.environment, 'production');
+throws(() => parseStagingR2ExposureCommand({
+  argv: productionCommandArgv,
+  environment: productionCommandEnvironment,
+  root: process.cwd(),
+}), 'CLOUDFLARE_E_R2_EXPOSURE_ARGUMENT');
+const productionSummary = await runR2ExposureCommand({
+  argv: productionCommandArgv,
+  environment: productionCommandEnvironment,
+  root: process.cwd(),
+  readCredentials: () => ({ accountId, apiToken }),
+  loadPolicy: async () => syntheticPolicy,
+  fetchCapture: async (options) => {
+    equal(options.environment, 'production');
+    equal(options.bucket, PRODUCTION_R2_EXPOSURE_BUCKET);
+    equal(options.purpose, PRODUCTION_R2_EXPOSURE_PURPOSE);
+    return productionCapture;
+  },
+});
+equal(productionSummary.environment, 'production');
+equal(productionSummary.bucket, PRODUCTION_R2_EXPOSURE_BUCKET);
+equal(productionSummary.location, 'enam');
+equal(productionSummary.storageClass, 'InfrequentAccess');
 
 const failureCases = [
   { name: 'preexisting', prepare: async (directory, env) => {

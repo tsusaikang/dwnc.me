@@ -4,10 +4,9 @@ import {
   canonicalR2ExposureEvidencePayload,
   fetchR2ExposureCapture,
   inspectR2ExposureGit,
+  R2_EXPOSURE_TARGETS,
   STAGING_R2_EXPOSURE_BUCKET,
-  STAGING_R2_EXPOSURE_LOCATION,
   STAGING_R2_EXPOSURE_PURPOSE,
-  STAGING_R2_EXPOSURE_STORAGE_CLASS,
   validateR2ExposureCapture,
   validateR2ExposureGitSnapshot,
 } from './cloudflare-r2-exposure.mjs';
@@ -61,20 +60,29 @@ function parseExposurePaths(environment, root) {
   return { capturePath, evidencePath, expectedGitCommit, expectedGitTree };
 }
 
-export function parseStagingR2ExposureCommand({
+export function parseR2ExposureCommand({
   argv = process.argv.slice(2), environment = process.env, root = process.cwd(),
 } = {}) {
-  if (!Array.isArray(argv) || argv.length !== 1
-    || argv[0] !== `--purpose=${STAGING_R2_EXPOSURE_PURPOSE}`
-    || typeof root !== 'string' || !path.isAbsolute(root)) {
+  const purpose = Array.isArray(argv) && argv.length === 1
+    && argv[0].startsWith('--purpose=') ? argv[0].slice('--purpose='.length) : null;
+  const target = Object.values(R2_EXPOSURE_TARGETS).find(
+    (candidate) => candidate.purpose === purpose,
+  );
+  if (!target || typeof root !== 'string' || !path.isAbsolute(root)) {
     fail('CLOUDFLARE_E_R2_EXPOSURE_ARGUMENT');
   }
   const paths = parseExposurePaths(environment, root);
   return {
-    purpose: STAGING_R2_EXPOSURE_PURPOSE,
-    environment: 'staging',
+    purpose: target.purpose,
+    environment: target.environment,
     ...paths,
   };
+}
+
+export function parseStagingR2ExposureCommand(options = {}) {
+  const parsed = parseR2ExposureCommand(options);
+  if (parsed.environment !== 'staging') fail('CLOUDFLARE_E_R2_EXPOSURE_ARGUMENT');
+  return parsed;
 }
 
 export function parseStagingR2ExposureRecoveryCommand({
@@ -96,7 +104,7 @@ export function parseStagingR2ExposureRecoveryCommand({
   };
 }
 
-export async function runStagingR2ExposureCommand({
+export async function runR2ExposureCommand({
   argv = process.argv.slice(2),
   environment = process.env,
   root = process.cwd(),
@@ -106,15 +114,16 @@ export async function runStagingR2ExposureCommand({
   fetchCapture = fetchR2ExposureCapture,
   writeEvidence = writeCanonicalEvidenceCreateOnly,
 } = {}) {
-  const options = parseStagingR2ExposureCommand({ argv, environment, root });
+  const options = parseR2ExposureCommand({ argv, environment, root });
   await Promise.all([
     assertDestination(options.capturePath),
     assertDestination(options.evidencePath),
   ]);
   const policy = await loadPolicy(root);
-  const target = policy?.staging;
-  if (!target || target.environment !== 'staging'
-    || target.bucket !== STAGING_R2_EXPOSURE_BUCKET
+  const configuredTarget = R2_EXPOSURE_TARGETS[options.environment];
+  const target = policy?.[options.environment];
+  if (!configuredTarget || !target || target.environment !== options.environment
+    || target.bucket !== configuredTarget.bucket
     || typeof target.accountIdSha256 !== 'string') {
     fail('CLOUDFLARE_E_R2_EXPOSURE_TARGET');
   }
@@ -147,8 +156,8 @@ export async function runStagingR2ExposureCommand({
     sourceTree: capture.evidence.sourceTree,
     gitCheckCount: capture.evidence.gitCheckCount,
     jurisdiction: capture.evidence.jurisdiction,
-    location: STAGING_R2_EXPOSURE_LOCATION,
-    storageClass: STAGING_R2_EXPOSURE_STORAGE_CLASS,
+    location: capture.evidence.location,
+    storageClass: capture.evidence.storageClass,
     r2DevEnabled: capture.evidence.r2DevEnabled,
     customDomainCount: capture.evidence.customDomainCount,
     requestAudit: capture.evidence.requestAudit,
@@ -161,6 +170,16 @@ export async function runStagingR2ExposureCommand({
     receiptWritten: true,
     signed: false,
   };
+}
+
+export function runStagingR2ExposureCommand(options = {}) {
+  const argv = options.argv ?? process.argv.slice(2);
+  parseStagingR2ExposureCommand({
+    argv,
+    environment: options.environment ?? process.env,
+    root: options.root ?? process.cwd(),
+  });
+  return runR2ExposureCommand({ ...options, argv });
 }
 
 export async function runStagingR2ExposureRecoveryCommand({

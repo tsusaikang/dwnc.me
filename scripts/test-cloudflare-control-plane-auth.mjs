@@ -23,6 +23,11 @@ const syntheticPolicy = Object.freeze({
     bucket: 'dwnc-me-public-media-staging',
     accountIdSha256: cloudflareAccountIdSha256(accountId),
   }),
+  production: Object.freeze({
+    environment: 'production',
+    bucket: 'dwnc-me-public-media-production',
+    accountIdSha256: cloudflareAccountIdSha256(accountId),
+  }),
 });
 let assertions = 0;
 const equal = (actual, expected) => { assert.deepEqual(actual, expected); assertions += 1; };
@@ -229,6 +234,34 @@ equal(Object.values(spawned.options.env).some((value) => value === apiToken), fa
 equal(spawned.options.env.CLOUDFLARE_API_TOKEN_FD, '3');
 equal(spawned.options.env.CLOUDFLARE_ACCOUNT_ID, accountId);
 equal(accountTargetReadCount, 2);
+
+writtenFrameChunks.length = 0;
+const productionClipboard = new MemoryClipboard(apiToken);
+const productionEnvironment = {
+  ...validRunnerEnvironment,
+  CLOUDFLARE_R2_EXPOSURE_CAPTURE_PATH:
+    path.join(runnerDirectory, 'production-r2-exposure-capture.json'),
+  CLOUDFLARE_R2_EXPOSURE_EVIDENCE_PATH:
+    path.join(runnerDirectory, 'production-r2-exposure-evidence.json'),
+};
+await runCloudflareReadControlPlane({
+  argv: ['--command=production-r2-exposure'],
+  environment: productionEnvironment,
+  clipboard: productionClipboard,
+  spawnChild,
+  loadPolicy: loadSyntheticPolicy,
+  loadAccountTarget: async ({ expectedAccountIdSha256 }) => {
+    equal(expectedAccountIdSha256, syntheticPolicy.production.accountIdSha256);
+    return { metadata: { accountIdSha256: expectedAccountIdSha256 }, accountId };
+  },
+  accountTargetMetadataPath: syntheticAccountTargetMetadataPath,
+});
+equal(productionClipboard.readCount, 1);
+equal(spawned.args, [
+  path.join(process.cwd(), 'scripts/fetch-public-media-r2-exposure.mjs'),
+  '--purpose=production-r2-private-exposure-read',
+]);
+equal(spawned.options.env.CLOUDFLARE_ACCOUNT_ID, accountId);
 const capturedFrame = Buffer.concat(writtenFrameChunks);
 equal(capturedFrame.includes(Buffer.from(accountId)), false);
 let capturedReadCount = 0;

@@ -19,7 +19,7 @@ import {
   r2CredentialsFromEnvironment,
 } from './lib/r2-s3-client.mjs';
 import {
-  STAGING_R2_EXPOSURE_PURPOSE,
+  R2_EXPOSURE_TARGETS,
   remoteReceiptBucketExposure,
 } from './lib/cloudflare-r2-exposure.mjs';
 import {
@@ -64,7 +64,7 @@ function parseArguments(argv) {
   }
   const relativeOutput = typeof options.receiptOutput === 'string'
     ? path.relative(ROOT, options.receiptOutput) : null;
-  if (options.environment !== 'staging'
+  if (!Object.hasOwn(R2_EXPOSURE_TARGETS, options.environment)
     || !Number.isSafeInteger(options.concurrency) || options.concurrency < 1 || options.concurrency > 8
     || !/^[a-f0-9]{64}$/u.test(options.expectedManifestSha256 ?? '')
     || typeof options.receiptOutput !== 'string' || !path.isAbsolute(options.receiptOutput)
@@ -83,7 +83,7 @@ function parseArguments(argv) {
 }
 
 const options = parseArguments(process.argv.slice(2));
-if (process.env.R2_RUNNER_ENVIRONMENT !== 'staging'
+if (process.env.R2_RUNNER_ENVIRONMENT !== options.environment
   || process.env.R2_RUNNER_ROLE !== 'validator') throw new Error('MEDIA_E_FULL_AUDIT_ROLE');
 await assertSecureCreateOnlyDestination(options.receiptOutput);
 await assertExactCleanPublicMediaGit(
@@ -124,7 +124,7 @@ try {
 const auditStartedAt = new Date();
 const bucketExposure = remoteReceiptBucketExposure(exposureCapture, {
   expected: {
-    purpose: STAGING_R2_EXPOSURE_PURPOSE,
+    purpose: R2_EXPOSURE_TARGETS[options.environment].purpose,
     environment: options.environment,
     bucket: targetPolicy.bucket,
     accountIdSha256: targetPolicy.accountIdSha256,

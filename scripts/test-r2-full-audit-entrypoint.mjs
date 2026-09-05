@@ -20,6 +20,8 @@ import { promisify } from 'node:util';
 import { canonicalJson, sha256Hex } from './lib/cloudflare-release.mjs';
 import {
   canonicalR2ExposureCapturePayload,
+  PRODUCTION_R2_EXPOSURE_BUCKET,
+  PRODUCTION_R2_EXPOSURE_PURPOSE,
   r2ExposureRequestAudit,
   r2ExposureRequestSha256,
   STAGING_R2_EXPOSURE_BUCKET,
@@ -60,6 +62,10 @@ const credentials = Object.freeze({
   bucket: STAGING_R2_EXPOSURE_BUCKET,
   accessKeyId: 'b'.repeat(32),
   secretAccessKey: 'c'.repeat(64),
+});
+const productionCredentials = Object.freeze({
+  ...credentials,
+  bucket: PRODUCTION_R2_EXPOSURE_BUCKET,
 });
 const FIXED_PATH = '/usr/bin:/bin:/usr/sbin:/sbin';
 const GIT_ENVIRONMENT_KEYS = Object.freeze([
@@ -223,12 +229,13 @@ function createEntrypointEnvironment({
   receiptPath,
   capturePath,
   probe = null,
+  targetEnvironment = 'staging',
 }) {
   const environment = Object.create(null);
   Object.assign(environment, gitEnvironment, {
     TMPDIR: evidenceDirectory,
     R2_CREDENTIALS_FD: '3',
-    R2_RUNNER_ENVIRONMENT: 'staging',
+    R2_RUNNER_ENVIRONMENT: targetEnvironment,
     R2_RUNNER_ROLE: 'validator',
     R2_OFFLINE_MANIFEST_PATH: manifestPath,
     R2_OFFLINE_MEDIA_ROOT: path.join(ROOT, 'public'),
@@ -363,13 +370,15 @@ async function runEntrypoint({
   capturePath,
   gitCommit,
   gitTree,
+  targetEnvironment = 'staging',
+  targetCredentials = credentials,
 }) {
   const child = spawn(process.execPath, [
     `--import=${pathToFileURL(path.join(
       fixtureRoot, 'scripts/fixtures/r2-full-audit-offline-preload.mjs',
     )).href}`,
     path.join(fixtureRoot, 'scripts/audit-public-media-r2-full.mjs'),
-    '--environment=staging',
+    `--environment=${targetEnvironment}`,
     '--concurrency=8',
     `--expected-manifest-sha256=${PUBLIC_MEDIA_BASELINE_SHA256}`,
     '--expected-orphan-count=0',
@@ -403,7 +412,7 @@ async function runEntrypoint({
     child.kill('SIGTERM');
     setTimeout(() => child.kill('SIGKILL'), 1000).unref();
   }, 9 * 60 * 1000);
-  const credentialBytes = Buffer.from(canonicalJson(credentials));
+  const credentialBytes = Buffer.from(canonicalJson(targetCredentials));
   const [writeResult, closeResult] = await Promise.allSettled([
     writeAnonymousInheritedInput(child.stdio[3], credentialBytes, {
       descriptor: 3, maximumBytes: 4096,
@@ -419,9 +428,9 @@ async function runEntrypoint({
   if (timedOut || outputBytes > 1024 * 1024) throw new Error('R2_OFFLINE_E_CHILD_BOUND');
   if (writeResult.status === 'rejected' && closeResult.value.code === 0) throw writeResult.reason;
   const combined = `${stdout}\n${stderr}`;
-  equal(combined.includes(credentials.accountId), false, 'raw account id is absent from output');
-  equal(combined.includes(credentials.accessKeyId), false, 'access key is absent from output');
-  equal(combined.includes(credentials.secretAccessKey), false, 'secret key is absent from output');
+  equal(combined.includes(targetCredentials.accountId), false, 'raw account id is absent from output');
+  equal(combined.includes(targetCredentials.accessKeyId), false, 'access key is absent from output');
+  equal(combined.includes(targetCredentials.secretAccessKey), false, 'secret key is absent from output');
   return { ...closeResult.value, stdout, stderr, credentialWrite: writeResult.status };
 }
 
@@ -457,17 +466,26 @@ async function runBoundaryProbe({ fixtureRoot, environment }) {
   return { ...result, stdout: stdoutText, stderr: stderrText };
 }
 
-function createPrivateExposureCapture({ accountIdSha256, sourceCommit, sourceTree }) {
+function createPrivateExposureCapture({
+  accountIdSha256,
+  sourceCommit,
+  sourceTree,
+  targetEnvironment = 'staging',
+  bucket = STAGING_R2_EXPOSURE_BUCKET,
+  purpose = STAGING_R2_EXPOSURE_PURPOSE,
+  location = STAGING_R2_EXPOSURE_LOCATION,
+  storageClass = STAGING_R2_EXPOSURE_STORAGE_CLASS,
+}) {
   const bucketRawBody = JSON.stringify({
     success: true,
     errors: [],
     messages: [],
     result: {
-      name: STAGING_R2_EXPOSURE_BUCKET,
+      name: bucket,
       creation_date: '2026-08-27T00:00:00.000Z',
       jurisdiction: STAGING_R2_EXPOSURE_JURISDICTION,
-      location: STAGING_R2_EXPOSURE_LOCATION,
-      storage_class: STAGING_R2_EXPOSURE_STORAGE_CLASS,
+      location: location.toUpperCase(),
+      storage_class: storageClass,
     },
   });
   const managedRawBody = JSON.stringify({
@@ -480,17 +498,17 @@ function createPrivateExposureCapture({ accountIdSha256, sourceCommit, sourceTre
   const evidence = {
     schemaVersion: 1,
     contract: 'dwnc-cloudflare-r2-private-exposure-v1',
-    purpose: STAGING_R2_EXPOSURE_PURPOSE,
-    environment: 'staging',
-    bucket: STAGING_R2_EXPOSURE_BUCKET,
+    purpose,
+    environment: targetEnvironment,
+    bucket,
     accountIdSha256,
     sourceCommit,
     sourceTree,
     gitCheckCount: 3,
-    requestAudit: r2ExposureRequestAudit(),
+    requestAudit: r2ExposureRequestAudit(bucket),
     jurisdiction: STAGING_R2_EXPOSURE_JURISDICTION,
-    location: STAGING_R2_EXPOSURE_LOCATION,
-    storageClass: STAGING_R2_EXPOSURE_STORAGE_CLASS,
+    location,
+    storageClass,
     bucketCreatedAt: '2026-08-27T00:00:00.000Z',
     bucketPropertiesSha256: sha256Hex(bucketRawBody),
     r2DevEnabled: false,
@@ -514,9 +532,9 @@ function createPrivateExposureCapture({ accountIdSha256, sourceCommit, sourceTre
   };
   validateR2ExposureCapture(capture, {
     expected: {
-      purpose: STAGING_R2_EXPOSURE_PURPOSE,
-      environment: 'staging',
-      bucket: STAGING_R2_EXPOSURE_BUCKET,
+      purpose,
+      environment: targetEnvironment,
+      bucket,
       accountIdSha256,
       jurisdiction: STAGING_R2_EXPOSURE_JURISDICTION,
       sourceCommit,
@@ -635,6 +653,7 @@ try {
   const releasePolicy = structuredClone(await loadTrackedPublicMediaReleasePolicy(ROOT));
   const accountIdSha256 = cloudflareAccountIdSha256(credentials.accountId);
   releasePolicy.staging.accountIdSha256 = accountIdSha256;
+  releasePolicy.production.accountIdSha256 = accountIdSha256;
   await writeFile(
     path.join(fixtureRoot, 'src/data/public-media-release-policy-v1.json'),
     `${JSON.stringify(releasePolicy, null, 2)}\n`, { flag: 'wx', mode: 0o600 },
@@ -643,6 +662,9 @@ try {
     env: {
       staging: {
         r2_buckets: [{ binding: 'MEDIA_BUCKET', bucket_name: credentials.bucket }],
+      },
+      production: {
+        r2_buckets: [{ binding: 'MEDIA_BUCKET', bucket_name: productionCredentials.bucket }],
       },
     },
   }, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
@@ -960,6 +982,54 @@ try {
   const receiptStats = await lstat(receiptPath);
   equal(receiptStats.mode & 0o777, 0o600);
   equal(receiptStats.nlink, 1);
+
+  const productionCapturePath = path.join(evidenceDirectory, 'production-exposure-capture.json');
+  const productionReceiptPath = path.join(evidenceDirectory, 'production-full-audit-receipt.json');
+  const productionSummaryPath = path.join(evidenceDirectory, 'production-request-summary.json');
+  const productionCapture = createPrivateExposureCapture({
+    accountIdSha256,
+    sourceCommit: fixtureGitCommit,
+    sourceTree: fixtureGitTree,
+    targetEnvironment: 'production',
+    bucket: PRODUCTION_R2_EXPOSURE_BUCKET,
+    purpose: PRODUCTION_R2_EXPOSURE_PURPOSE,
+    location: 'enam',
+    storageClass: 'InfrequentAccess',
+  });
+  await writeCanonicalEvidenceCreateOnly(
+    productionCapturePath, productionCapture, canonicalR2ExposureCapturePayload,
+  );
+  const productionEnvironment = createEntrypointEnvironment({
+    gitEnvironment,
+    gitControlRoot,
+    evidenceDirectory,
+    manifestPath,
+    summaryPath: productionSummaryPath,
+    receiptPath: productionReceiptPath,
+    capturePath: productionCapturePath,
+    targetEnvironment: 'production',
+  });
+  const productionRun = await runEntrypoint({
+    fixtureRoot,
+    environment: productionEnvironment,
+    receiptPath: productionReceiptPath,
+    capturePath: productionCapturePath,
+    gitCommit: fixtureGitCommit,
+    gitTree: fixtureGitTree,
+    targetEnvironment: 'production',
+    targetCredentials: productionCredentials,
+  });
+  equal(productionRun.code, 0, `${productionRun.stdout}\n${productionRun.stderr}`);
+  const productionEntrypointSummary = JSON.parse(productionRun.stdout);
+  equal(productionEntrypointSummary.environment, 'production');
+  equal(productionEntrypointSummary.requestCounts.PUT, 0);
+  equal(productionEntrypointSummary.requestCounts.DELETE, 0);
+  const productionReceipt = JSON.parse(await readFile(productionReceiptPath, 'utf8'));
+  validateRemoteReceipt(productionReceipt, manifest);
+  equal(productionReceipt.target, {
+    environment: 'production', bucket: productionCredentials.bucket, accountIdSha256,
+  });
+  equal(productionReceipt.audit.requestCounts, EXPECTED_REQUEST_COUNTS);
 
   const requestSummary = JSON.parse(await readFile(requestSummaryPath, 'utf8'));
   equal(requestSummary, {

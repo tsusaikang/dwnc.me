@@ -13,7 +13,8 @@ import { Readable } from 'node:stream';
 
 const EXPECTED_ACCOUNT_ID = 'a'.repeat(32);
 const EXPECTED_ACCESS_KEY_ID = 'b'.repeat(32);
-const EXPECTED_BUCKET = 'dwnc-me-public-media-staging';
+const EXPECTED_BUCKET = process.env.R2_RUNNER_ENVIRONMENT === 'production'
+  ? 'dwnc-me-public-media-production' : 'dwnc-me-public-media-staging';
 const EXPECTED_ORIGIN = `https://${EXPECTED_ACCOUNT_ID}.r2.cloudflarestorage.com`;
 const LAST_MODIFIED = 'Thu, 27 Aug 2026 00:24:12 GMT';
 const OPERATION_KEYS = Object.freeze(['LIST', 'HEAD', 'GET', 'PUT', 'DELETE']);

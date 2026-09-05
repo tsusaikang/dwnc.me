@@ -15,11 +15,33 @@ const MAXIMUM_RESPONSE_BODY_BYTES = 1024 * 1024;
 
 export const STAGING_R2_EXPOSURE_PURPOSE = 'staging-r2-private-exposure-read';
 export const STAGING_R2_EXPOSURE_BUCKET = 'dwnc-me-public-media-staging';
+export const PRODUCTION_R2_EXPOSURE_PURPOSE = 'production-r2-private-exposure-read';
+export const PRODUCTION_R2_EXPOSURE_BUCKET = 'dwnc-me-public-media-production';
 export const STAGING_R2_EXPOSURE_JURISDICTION = 'default';
 export const STAGING_R2_EXPOSURE_LOCATION = 'apac';
 export const STAGING_R2_EXPOSURE_STORAGE_CLASS = 'Standard';
+export const R2_EXPOSURE_TARGETS = Object.freeze({
+  staging: Object.freeze({
+    environment: 'staging',
+    purpose: STAGING_R2_EXPOSURE_PURPOSE,
+    bucket: STAGING_R2_EXPOSURE_BUCKET,
+    location: STAGING_R2_EXPOSURE_LOCATION,
+    storageClass: STAGING_R2_EXPOSURE_STORAGE_CLASS,
+  }),
+  production: Object.freeze({
+    environment: 'production',
+    purpose: PRODUCTION_R2_EXPOSURE_PURPOSE,
+    bucket: PRODUCTION_R2_EXPOSURE_BUCKET,
+    location: null,
+    storageClass: null,
+  }),
+});
 
 function fail(code) { throw new Error(code); }
+function exposureTarget(environment) {
+  return Object.hasOwn(R2_EXPOSURE_TARGETS, environment)
+    ? R2_EXPOSURE_TARGETS[environment] : null;
+}
 function exactKeys(value, keys) {
   return value && typeof value === 'object' && !Array.isArray(value)
     && Object.keys(value).length === keys.length
@@ -115,8 +137,10 @@ function parseEnvelope(rawBody, kind, jurisdiction = STAGING_R2_EXPOSURE_JURISDI
       || !BUCKET.test(result.name ?? '')
       || typeof result.creation_date !== 'string'
       || Number.isNaN(Date.parse(result.creation_date))
-      || !SAFE_BUCKET_PROPERTY.test(result.location ?? '')
-      || !SAFE_BUCKET_PROPERTY.test(result.storage_class ?? '')
+      || typeof result.location !== 'string'
+      || !SAFE_BUCKET_PROPERTY.test(result.location)
+      || typeof result.storage_class !== 'string'
+      || !SAFE_BUCKET_PROPERTY.test(result.storage_class)
       || responseJurisdiction !== jurisdiction) {
       fail('CLOUDFLARE_E_R2_EXPOSURE_RESPONSE');
     }
@@ -210,8 +234,9 @@ export async function inspectR2ExposureGit(root = process.cwd()) {
 export function r2ExposureRequestSha256({
   purpose, environment, bucket, accountIdSha256, sourceCommit, sourceTree, requestAudit,
 }) {
-  if (purpose !== STAGING_R2_EXPOSURE_PURPOSE || environment !== 'staging'
-    || bucket !== STAGING_R2_EXPOSURE_BUCKET || !SHA256.test(accountIdSha256 ?? '')
+  const target = exposureTarget(environment);
+  if (!target || purpose !== target.purpose || bucket !== target.bucket
+    || !SHA256.test(accountIdSha256 ?? '')
     || !GIT_OID.test(sourceCommit ?? '') || !GIT_OID.test(sourceTree ?? '')) {
     fail('CLOUDFLARE_E_R2_EXPOSURE_REQUEST');
   }
@@ -227,6 +252,7 @@ export function validateR2ExposureEvidence(evidence, {
   expected = {}, now = new Date(), requirePrivate = true, maxLifetimeSeconds = 900,
   maxFutureSkewSeconds = 120,
 } = {}) {
+  const target = exposureTarget(evidence?.environment);
   const keys = ['schemaVersion', 'contract', 'purpose', 'environment', 'bucket',
     'accountIdSha256', 'sourceCommit', 'sourceTree', 'gitCheckCount', 'requestAudit',
     'jurisdiction', 'location', 'storageClass', 'bucketCreatedAt', 'bucketPropertiesSha256',
@@ -234,14 +260,18 @@ export function validateR2ExposureEvidence(evidence, {
     'observedAt', 'expiresAt'];
   if (!exactKeys(evidence, keys) || evidence.schemaVersion !== 1
     || evidence.contract !== 'dwnc-cloudflare-r2-private-exposure-v1'
-    || evidence.purpose !== STAGING_R2_EXPOSURE_PURPOSE
-    || evidence.environment !== 'staging' || evidence.bucket !== STAGING_R2_EXPOSURE_BUCKET
+    || !target || evidence.purpose !== target.purpose || evidence.bucket !== target.bucket
     || !SHA256.test(evidence.accountIdSha256 ?? '')
     || !GIT_OID.test(evidence.sourceCommit ?? '') || !GIT_OID.test(evidence.sourceTree ?? '')
     || evidence.gitCheckCount !== 3
     || evidence.jurisdiction !== STAGING_R2_EXPOSURE_JURISDICTION
-    || evidence.location !== STAGING_R2_EXPOSURE_LOCATION
-    || evidence.storageClass !== STAGING_R2_EXPOSURE_STORAGE_CLASS
+    || typeof evidence.location !== 'string'
+    || !SAFE_BUCKET_PROPERTY.test(evidence.location)
+    || evidence.location !== evidence.location.toLowerCase()
+    || typeof evidence.storageClass !== 'string'
+    || !SAFE_BUCKET_PROPERTY.test(evidence.storageClass)
+    || target.location !== null && evidence.location !== target.location
+    || target.storageClass !== null && evidence.storageClass !== target.storageClass
     || Number.isNaN(Date.parse(evidence.bucketCreatedAt ?? ''))
     || !SHA256.test(evidence.bucketPropertiesSha256 ?? '')
     || typeof evidence.r2DevEnabled !== 'boolean'
@@ -325,8 +355,9 @@ export async function fetchR2ExposureCapture({
   now = () => new Date(),
   ttlSeconds = 900,
 }) {
-  if (purpose !== STAGING_R2_EXPOSURE_PURPOSE || environment !== 'staging'
-    || bucket !== STAGING_R2_EXPOSURE_BUCKET || !ACCOUNT_ID.test(accountId ?? '')
+  const target = exposureTarget(environment);
+  if (!target || purpose !== target.purpose || bucket !== target.bucket
+    || !ACCOUNT_ID.test(accountId ?? '')
     || !SHA256.test(expectedAccountIdSha256 ?? '')
     || cloudflareAccountIdSha256(accountId.toLowerCase()) !== expectedAccountIdSha256
     || !API_TOKEN.test(apiToken ?? '') || !GIT_OID.test(expectedGitCommit ?? '')
@@ -373,8 +404,8 @@ export async function fetchR2ExposureCapture({
   );
   if (bucketProperties.name !== bucket
     || bucketProperties.jurisdiction !== STAGING_R2_EXPOSURE_JURISDICTION
-    || bucketProperties.location !== STAGING_R2_EXPOSURE_LOCATION
-    || bucketProperties.storageClass !== STAGING_R2_EXPOSURE_STORAGE_CLASS) {
+    || target.location !== null && bucketProperties.location !== target.location
+    || target.storageClass !== null && bucketProperties.storageClass !== target.storageClass) {
     fail('CLOUDFLARE_E_R2_EXPOSURE_EXPECTED');
   }
   const managedRawBody = await read(`${bucketUrl}/domains/managed`, requestAudit.requests[1]);

@@ -74,6 +74,10 @@ assert.equal(buildR2RunnerInvocation('staging-sync', ['--apply']).args
   .filter((value) => value === '--apply').length, 1);
 assert.deepEqual(buildR2RunnerInvocation('staging-audit-full', ['--concurrency=2']).args,
   ['--environment=staging', '--concurrency=2']);
+assert.deepEqual(buildR2RunnerInvocation('production-sync', ['--apply']).args,
+  ['--environment=production', '--apply']);
+assert.deepEqual(buildR2RunnerInvocation('production-audit-full', ['--concurrency=2']).args,
+  ['--environment=production', '--concurrency=2']);
 const validatorInspection = buildR2RunnerInvocation('staging-inspect', [
   '--concurrency=16', `--expected-manifest-sha256=${tracked.manifestSha256}`,
   `--expected-git-commit=${'a'.repeat(40)}`, `--expected-git-tree=${'b'.repeat(40)}`,
@@ -126,7 +130,7 @@ assert.deepEqual({
   ],
 });
 assert.equal(assertR2RunnerCredentialEnvironment({ PATH: '/safe/bin' }), true);
-assertions += 7;
+assertions += 9;
 throwsCode(() => buildR2RunnerInvocation('staging-sync', ['--environment=production']),
   'MEDIA_E_R2_RUNNER_TARGET');
 throwsCode(() => buildR2RunnerInvocation('staging-sync', ['--environment=staging']),
@@ -134,6 +138,10 @@ throwsCode(() => buildR2RunnerInvocation('staging-sync', ['--environment=staging
 throwsCode(() => buildR2RunnerInvocation('staging-sync', ['--apply', '--apply']),
   'MEDIA_E_R2_RUNNER_APPLY');
 throwsCode(() => buildR2RunnerInvocation('staging-audit-full', ['--apply']),
+  'MEDIA_E_R2_RUNNER_APPLY');
+throwsCode(() => buildR2RunnerInvocation('production-sync', ['--environment=staging']),
+  'MEDIA_E_R2_RUNNER_TARGET');
+throwsCode(() => buildR2RunnerInvocation('production-audit-full', ['--apply']),
   'MEDIA_E_R2_RUNNER_APPLY');
 throwsCode(() => buildR2RunnerInvocation('staging-inspect', ['--apply']),
   'MEDIA_E_R2_RUNNER_APPLY');
@@ -177,7 +185,13 @@ assert.equal(packageJson.scripts['media:r2:staging:inspect:secure'],
   'node scripts/run-with-r2-credentials.mjs --command=staging-inspect --');
 assert.equal(packageJson.scripts['media:r2:staging:validate-one:secure'],
   'node scripts/run-with-r2-credentials.mjs --command=staging-validate-one --');
-assertions += 2;
+assert.equal(packageJson.scripts['media:r2:production:sync:secure'],
+  'node scripts/run-with-r2-credentials.mjs --command=production-sync --');
+assert.equal(packageJson.scripts['media:r2:production:audit:full:secure'],
+  'node scripts/run-with-r2-credentials.mjs --command=production-audit-full --');
+assert.equal(packageJson.scripts['cloudflare:r2:production:exposure:fetch'],
+  'node scripts/run-cloudflare-read-control-plane.mjs --command=production-r2-exposure');
+assertions += 5;
 const releasePolicy = await loadTrackedPublicMediaReleasePolicy(ROOT);
 assert.equal(releasePolicy.production.bucket, 'dwnc-me-public-media-production');
 assert.equal(releasePolicy.staging.bucket, 'dwnc-me-public-media-staging');
@@ -263,6 +277,15 @@ await spawnFailure('scripts/sync-public-media-r2.mjs', ['--environment=productio
   }, {
     ...validSyntheticR2Environment, bucket: 'dwnc-me-public-media-production',
   });
+await spawnFailure('scripts/audit-public-media-r2-full.mjs', [
+  '--environment=production', `--expected-manifest-sha256=${tracked.manifestSha256}`,
+  '--expected-orphan-count=0', `--expected-git-commit=${'a'.repeat(40)}`,
+  `--expected-git-tree=${'b'.repeat(40)}`,
+  '--bucket-exposure-capture=/tmp/dwnc-production-exposure.json',
+  '--receipt-output=/tmp/dwnc-production-audit.json',
+], 'MEDIA_E_FULL_AUDIT_ROLE', {
+  R2_RUNNER_ENVIRONMENT: 'staging', R2_RUNNER_ROLE: 'validator',
+});
 await spawnFailure('scripts/sync-public-media-r2.mjs', [
   '--apply', '--environment=staging', `--expected-manifest-sha256=${'0'.repeat(64)}`,
   '--expected-orphan-count=0', '--receipt-output=/tmp/dwnc-synthetic-apply-receipt.json',

@@ -14,14 +14,29 @@ import {
   loadCloudflareAccountTarget,
   MacOSSingleReadClipboard,
 } from './lib/cloudflare-account-target.mjs';
-import { parseStagingR2ExposureCommand } from './lib/cloudflare-r2-exposure-command.mjs';
+import { parseR2ExposureCommand } from './lib/cloudflare-r2-exposure-command.mjs';
+import { R2_EXPOSURE_TARGETS } from './lib/cloudflare-r2-exposure.mjs';
 import { assertSecureCreateOnlyDestination } from './lib/cloudflare-signing-key.mjs';
 import { loadTrackedPublicMediaReleasePolicy } from './lib/public-media-manifest.mjs';
 
 const commands = Object.freeze({
   'staging-r2-exposure': {
+    environment: 'staging',
     script: 'scripts/fetch-public-media-r2-exposure.mjs',
     args: ['--purpose=staging-r2-private-exposure-read'],
+    outputVariables: [
+      'CLOUDFLARE_R2_EXPOSURE_CAPTURE_PATH',
+      'CLOUDFLARE_R2_EXPOSURE_EVIDENCE_PATH',
+    ],
+    requiredVariables: [
+      'CLOUDFLARE_R2_EXPOSURE_EXPECTED_GIT_COMMIT',
+      'CLOUDFLARE_R2_EXPOSURE_EXPECTED_GIT_TREE',
+    ],
+  },
+  'production-r2-exposure': {
+    environment: 'production',
+    script: 'scripts/fetch-public-media-r2-exposure.mjs',
+    args: ['--purpose=production-r2-private-exposure-read'],
     outputVariables: [
       'CLOUDFLARE_R2_EXPOSURE_CAPTURE_PATH',
       'CLOUDFLARE_R2_EXPOSURE_EVIDENCE_PATH',
@@ -96,21 +111,23 @@ export async function runCloudflareReadControlPlane({
       outputEnvironment[name] = value;
     }
     const policy = await loadPolicy(root);
-    const target = policy?.staging;
-    if (target?.environment !== 'staging'
-      || target?.bucket !== 'dwnc-me-public-media-staging'
+    const configuredTarget = R2_EXPOSURE_TARGETS[selected.environment];
+    const target = policy?.[selected.environment];
+    if (!configuredTarget || target?.environment !== selected.environment
+      || target?.bucket !== configuredTarget.bucket
       || typeof target?.accountIdSha256 !== 'string') {
       throw new Error('CLOUDFLARE_E_CONTROL_RUNNER_TARGET');
     }
-    if (argument === '--command=staging-r2-exposure') {
-      const parsed = parseStagingR2ExposureCommand({
-        argv: selected.args, environment: { ...environment, ...outputEnvironment }, root,
-      });
-      await Promise.all([
-        assertDestination(parsed.capturePath),
-        assertDestination(parsed.evidencePath),
-      ]);
+    const parsed = parseR2ExposureCommand({
+      argv: selected.args, environment: { ...environment, ...outputEnvironment }, root,
+    });
+    if (parsed.environment !== selected.environment) {
+      throw new Error('CLOUDFLARE_E_CONTROL_RUNNER_TARGET');
     }
+    await Promise.all([
+      assertDestination(parsed.capturePath),
+      assertDestination(parsed.evidencePath),
+    ]);
     const loadedAccountTarget = await loadAccountTarget({
       metadataPath: selectedAccountTargetMetadataPath,
       expectedAccountIdSha256: target.accountIdSha256,
