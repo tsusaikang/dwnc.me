@@ -38,6 +38,7 @@ import {
   STAGING_R2_EXPOSURE_RECOVERY_PURPOSE,
 } from './lib/cloudflare-r2-exposure-command.mjs';
 import { writeCanonicalEvidenceCreateOnly } from './lib/cloudflare-signing-key.mjs';
+import { sha256Hex } from './lib/cloudflare-release.mjs';
 import { cloudflareAccountIdSha256 } from './lib/public-media-manifest.mjs';
 
 const accountId = 'a'.repeat(32);
@@ -157,6 +158,7 @@ validateR2ExposureCapture(capture, {
   now,
 });
 assertions += 1;
+
 equal(capture.evidence.gitCheckCount, 3);
 equal(capture.evidence.location, 'apac');
 equal(capture.evidence.storageClass, 'Standard');
@@ -268,6 +270,25 @@ validateR2ExposureCapture(productionCapture, {
 });
 assertions += 1;
 
+const noUpdateManaged = '\n ⛅️ wrangler 4.125.0\n────────────────────\n'
+  + 'Public access via the r2.dev URL is disabled.\n';
+const noUpdateCustom = '\n ⛅️ wrangler 4.125.0\n────────────────────\n'
+  + `Listing custom domains connected to bucket '${PRODUCTION_R2_EXPOSURE_BUCKET}'...\n`
+  + 'There are no custom domains connected to this bucket.\n';
+validateR2ExposureCapture({
+  ...productionCapture,
+  managedRawBody: noUpdateManaged,
+  managedRawBodySha256: sha256Hex(noUpdateManaged),
+  customRawBody: noUpdateCustom,
+  customRawBodySha256: sha256Hex(noUpdateCustom),
+  evidence: {
+    ...productionCapture.evidence,
+    managedDomainSha256: sha256Hex(noUpdateManaged),
+    customDomainsSha256: sha256Hex(noUpdateCustom),
+  },
+}, { now });
+assertions += 1;
+
 async function rejectProductionOutputs(outputs, code, environmentVariables = {
   PATH: '/usr/bin:/bin', HOME: '/synthetic/oauth-home',
 }) {
@@ -303,6 +324,17 @@ equal(await rejectProductionOutputs([
 ], 'CLOUDFLARE_E_R2_EXPOSURE_PUBLIC'), 3);
 equal(await rejectProductionOutputs([
   productionOutputs[0], '\n ⛅️ wrangler 4.125.1\n────────────────────\n'
+    + 'Public access via the r2.dev URL is disabled.\n',
+  productionOutputs[2],
+], 'CLOUDFLARE_E_R2_EXPOSURE_RESPONSE'), 3);
+equal(await rejectProductionOutputs([
+  productionOutputs[0], '\n ⛅️ wrangler 4.125.0 (preview)\n──────────────────────────────\n'
+    + 'Public access via the r2.dev URL is disabled.\n',
+  productionOutputs[2],
+], 'CLOUDFLARE_E_R2_EXPOSURE_RESPONSE'), 3);
+equal(await rejectProductionOutputs([
+  productionOutputs[0], '\n ⛅️ wrangler 4.125.0 (update available 4.129.0)\n'
+    + '──────────────────────────────────────────────\n'
     + 'Public access via the r2.dev URL is disabled.\n',
   productionOutputs[2],
 ], 'CLOUDFLARE_E_R2_EXPOSURE_RESPONSE'), 3);

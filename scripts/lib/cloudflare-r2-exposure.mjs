@@ -19,8 +19,11 @@ const SAFE_BUCKET_PROPERTY = /^[A-Za-z0-9_-]{1,64}$/u;
 const REQUEST_METHOD_KEYS = Object.freeze(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE']);
 const MAXIMUM_RESPONSE_BODY_BYTES = 1024 * 1024;
 const WRANGLER_BANNER_TEXT = ` ⛅️ wrangler ${PINNED_WRANGLER_VERSION}`;
-const WRANGLER_BANNER = `\n${WRANGLER_BANNER_TEXT}\n`
-  + `${'─'.repeat(WRANGLER_BANNER_TEXT.length)}\n`;
+const WRANGLER_UPDATE_BANNER = new RegExp(
+  `^${WRANGLER_BANNER_TEXT.replaceAll('.', '\\.')}`
+    + ' \\(update available (?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\)$',
+  'u',
+);
 
 export const STAGING_R2_EXPOSURE_PURPOSE = 'staging-r2-private-exposure-read';
 export const STAGING_R2_EXPOSURE_BUCKET = 'dwnc-me-public-media-staging';
@@ -392,17 +395,27 @@ function parseProductionBucketInfo(rawBody) {
   };
 }
 
+function stripOfficialWranglerBanner(rawBody) {
+  if (!rawBody.startsWith('\n')) return rawBody;
+  const bannerEnd = rawBody.indexOf('\n', 1);
+  const dividerEnd = bannerEnd === -1 ? -1 : rawBody.indexOf('\n', bannerEnd + 1);
+  if (bannerEnd === -1 || dividerEnd === -1) return rawBody;
+  const banner = rawBody.slice(1, bannerEnd);
+  const divider = rawBody.slice(bannerEnd + 1, dividerEnd);
+  if (banner !== WRANGLER_BANNER_TEXT && !WRANGLER_UPDATE_BANNER.test(banner)) return rawBody;
+  if (divider !== '─'.repeat(banner.length)) return rawBody;
+  return rawBody.slice(dividerEnd + 1);
+}
+
 function parseProductionManagedOutput(rawBody) {
-  const output = (rawBody.startsWith(WRANGLER_BANNER)
-    ? rawBody.slice(WRANGLER_BANNER.length) : rawBody).trim();
+  const output = stripOfficialWranglerBanner(rawBody).trim();
   if (output === 'Public access via the r2.dev URL is disabled.') return { enabled: false };
   if (/^Public access is enabled at 'https:\/\/[^']+'\.$/u.test(output)) return { enabled: true };
   fail('CLOUDFLARE_E_R2_EXPOSURE_RESPONSE');
 }
 
 function parseProductionCustomDomainsOutput(rawBody, bucket) {
-  const output = (rawBody.startsWith(WRANGLER_BANNER)
-    ? rawBody.slice(WRANGLER_BANNER.length) : rawBody).trim();
+  const output = stripOfficialWranglerBanner(rawBody).trim();
   const empty = `Listing custom domains connected to bucket '${bucket}'...\n`
     + 'There are no custom domains connected to this bucket.';
   if (output === empty) return { domains: [] };
