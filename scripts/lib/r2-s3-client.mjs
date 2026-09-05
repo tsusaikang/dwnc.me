@@ -312,7 +312,7 @@ export class R2S3Client {
     if (typeof fetchImpl !== 'function' || typeof now !== 'function' || typeof delay !== 'function'
       || !Number.isSafeInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 8
       || !Number.isSafeInteger(timeoutMilliseconds)
-      || timeoutMilliseconds < 1 || timeoutMilliseconds > 120_000
+      || timeoutMilliseconds < 1 || timeoutMilliseconds > 900_000
       || deadlineMilliseconds !== null
         && (!Number.isSafeInteger(deadlineMilliseconds) || deadlineMilliseconds < 1)) {
       fail('MEDIA_E_R2_CONFIG');

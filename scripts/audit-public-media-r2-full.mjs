@@ -36,6 +36,10 @@ import {
 
 const ROOT = process.cwd();
 const OFFLINE_BOUNDARY_SYMBOL = Symbol.for('dwnc.r2-full-audit.offline-boundary.v1');
+const FULL_AUDIT_TIMEOUT_MILLISECONDS = Object.freeze({
+  staging: 120_000,
+  production: 900_000,
+});
 installStructuredErrorHandler('media-r2-full-audit');
 
 function parseArguments(argv) {
@@ -137,9 +141,10 @@ const bucketExposure = remoteReceiptBucketExposure(exposureCapture, {
   maxLifetimeSeconds: targetPolicy.maxBucketExposureAgeSeconds,
   maxFutureSkewSeconds: targetPolicy.maxBucketExposureFutureSkewSeconds,
 });
+const objectTimeoutMilliseconds = FULL_AUDIT_TIMEOUT_MILLISECONDS[options.environment];
 const client = r2ClientFromCredentials(r2Credentials, {
   maxAttempts: 3,
-  timeoutMilliseconds: 120_000,
+  timeoutMilliseconds: objectTimeoutMilliseconds,
 });
 if (options.expectedOrphanCount !== targetPolicy.approvedOrphanCount) {
   throw new Error('MEDIA_E_ORPHAN_APPROVAL');
@@ -197,6 +202,7 @@ const fixtureCounters = typeof offlineBoundary?.snapshot === 'function'
 console.log(JSON.stringify({
   validationScope: 'public-media-remote-full-get',
   environment: options.environment,
+  objectTimeoutMilliseconds,
   manifestSha256: manifest.manifestSha256,
   objects: fullAudit.objectCount,
   bytes: fullAudit.totalBytes,

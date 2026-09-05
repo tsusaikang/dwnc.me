@@ -22,6 +22,7 @@ import {
   canonicalR2ExposureCapturePayload,
   PRODUCTION_R2_EXPOSURE_BUCKET,
   PRODUCTION_R2_EXPOSURE_PURPOSE,
+  productionR2ExposureRequestAudit,
   r2ExposureRequestAudit,
   r2ExposureRequestSha256,
   STAGING_R2_EXPOSURE_BUCKET,
@@ -476,7 +477,15 @@ function createPrivateExposureCapture({
   location = STAGING_R2_EXPOSURE_LOCATION,
   storageClass = STAGING_R2_EXPOSURE_STORAGE_CLASS,
 }) {
-  const bucketRawBody = JSON.stringify({
+  const production = targetEnvironment === 'production';
+  const bucketRawBody = production ? JSON.stringify({
+    name: bucket,
+    created: '2026-08-27T00:00:00.000Z',
+    location: location.toUpperCase(),
+    default_storage_class: storageClass,
+    object_count: '2758',
+    bucket_size: '2.35 GB',
+  }) : JSON.stringify({
     success: true,
     errors: [],
     messages: [],
@@ -488,12 +497,13 @@ function createPrivateExposureCapture({
       storage_class: storageClass,
     },
   });
-  const managedRawBody = JSON.stringify({
-    success: true, errors: [], messages: [], result: { enabled: false },
-  });
-  const customRawBody = JSON.stringify({
-    success: true, errors: [], messages: [], result: { domains: [] },
-  });
+  const managedRawBody = production
+    ? 'Public access via the r2.dev URL is disabled.\n'
+    : JSON.stringify({ success: true, errors: [], messages: [], result: { enabled: false } });
+  const customRawBody = production
+    ? `Listing custom domains connected to bucket '${bucket}'...\n`
+      + 'There are no custom domains connected to this bucket.\n'
+    : JSON.stringify({ success: true, errors: [], messages: [], result: { domains: [] } });
   const observed = new Date(Date.now() - 1000);
   const evidence = {
     schemaVersion: 1,
@@ -505,7 +515,8 @@ function createPrivateExposureCapture({
     sourceCommit,
     sourceTree,
     gitCheckCount: 3,
-    requestAudit: r2ExposureRequestAudit(bucket),
+    requestAudit: production
+      ? productionR2ExposureRequestAudit(bucket) : r2ExposureRequestAudit(bucket),
     jurisdiction: STAGING_R2_EXPOSURE_JURISDICTION,
     location,
     storageClass,
@@ -687,10 +698,12 @@ try {
   equal(auditEntrypointSource.includes('deadlineMilliseconds'), false);
   equal(auditEntrypointSource.includes('assertBeforeDeadline'), false);
   equal(auditEntrypointSource.includes('now: receiptVerifiedAt'), false);
+  equal(auditEntrypointSource.includes('staging: 120_000,'), true);
+  equal(auditEntrypointSource.includes('production: 900_000,'), true);
   equal(auditEntrypointSource.includes([
     'r2ClientFromCredentials(r2Credentials, {',
     '  maxAttempts: 3,',
-    '  timeoutMilliseconds: 120_000,',
+    '  timeoutMilliseconds: objectTimeoutMilliseconds,',
     '})',
   ].join('\n')), true);
   await git(fixtureRoot, gitEnvironment, ['init', '-q', `--template=${gitTemplate}`]);
@@ -884,6 +897,7 @@ try {
   equal({
     validationScope: entrypointSummary.validationScope,
     environment: entrypointSummary.environment,
+    objectTimeoutMilliseconds: entrypointSummary.objectTimeoutMilliseconds,
     manifestSha256: entrypointSummary.manifestSha256,
     objects: entrypointSummary.objects,
     bytes: entrypointSummary.bytes,
@@ -900,6 +914,7 @@ try {
   }, {
     validationScope: 'public-media-remote-full-get',
     environment: 'staging',
+    objectTimeoutMilliseconds: 120_000,
     manifestSha256: PUBLIC_MEDIA_BASELINE_SHA256,
     objects: PUBLIC_MEDIA_BASELINE_OBJECTS,
     bytes: PUBLIC_MEDIA_BASELINE_BYTES,
@@ -1022,6 +1037,7 @@ try {
   equal(productionRun.code, 0, `${productionRun.stdout}\n${productionRun.stderr}`);
   const productionEntrypointSummary = JSON.parse(productionRun.stdout);
   equal(productionEntrypointSummary.environment, 'production');
+  equal(productionEntrypointSummary.objectTimeoutMilliseconds, 900_000);
   equal(productionEntrypointSummary.requestCounts.PUT, 0);
   equal(productionEntrypointSummary.requestCounts.DELETE, 0);
   const productionReceipt = JSON.parse(await readFile(productionReceiptPath, 'utf8'));
