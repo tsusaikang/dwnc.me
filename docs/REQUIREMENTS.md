@@ -23,7 +23,7 @@
 - 시험용 주소에서 글, 예전 주소 349개, 사진 표시와 부분 전송을 모두 확인한 뒤 운영용 구성을 준비한다.
 - 실제 `dwnc.me` 주소를 새 production Worker에 연결하고 실제 주소에서 대표 글·예전 주소·사진·모바일과 데스크톱 화면을 확인했다.
 
-현재 콘텐츠 보존과 독립 사이트 구현, Cloudflare staging·production R2의 파일 2,758개 전수 확인, production Worker version 활성화, 실제 도메인 연결과 대표 화면 확인까지 완료됐다. **새 사이트는 현재 `dwnc.me`에서 운영 중이다.** 사용자는 새 글 작성 방식으로 Cloudflare 로그인을 거치는 웹 편집기를 선택했고, 해당 편집기의 로컬 구현과 시험을 완료했다. staging·production D1과 각각의 별도 private R2를 만들고 두 D1에 초기 구조도 적용했다. Zero Trust Free plan도 활성화됐고 오늘 결제액은 $0이며, 무료 한도 초과 시 등록 카드에 요금이 청구될 수 있다는 조건을 사용자가 승인했다. production public Worker의 새 version은 준비했지만 현재 방문자에게는 아직 적용하지 않았다. 관리자 로그인은 Cloudflare 이메일 OTP로 확정했고 `admin.dwnc.me` Access 앱·한 명의 허용 사용자·OTP 전용 로그인을 설정했다. 관리자 Worker 최초 생성·비활성 version·route, 준비된 public version의 공개 전환과 비공개 자료의 백업·복구 방식은 다음 단계로 남아 있다. 근거는 [`PROJECT_STATE.md`](../PROJECT_STATE.md), [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md), [`URL_CONTRACT.md`](URL_CONTRACT.md)에 나누어 기록한다.
+현재 콘텐츠 보존과 독립 사이트 구현, Cloudflare staging·production R2의 파일 2,758개 전수 확인, production Worker version 활성화, 실제 도메인 연결과 대표 화면 확인까지 완료됐다. **새 사이트는 현재 `dwnc.me`에서 운영 중이다.** 사용자는 새 글 작성 방식으로 Cloudflare 로그인을 거치는 웹 편집기를 선택했고, 해당 편집기의 로컬 구현과 시험을 완료했다. staging·production D1과 각각의 별도 private R2를 만들고 두 D1에 초기 구조도 적용했다. Zero Trust Free plan도 활성화됐고 오늘 결제액은 $0이며, 무료 한도 초과 시 등록 카드에 요금이 청구될 수 있다는 조건을 사용자가 승인했다. 관리자 로그인은 Cloudflare 이메일 OTP로 확정했고 `admin.dwnc.me` Access 앱·한 명의 허용 사용자·OTP 전용 로그인, 관리자 Worker와 주소 연결까지 완료했다. 실제 주소에서 이메일 코드 전송까지 확인했고 사용자의 직접 OTP 입력을 기다린다. production public Worker의 새 version은 아직 현재 방문자에게 적용하지 않아 기존 공개 사이트에는 영향이 없다. 관리자 로그인 후 확인, 준비된 public version의 공개 전환과 비공개 자료의 백업·복구 방식은 다음 단계로 남아 있다. 근거는 [`PROJECT_STATE.md`](../PROJECT_STATE.md), [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md), [`URL_CONTRACT.md`](URL_CONTRACT.md)에 나누어 기록한다.
 
 ### 전체 계획
 
@@ -42,9 +42,9 @@
 
 ### 현재 위치
 
-**현재 진행 중인 계획은 `PLAN-09` 하나다.** 기존 1–596번 글과 현재 운영 화면은 그대로 유지한 채, Cloudflare 로그인형 웹 편집기의 로컬 코드·DB 구조·설정과 시험, Zero Trust Free 활성화, staging·production D1·private R2 생성과 두 D1 migration 적용을 마쳤다. production public Worker의 새 version도 올렸지만 방문자 traffic에는 적용하지 않았다. 이메일 OTP Access 앱과 production 관리자 인증 설정은 완료했고, 관리자 Worker 최초 생성·비활성 version·route 연결이 남아 있다.
+**현재 진행 중인 계획은 `PLAN-09` 하나다.** 기존 1–596번 글과 현재 운영 화면은 그대로 유지한 채, Cloudflare 로그인형 웹 편집기의 로컬 코드·DB 구조·설정과 시험, Zero Trust Free 활성화, staging·production D1·private R2 생성과 두 D1 migration 적용을 마쳤다. 이메일 OTP Access 앱, production 관리자 Worker 활성화와 `admin.dwnc.me` 연결도 완료했고 이메일 코드 전송까지 확인했다. production public Worker의 새 version은 올렸지만 방문자 traffic에는 적용하지 않았다.
 
-사용자에게 이는 **현재 운영 사이트를 바꾸지 않은 채 웹 편집기의 데이터 저장소·로그인 제한과 공개용 새 프로그램까지 준비됐다는 뜻**이다. 다음에는 관리자 Worker를 route 없이 최초 생성하고 비활성 version을 올린 뒤 `admin.dwnc.me` route를 붙인다. 그 뒤 준비된 public version을 실제 방문자에게 적용하면 웹에서 작성한 글이 즉시 공개될 수 있다. 비공개 자료 백업 방식은 그와 별도로 사용자가 결정한다.
+사용자에게 이는 **현재 운영 사이트를 바꾸지 않은 채 웹 편집기의 데이터 저장소·로그인 제한·관리자 주소와 공개용 새 프로그램까지 준비됐다는 뜻**이다. 다음에는 사용자가 이메일 OTP를 직접 입력해 관리자 화면과 작성 API를 확인한다. 그 뒤 준비된 public version을 실제 방문자에게 적용하면 웹에서 작성한 글이 즉시 공개될 수 있다. 비공개 자료 백업 방식은 그와 별도로 사용자가 결정한다.
 
 ### 미디어 정리 결과
 
@@ -61,16 +61,15 @@
 
 ### 아직 결정할 일과 진행을 막는 조건
 
-1. `PLAN-08` 운영 전환은 완료됐다. 로그인형 웹 편집기의 로컬 구현·시험, Zero Trust Free 활성화, staging·production D1·private R2 생성·초기 migration, production public Worker의 비활성 새 version, 이메일 OTP Access 앱과 production 관리자 인증 설정도 완료했다. 관리자 Worker 최초 생성·비활성 version·route, 준비된 public version의 공개 전환과 비공개 자료의 백업·복구 방식이 남아 있다.
+1. `PLAN-08` 운영 전환은 완료됐다. 로그인형 웹 편집기의 로컬 구현·시험, Zero Trust Free 활성화, staging·production D1·private R2 생성·초기 migration, 이메일 OTP Access 앱과 production 관리자 Worker·주소 연결도 완료했다. 관리자 로그인 후 확인, 준비된 public version의 공개 전환과 비공개 자료의 백업·복구 방식이 남아 있다.
 2. 공유·스크랩 글 10개, 과거 댓글과 추가 개선은 사용자가 원할 때 정하는 후속 선택이다.
 
 ### 바로 다음 작업
 
-1. Dashboard에서 route와 traffic이 없는 `dwnc-me-admin` Worker를 최초 생성한다.
-2. 현재 production 관리자 설정으로 비활성 version을 올리고 활성화한 뒤 `admin.dwnc.me/*` Worker route와 Proxied DNS를 연결한다.
-3. 준비된 public Worker version의 공개 전환은 실제 방문자 traffic 변경이므로 그 경계에서 사용자 확인 후 적용한다. 비공개 자료 백업·복구 방식은 별도 사용자 결정으로 남긴다. 저장소 파일 덮어쓰기·삭제와 Git push는 별도 승인 없이 진행하지 않는다.
+1. 사용자가 전송된 이메일 OTP를 직접 입력하고 관리자 화면·작성 API를 확인한다.
+2. 준비된 public Worker version의 공개 전환은 실제 방문자 traffic 변경이므로 그 경계에서 사용자 확인 후 적용한다. 비공개 자료 백업·복구 방식은 별도 사용자 결정으로 남긴다. 저장소 파일 덮어쓰기·삭제와 Git push는 별도 승인 없이 진행하지 않는다.
 
-현재 `PLAN-05`부터 `PLAN-08`까지와 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`는 완료됐다. `PLAN-09`는 로컬 구현·시험, Zero Trust Free 활성화, staging·production D1·private R2·초기 migration, production public Worker 비활성 version, 이메일 OTP Access 앱과 production 관리자 인증 설정까지 완료했고 admin Worker 최초 생성·version·route, public promotion과 비공개 백업 방식 결정을 기다린다.
+현재 `PLAN-05`부터 `PLAN-08`까지와 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`는 완료됐다. `PLAN-09`는 로컬 구현·시험, Zero Trust Free 활성화, staging·production D1·private R2·초기 migration, 이메일 OTP Access 앱과 production 관리자 Worker·주소 연결까지 완료했고 사용자 OTP 입력·관리자 화면 확인, public promotion과 비공개 백업 방식 결정을 기다린다.
 
 ### 최근 완료
 
@@ -148,7 +147,7 @@
   - 공개 Worker에는 쓰기 API가 없고, 발행된 글은 홈·아카이브·카테고리·태그·검색·RSS·사이트맵에 재배포 없이 반영된다.
 - **Evidence:**
   - [`URL_CONTRACT.md`](URL_CONTRACT.md)의 597 이후 D1 순번 계약과 [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 신규 native 미디어 경계.
-  - Zero Trust Free plan과 staging·production 데이터 저장소는 준비됐고 production public Worker의 새 version은 traffic을 바꾸지 않은 채 업로드됐다. 이메일 OTP Access 앱과 production 관리자 인증 설정은 완료했으며 admin Worker 최초 생성·version·route와 public promotion은 남아 있다.
+  - Zero Trust Free plan과 staging·production 데이터 저장소는 준비됐고 production public Worker의 새 version은 traffic을 바꾸지 않은 채 업로드됐다. 이메일 OTP Access 앱과 production 관리자 Worker·주소 연결은 완료했으며 사용자 OTP 입력 뒤 관리자 화면 확인과 public promotion은 남아 있다.
 
 ### `DWNC-OPS-003` — 댓글과 private backup 정책 결정
 - **Status:** `decision-needed`

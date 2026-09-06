@@ -1,6 +1,6 @@
 # dwnc.me 프로젝트 공식 상태
 
-최종 갱신: 2026-09-06 KST — PLAN-05부터 PLAN-08까지 완료 / PLAN-09 이메일 OTP Access 설정·관리자 production 설정 완료, 관리자 Worker 최초 생성·route·공개 전환 전
+최종 갱신: 2026-09-06 KST — PLAN-05부터 PLAN-08까지 완료 / PLAN-09 관리자 Worker·Access·주소 연결 완료, 사용자 OTP 입력·관리자 화면 확인·공개 Worker 전환 전
 
 사용자가 확인할 현재 목표·결정·진행을 막는 조건·다음 단계와 stable requirement ID는 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)를 기준으로 한다. 이 문서는 구현 세부사항, 검증 수치, Git·Cloudflare 상태 재확인 결과와 인수인계를 보존하는 기술 기준점이다. 완료 이력은 요구사항 원장의 보관 정책에 따라 [`docs/REQUIREMENTS_ARCHIVE.md`](docs/REQUIREMENTS_ARCHIVE.md)로 이동하되 이 기술 증거를 삭제하지 않는다.
 
@@ -8,7 +8,7 @@
 
 네이버 블로그 `blog.naver.com/tsusai`와 티스토리 기반 `dwnc.me`의 직접 작성 콘텐츠를 소유자가 통제하는 새 블로그로 이전한다. 원문, 이미지, 게시일, 카테고리, 태그, 기존 주소, 공개 범위를 보존하며 이후 새 글도 지속해서 작성할 수 있어야 한다.
 
-비개발자용 현재 요약: `PLAN-08` 운영 전환과 실제 화면 확인은 완료됐다. 사용자는 저장소를 직접 고치거나 재배포하는 방식 대신 Cloudflare 로그인형 웹 편집기를 선택했다. 별도 관리자 화면의 로컬 구현·시험을 마쳤고 staging·production D1과 각각의 별도 private R2를 만든 뒤 두 D1에 초기 구조를 적용했다. 첫 발행은 597번부터 DB에서 한 번만 배정하며, 공개 글은 재배포 없이 홈·아카이브·카테고리·태그·검색·RSS·사이트맵에 나타나게 한다. 기존 1–596번 글과 2,758개 미디어는 바꾸지 않는다. Zero Trust Free plan은 활성화됐고 오늘 결제액은 $0이다. 사용자는 무료 한도를 넘으면 등록 카드에 요금이 청구될 수 있다는 조건을 승인했다. production public Worker의 새 version은 올렸지만 이용자 traffic에는 아직 적용하지 않았다. 관리자 로그인은 Google OAuth 대신 Cloudflare 이메일 OTP로 확정했고 `admin.dwnc.me` Access 앱, 한 명의 허용 사용자, OTP 전용 로그인과 즉시 인증 설정을 완료했다. 관리자 Worker의 production 인증 설정도 완료했지만 Worker 자체가 아직 없어 version-only 업로드는 실행되지 않았다. 따라서 관리자 Worker 최초 생성과 비활성 version 업로드, route 연결, 공개용 새 version의 공개 전환이 남아 있다.
+비개발자용 현재 요약: `PLAN-08` 운영 전환과 실제 화면 확인은 완료됐다. 사용자는 저장소를 직접 고치거나 재배포하는 방식 대신 Cloudflare 로그인형 웹 편집기를 선택했다. 별도 관리자 화면의 로컬 구현·시험을 마쳤고 staging·production D1과 각각의 별도 private R2를 만든 뒤 두 D1에 초기 구조를 적용했다. 첫 발행은 597번부터 DB에서 한 번만 배정하며, 공개 글은 재배포 없이 홈·아카이브·카테고리·태그·검색·RSS·사이트맵에 나타나게 한다. 기존 1–596번 글과 2,758개 미디어는 바꾸지 않는다. Zero Trust Free plan은 활성화됐고 오늘 결제액은 $0이다. 사용자는 무료 한도를 넘으면 등록 카드에 요금이 청구될 수 있다는 조건을 승인했다. 관리자 로그인은 Cloudflare 이메일 OTP로 확정했고 `admin.dwnc.me` Access 앱, 한 명의 허용 사용자, OTP 전용 로그인과 즉시 인증을 적용했다. 관리자 Worker의 production 버전을 100% 활성화하고 route와 Proxied DNS까지 연결했으며 실제 주소에서 이메일 코드 입력 화면과 코드 전송까지 확인했다. 지금은 사용자의 직접 OTP 입력만 기다린다. production public Worker의 새 version은 아직 이용자 traffic에 적용하지 않아 기존 공개 사이트에는 영향이 없다.
 
 전체 프로젝트 완료 조건은 다음과 같다.
 
@@ -40,7 +40,7 @@
 - 공개 URL registry: **imported 349 + native 증분 계약, 현재 collision 0**
 - 공개 본문 legacy 링크 호환: **75개 canonical 변환, unavailable 2개 중립화, Naver platform anchor 0, broken local 0**
 - 전역 순번 bootstrap: **596건(공개 349 + 비공개 예약 247), 1–596, next 597, 감사 digest 2종 PASS**
-- 웹 편집기: **Access JWT 이중 확인·별도 관리자 Worker·D1 초안/발행/수정·신규 R2 이미지·597 이후 원자적 순번·동적 공개 탐색 로컬 구현 완료 / Zero Trust Free 활성화 / staging·production D1·private R2 생성과 초기 migration 완료 / production public Worker 새 비활성 version 업로드 완료 / 이메일 OTP Access 앱·허용 사용자·production 인증 설정 완료 / admin Worker 최초 생성·version·route와 public promotion 연결 전**
+- 웹 편집기: **Access JWT 이중 확인·별도 관리자 Worker·D1 초안/발행/수정·신규 R2 이미지·597 이후 원자적 순번·동적 공개 탐색 로컬 구현 완료 / Zero Trust Free 활성화 / staging·production D1·private R2 생성과 초기 migration 완료 / 이메일 OTP Access와 admin Worker production version·route·DNS 연결 완료 / OTP 입력·관리자 화면 실제 확인과 public promotion 전**
 - 전역 순번 운영 내구성: **metadata-only sidecar·bootstrap seal·append journal·generation CAS·초기화/교차 파일 transaction·linked stale-transfer recovery, 순수 117 + 실제 CLI 5 fixture PASS**
 - 공개 canonical 전환: **`/posts/{globalSequence}` 349개, legacy alias 349개, private reserved route 0**
 - alias 표현·발견성: **noindex/canonical/refresh/JS/fallback 349/349, 검색·RSS·sitemap 포함 0**
@@ -69,9 +69,9 @@
 - `PLAN-06` 시험용 사이트 프로그램·버전·사이트 점검: **완료**. `DWNC-S3-009`와 `DWNC-S3-010`을 마쳤고, runtime source `05962c4c0872b5234d3a45298ab0e44d123d03da`의 artifact `81cf14fc…`를 version `bb59f4ee-55f5-4626-858b-0653d7e79900`으로 100% 적용해 live 종합 점검을 통과했다.
 - `PLAN-07` 운영용 이름의 Cloudflare 자원·버전 준비: **완료**. private production R2에 2,758개를 create-only로 올리고 전수 감사·서명·production artifact와 비활성 Worker version 준비를 마쳤다. 기존 active version과 production DNS·route·traffic은 바꾸지 않았다.
 - `PLAN-08` 실제 도메인 연결과 운영 전환 검증: **완료**. production version을 100% 활성화하고 기존 DNS를 보존한 Worker route 방식으로 연결한 뒤 실제 주소의 대표 글·예전 주소·미디어·모바일·데스크톱 화면을 확인했다.
-- `PLAN-09` 로그인형 웹 편집기: **로컬 구현·시험, Zero Trust Free 활성화, staging·production D1·private R2·초기 migration, production public Worker 비활성 version 업로드, 이메일 OTP Access 앱·production 인증 설정 완료 / admin Worker 최초 생성·version·route와 공개 전환 대기**. Google OAuth는 사용하지 않는다. `dwnc-me-admin` Worker가 아직 없어 version-only 업로드가 거부됐으므로, traffic과 route가 없는 관리자 Worker를 먼저 생성한 뒤 같은 설정으로 새 version을 올리고 `admin.dwnc.me/*` route를 연결해야 한다. 준비된 public version의 traffic 적용도 남았다. 비공개 백업 방식과 공유 글 10개·댓글·추가 개선은 사용자 선택 후속이다.
+- `PLAN-09` 로그인형 웹 편집기: **로컬 구현·시험, Zero Trust Free 활성화, staging·production D1·private R2·초기 migration, 이메일 OTP Access 앱·production admin Worker 활성화·route·DNS 연결 완료 / OTP 입력·관리자 화면 실제 확인과 공개 Worker 전환 대기**. Google OAuth는 사용하지 않는다. `https://admin.dwnc.me`는 Access 이메일 코드 화면까지 정상 도달했고 코드를 전송했다. 준비된 public Worker 새 version은 아직 traffic에 적용하지 않아 기존 공개 사이트는 그대로다. 비공개 백업 방식과 공유 글 10개·댓글·추가 개선은 사용자 선택 후속이다.
 
-인수인계 상태: `PLAN-05`부터 `PLAN-08`까지와 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`는 완료됐다. production R2는 private이고 2,758개 전수 감사가 통과했으며 production version `476acc86-b11d-4ba4-a699-cb26c551a93d`이 100% 활성 상태다. `dwnc.me/*` Worker route와 기존 Proxied DNS를 통해 새 사이트가 실제 운영 중이다. `PLAN-09`는 Zero Trust Free 활성화, staging·production D1·private R2·초기 migration과 production public Worker version `e24a9644-c9c1-48e0-9378-4cfbb776fdf7`의 version-only 업로드까지 완료했다. 이 새 version은 traffic에 적용하지 않았다. 이메일 OTP Access 앱은 `admin.dwnc.me`에 만들었고 한 명의 허용 사용자·OTP 전용·즉시 인증으로 제한했다. production admin 설정에는 issuer `https://ancient-term-4cf0.cloudflareaccess.com`, audience `e2607628d16bd1707b60ac68a33326591c72c0accf6e5e3da33514ad410555fb`, 허용 이메일 `tsusaikang@gmail.com`을 결속했다. `dwnc-me-admin` Worker가 아직 존재하지 않아 version-only 업로드가 실패했으며 외부 변경은 없었다. 관리자 Worker 최초 생성·비활성 version 업로드·route, public promotion과 비공개 백업 방식 결정을 기다린다.
+인수인계 상태: `PLAN-05`부터 `PLAN-08`까지와 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`는 완료됐다. production R2는 private이고 2,758개 전수 감사가 통과했으며 production version `476acc86-b11d-4ba4-a699-cb26c551a93d`이 100% 활성 상태다. `dwnc.me/*` Worker route와 기존 Proxied DNS를 통해 새 사이트가 실제 운영 중이다. `PLAN-09`는 Zero Trust Free 활성화, staging·production D1·private R2·초기 migration과 production public Worker version `e24a9644-c9c1-48e0-9378-4cfbb776fdf7`의 version-only 업로드까지 완료했다. 이 public 새 version은 traffic에 적용하지 않았다. 이메일 OTP Access 앱은 `admin.dwnc.me`에 만들었고 한 명의 허용 사용자·OTP 전용·즉시 인증으로 제한했다. production admin 설정에는 issuer `https://ancient-term-4cf0.cloudflareaccess.com`, audience `e2607628d16bd1707b60ac68a33326591c72c0accf6e5e3da33514ad410555fb`, 허용 이메일 `tsusaikang@gmail.com`을 결속했다. `dwnc-me-admin` Worker를 최초 생성하고 Worker-level Access를 all traffic에 같은 정책으로 적용했으며 관리자 version `032d817c-4afd-4094-b741-337f64768a2a`을 100% 활성화했다. `admin.dwnc.me/*` route와 Proxied AAAA placeholder DNS를 연결했고 실제 주소에서 이메일 코드 화면과 코드 전송까지 확인했다. 사용자의 직접 OTP 입력·관리자 화면 확인, public promotion과 비공개 백업 방식 결정을 기다린다.
 
 요구사항과 계획의 자세한 연결은 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)를 기준으로 한다. 최종 결과·완료조건·범위·순서·승인 범위가 실제로 바뀔 때만 요구사항 번호, 관련 계획, 우선순위, 완료 기준, 상태와 근거 및 현재 위치를 갱신한다. 단순 질문·설명·진행 확인과 이미 기록된 작업의 계속 지시는 새 요구사항으로 만들지 않는다.
 
@@ -531,7 +531,7 @@
 - 관리자 화면은 새 글, 800ms 자동 임시저장, 미리보기, 발행, 기존 웹 작성 글 수정, 카테고리·태그, 최대 25MiB 이미지 업로드와 Markdown 삽입을 제공한다. 삭제·공개 철회 기능은 이번 범위에 넣지 않았다.
 - 공개 읽기 계층은 597 이후 글과 참조된 native 이미지를 제공하고, 홈·아카이브·카테고리·태그·검색 JSON·RSS·sitemap을 D1의 현재 공개 글로 보강한다. 이미 존재하는 화면은 해당 정적 경로의 원래 HTML·화면별 script·홈 대표 이미지를 그대로 바탕으로 쓰고 목록 부분만 합치며, 아직 정적 화면이 없는 신규 태그·후속 페이지에서만 중립 shell을 사용한다. 기존 1–596번 정적 글, 예전 주소, 기존 2,758개 미디어 전달 코드는 그대로 사용한다.
 - 독립 검토에서 찾은 실제 사용 경로 문제를 보완했다. 공개 글은 제목·본문을 비워 저장할 수 없고, 글 전환 전 저장을 끝내며 저장 중 들어온 마지막 입력도 후속 저장한다. 이미지는 실제로 렌더되는 본문 이미지 또는 대표 이미지만 공개한다. 기존 글과 신규 글을 합친 홈·목록·태그·검색·RSS는 기존 페이지 크기·개수·연도·정확한 태그 이름 충돌 규칙을 유지하며, query가 붙은 신규 글·이미지와 합쳐진 응답의 HEAD도 GET과 같은 상태·header를 유지한다.
-- `wrangler.jsonc`와 `wrangler.admin.jsonc`의 `NATIVE_DB`는 생성된 `dwnc-me-native-staging`·`dwnc-me-native-production`에 각각 정확히 결속했고 `NATIVE_MEDIA_BUCKET`도 두 환경의 생성된 bucket 이름과 일치한다. OAuth 로그인으로 네 자원을 확인하고 두 remote D1에 `0001_native_editor.sql`을 적용했다. production public Worker version `e24a9644-c9c1-48e0-9378-4cfbb776fdf7`은 보호된 OAuth version-only 경로로 업로드했고 traffic은 바꾸지 않았다. staging용 새 upload/secret authorization과 smoke secret, 관리자 Worker 최초 생성·비활성 version 업로드·hostname route는 남아 있다.
+- `wrangler.jsonc`와 `wrangler.admin.jsonc`의 `NATIVE_DB`는 생성된 `dwnc-me-native-staging`·`dwnc-me-native-production`에 각각 정확히 결속했고 `NATIVE_MEDIA_BUCKET`도 두 환경의 생성된 bucket 이름과 일치한다. OAuth 로그인으로 네 자원을 확인하고 두 remote D1에 `0001_native_editor.sql`을 적용했다. production public Worker version `e24a9644-c9c1-48e0-9378-4cfbb776fdf7`은 보호된 OAuth version-only 경로로 업로드했고 traffic은 바꾸지 않았다. production admin Worker version `032d817c-4afd-4094-b741-337f64768a2a`도 업로드·100% 활성화했고 `admin.dwnc.me/*` route와 Proxied DNS를 연결했다. staging용 새 upload/secret authorization과 smoke secret은 남아 있다.
 - release artifact·binding digest·version attestation에도 `NATIVE_DB`·`NATIVE_MEDIA_BUCKET`을 포함해 같은 배포 경로에서 빠지지 않게 했다. 두 R2 binding을 함께 허용하도록 보호된 공개 미디어 대상 검사를 고쳤고 production upload authorization 진입점의 길이 오류도 고쳤다. 변경은 commit `91e736f2a3e1bad90f958467f8baaed3fb6cd1bc`와 `fda9c076c5349dee60b4f72117fdcf8452902b61`에 기록했다. 최종 commit 기준 staging·production artifact를 만들고 production public Worker version-only upload까지 완료했다. 새 version은 traffic 0%이며 DNS·route·기존 R2 객체·Git 원격은 바꾸지 않았다.
 
 ### PLAN-09 Cloudflare Access·비용 상태
@@ -539,12 +539,13 @@
 - Zero Trust Free plan 활성화를 완료했다. 2026-09-06 현재 결제액은 $0이며, 사용자는 Free plan 한도를 넘으면 등록 카드에 요금이 청구될 수 있다는 조건을 승인했다. 카드 세부정보는 프로젝트 문서에 기록하지 않는다.
 - Google OAuth는 사용하지 않고 Cloudflare 이메일 OTP를 로그인 방식으로 확정했다. `admin.dwnc.me` self-hosted Access 앱을 만들고 허용 정책은 `tsusaikang@gmail.com` 하나, 로그인 방식은 `onetimepin` 하나로 제한했으며 instant auth를 켰다.
 - production admin 설정은 Access issuer `https://ancient-term-4cf0.cloudflareaccess.com`, audience `e2607628d16bd1707b60ac68a33326591c72c0accf6e5e3da33514ad410555fb`, 허용 이메일 `tsusaikang@gmail.com`을 정확히 사용한다. 로컬 구성 검사, 관리자 기능 시험과 Wrangler bundle dry-run은 통과했다.
-- 승인된 version-only 업로드는 `dwnc-me-admin` Worker가 아직 존재하지 않아 새 version을 올리기 전에 Worker를 먼저 생성해야 한다는 응답으로 중단됐다. 관리자 코드·binding·인증값은 원격에 올라가지 않았고 route·traffic·DNS도 바뀌지 않았다.
+- Dashboard에서 `dwnc-me-admin` Worker를 최초 생성했고 Worker-level Access의 all traffic에 기존 한 명 허용·OTP 전용 정책을 적용해 기본 workers.dev·preview 표면도 보호했다. production admin version `032d817c-4afd-4094-b741-337f64768a2a`을 올려 100% 활성화하고 `admin.dwnc.me/*` route와 Proxied AAAA placeholder DNS를 연결했다.
+- `https://admin.dwnc.me`는 Access 이메일 코드 화면까지 정상 도달했고 코드 전송도 완료했다. 사용자의 직접 OTP 입력 전이므로 관리자 화면·작성 API의 실제 로그인 후 동작은 아직 확인하지 않았다.
 
 ## 미해결 문제
 
 - 콘텐츠 이전 정확성·완전성 측면의 알려진 문제는 없다. Stage 3 R2 전체 2,758개 업로드, 사후 목록 확인, 실제 전체 내용·bytes·SHA-256 검증이 완료됐다.
-- 웹 편집기를 실제로 열기 위한 직접 선행 조건은 Cloudflare Dashboard에서 route와 traffic이 없는 `dwnc-me-admin` Worker를 최초 생성하는 것이다. 그 다음 현재 production admin 설정으로 version-only 업로드하고 그 version을 활성화한 뒤 기존 운영 방식과 같은 Proxied DNS + `admin.dwnc.me/*` Worker route를 연결한다. Access 앱과 로그인 제한은 이미 준비됐다. production public Worker의 새 version은 준비됐지만 승인된 public promotion 전까지 현재 이용자에게 반영되지 않는다.
+- 웹 편집기를 실제로 열기 위한 직접 선행 조건은 사용자가 전송된 이메일 OTP를 직접 입력하는 것이다. 로그인 뒤 관리자 화면과 작성 API가 열리는지 확인한다. production public Worker의 새 version은 준비됐지만 아직 traffic에 적용하지 않아 현재 공개 사이트와 방문자에게는 영향이 없다.
 - 별도 로컬 진단 실수로 loopback 회귀시험을 한 번 잘못 호출했다. sandbox에서 bind를 1회 시도한 뒤 `BRIDGE_E_BIND`로 즉시 끝났고 accepted connection·payload·initialize·Keychain·Cloudflare는 모두 0회였다. 재시도는 하지 않았다.
 - 현재 전체 Cloudflare 검사 묶음에는 `scripts/test-r2-client-entrypoints.mjs` 343행의 감사 진입점 불일치로 실패하는 기존 항목 하나가 있다. 이번 연결 변경보다 먼저 존재한 별도 문제이며, 연결 전용 212개와 계정 전용 698개 검사는 모두 통과했다. 이번에는 범위를 넓혀 고치지 않았다.
 - HTTP apex와 HTTPS `www`의 HTTPS apex 이동은 기존 redirect 설정으로 실제 경로·query 보존을 확인했다. trailing slash와 `/index.html`의 전체 edge 정규화 점검은 운영 중 후속 확인으로 남지만 `PLAN-08`에서 확인한 대표 화면과 주소 이동의 완료를 막지 않는다.
@@ -581,7 +582,7 @@
 ## 다음 단계
 
 1. `PLAN-05`는 실제 staging 비공개 확인, 2,758개 전수 GET/SHA-256, 이번 validator 원격·로컬 정리와 사용 불가능한 기존 원격 token 두 개의 exact identity 확인·승인된 삭제·부재 확인까지 완료했다. 보존 receipt와 capture는 유지한다.
-2. `PLAN-06`·`PLAN-07`·`PLAN-08`과 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`는 완료됐다. `PLAN-09`의 로컬 구현·시험, Zero Trust Free 활성화, staging·production D1·private R2·초기 migration, production public Worker의 비활성 version 준비, 이메일 OTP Access 앱과 production admin 인증 설정까지 완료했다. 다음은 Dashboard에서 traffic·route 없는 `dwnc-me-admin` Worker를 최초 생성하고 현재 설정의 비활성 version을 업로드한 뒤, 그 version 활성화와 `admin.dwnc.me/*` route를 연결하는 단계다. 준비된 public version의 traffic 적용은 별도 공개 전환 경계이며, 비공개 자료 백업·복구 방식도 별도 사용자 결정으로 남는다.
+2. `PLAN-06`·`PLAN-07`·`PLAN-08`과 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`는 완료됐다. `PLAN-09`의 로컬 구현·시험, Zero Trust Free 활성화, staging·production D1·private R2·초기 migration, 이메일 OTP Access 앱과 production admin Worker 활성화·route·DNS 연결까지 완료했다. 다음은 사용자가 전송된 OTP를 직접 입력하고 관리자 화면·작성 API를 확인하는 단계다. 그 뒤 준비된 public version의 traffic 적용은 별도 공개 전환 경계이며, 비공개 자료 백업·복구 방식도 별도 사용자 결정으로 남는다.
 
 ## 중요한 제약과 주의사항
 
