@@ -1,15 +1,28 @@
 import { verifyAccessIdentity, type AccessEnvironment } from './lib/access-auth.ts';
 import { adminHtml } from './lib/admin-ui.ts';
+import edgeRedirectManifest from '../docs/EDGE_REDIRECTS_V1.json' with { type: 'json' };
+import mediaManifest from './data/public-media-r2-v1.json' with { type: 'json' };
+import publicRequestSurface from './data/public-request-surface-v1.json' with { type: 'json' };
 import {
-  NATIVE_POST_ID_PATTERN, normalizeLegacyPostInput, normalizeNativePostInput,
+  NATIVE_MEDIA_PATH_PATTERN, NATIVE_POST_ID_PATTERN, normalizeLegacyPostInput, normalizeNativePostInput,
 } from './lib/native-content.ts';
+import { createMediaWorker } from './lib/media-worker.ts';
+import { serveAdminNativeMedia } from './lib/native-public-worker.ts';
 import { NativePostStore } from './lib/native-post-store.ts';
 import { TAXONOMY } from './lib/taxonomy.ts';
 
 interface AdminEnvironment extends AccessEnvironment {
+  MEDIA_BUCKET: R2Bucket;
   NATIVE_DB: D1Database;
   NATIVE_MEDIA_BUCKET: R2Bucket;
 }
+
+const serveLegacyMedia = createMediaWorker(
+  mediaManifest.entries,
+  mediaManifest.manifestSha256,
+  publicRequestSurface,
+  edgeRedirectManifest,
+);
 
 const MIME_EXTENSIONS = new Map([
   ['image/avif', 'avif'], ['image/gif', 'gif'], ['image/jpeg', 'jpg'],
@@ -44,13 +57,15 @@ function sameOrigin(request: Request) {
   return origin === new URL(request.url).origin;
 }
 
-async function route(request: Request, env: AdminEnvironment, identityEmail: string) {
+async function route(request: Request, env: AdminEnvironment, identityEmail: string, context: ExecutionContext) {
   const url = new URL(request.url);
   if (url.search || url.hash || !sameOrigin(request)) return json({ error: '요청을 처리할 수 없습니다.' }, 403);
   const store = new NativePostStore(env.NATIVE_DB);
   if (request.method === 'GET' && url.pathname === '/') {
     return new Response(adminHtml(identityEmail), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
   }
+  if (NATIVE_MEDIA_PATH_PATTERN.test(url.pathname)) return serveAdminNativeMedia(request, env);
+  if (url.pathname.startsWith('/media/')) return serveLegacyMedia(request, env, context);
   if (request.method === 'GET' && url.pathname === '/api/posts') return json({ posts: await store.listForAdmin() });
   if (request.method === 'POST' && url.pathname === '/api/posts') {
     await requestJson(request);
@@ -119,11 +134,11 @@ function errorResponse(error: unknown) {
 }
 
 export default {
-  async fetch(request: Request, env: AdminEnvironment): Promise<Response> {
+  async fetch(request: Request, env: AdminEnvironment, context: ExecutionContext): Promise<Response> {
     let identity;
     try { identity = await verifyAccessIdentity(request, env); }
     catch { return json({ error: '로그인이 필요합니다.' }, 401); }
-    try { return await route(request, env, identity.email); }
+    try { return await route(request, env, identity.email, context); }
     catch (error) { return errorResponse(error); }
   },
 } satisfies ExportedHandler<AdminEnvironment>;

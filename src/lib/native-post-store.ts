@@ -288,6 +288,20 @@ export class NativePostStore {
     return mediaFromRow(row);
   }
 
+  async getAdminMedia(publicPath: string): Promise<NativeMedia | null> {
+    let row = await this.database.prepare(`SELECT m.id, m.post_id, m.public_path, m.object_key,
+      m.sha256, m.bytes, m.mime, m.alt, m.created_at
+      FROM native_media m JOIN native_posts p ON p.id = m.post_id
+      WHERE m.public_path = ?1 AND p.status != 'tombstone'`).bind(publicPath).first<NativeMediaRow>();
+    if (!row) {
+      row = await this.database.prepare(`SELECT m.id, m.post_id, m.public_path, m.object_key,
+        m.sha256, m.bytes, m.mime, m.alt, m.created_at
+        FROM legacy_media m JOIN legacy_posts p ON p.id = m.post_id
+        WHERE m.public_path = ?1 AND p.import_complete = 1`).bind(publicPath).first<NativeMediaRow>();
+    }
+    return row ? mediaFromRow(row) : null;
+  }
+
   async getPublicMedia(publicPath: string): Promise<(NativeMedia & { bodyMarkdown: string; coverMediaId: string | null }) | null> {
     let row = await this.database.prepare(`SELECT m.id, m.post_id, m.public_path, m.object_key,
       m.sha256, m.bytes, m.mime, m.alt, m.created_at, p.body_markdown, p.cover_media_id

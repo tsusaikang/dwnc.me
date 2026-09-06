@@ -20,6 +20,7 @@
       "workers_dev": false,
       "preview_urls": false,
       "r2_buckets": [
+        { "binding": "MEDIA_BUCKET", "bucket_name": "dwnc-me-public-media-staging" },
         { "binding": "NATIVE_MEDIA_BUCKET", "bucket_name": "dwnc-me-native-media-staging" }
       ],
       "d1_databases": [
@@ -36,6 +37,7 @@
         "ACCESS_ALLOWED_EMAIL": "tsusaikang@gmail.com"
       },
       "r2_buckets": [
+        { "binding": "MEDIA_BUCKET", "bucket_name": "dwnc-me-public-media-production" },
         { "binding": "NATIVE_MEDIA_BUCKET", "bucket_name": "dwnc-me-native-media-production" }
       ],
       "d1_databases": [

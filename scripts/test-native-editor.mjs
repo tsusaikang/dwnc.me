@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { Script } from 'node:vm';
 import { load } from 'cheerio';
 import adminWorker from '../src/admin-worker.ts';
+import mediaManifest from '../src/data/public-media-r2-v1.json' with { type: 'json' };
 import { clearAccessKeyCacheForTests, verifyAccessIdentity } from '../src/lib/access-auth.ts';
 import { adminHtml } from '../src/lib/admin-ui.ts';
 import { nativeImagePaths, renderNativeMarkdown } from '../src/lib/native-content.ts';
@@ -124,7 +125,23 @@ equal(keyFetches, 2);
 
 const adminDatabase = createDatabase();
 const objects = new Map();
-const adminEnv = { ...accessEnv, NATIVE_DB: adminDatabase, NATIVE_MEDIA_BUCKET: {
+const legacyEntry = mediaManifest.entries.find((entry) => entry.publicPath.startsWith('/media/tistory/'))
+  ?? mediaManifest.entries[0];
+const legacyEntrySha = createHash('sha256').update(JSON.stringify({
+  publicPath: legacyEntry.publicPath, key: legacyEntry.key, size: legacyEntry.size,
+  sha256: legacyEntry.sha256, contentType: legacyEntry.contentType, cacheControl: legacyEntry.cacheControl,
+})).digest('hex');
+const legacyObject = {
+  key: legacyEntry.key, size: legacyEntry.size, version: 'legacy-version', etag: 'legacy-etag',
+  httpEtag: '"legacy-etag"', uploaded: new Date('2026-09-06T00:00:00.000Z'),
+  httpMetadata: { contentType: legacyEntry.contentType, cacheControl: legacyEntry.cacheControl },
+  customMetadata: { sha256: legacyEntry.sha256, contract: 'dwnc-public-media-r2-v1', 'manifest-entry-sha256': legacyEntrySha },
+  checksums: { sha256: Uint8Array.from(Buffer.from(legacyEntry.sha256, 'hex')).buffer },
+};
+const adminEnv = { ...accessEnv, NATIVE_DB: adminDatabase, MEDIA_BUCKET: {
+  async head(key) { return key === legacyEntry.key ? legacyObject : null; },
+  async get(key) { return key === legacyEntry.key ? { ...legacyObject, body: Buffer.from('legacy-image') } : null; },
+}, NATIVE_MEDIA_BUCKET: {
   async put(key, body, options) { const bytes = new Uint8Array(await new Response(body).arrayBuffer()); const sha256 = createHash('sha256').update(bytes).digest('hex'); if (sha256 !== options.sha256) return null; const object = { key, size: bytes.length, customMetadata: options.customMetadata }; objects.set(key, { ...object, bytes, httpMetadata: options.httpMetadata, httpEtag: '"native"', checksums: { sha256: Uint8Array.from(Buffer.from(sha256, 'hex')).buffer }, body: bytes }); return object; },
   async get(key) { return objects.get(key) ?? null; },
   async head(key) { return objects.get(key) ?? null; },
@@ -150,6 +167,15 @@ equal((await adminWorker.fetch(new Request(`https://admin.example.test/api/posts
 equal(objects.size, beforeRejectedUploads);
 const imageResponse = await adminWorker.fetch(new Request(`https://admin.example.test/api/posts/${adminDraft.id}/media`, { method: 'POST', headers: { ...authHeaders, 'content-type': 'image/png', 'x-dwnc-file-size': String(imageBytes.length), 'x-dwnc-file-sha256': imageSha, 'x-dwnc-file-name': 'photo.png' }, body: imageBytes }), adminEnv);
 equal(imageResponse.status, 201); const uploadedMedia = (await imageResponse.json()).media; ok(uploadedMedia.publicPath.endsWith('.png')); equal(objects.size, 1);
+const legacyImageGet = await adminWorker.fetch(new Request(`https://admin.example.test${legacyEntry.publicPath}`, { headers: { 'cf-access-jwt-assertion': accessToken() } }), adminEnv);
+equal(legacyImageGet.status, 200); equal(legacyImageGet.headers.get('content-type'), legacyEntry.contentType);
+const legacyImageHead = await adminWorker.fetch(new Request(`https://admin.example.test${legacyEntry.publicPath}`, { method: 'HEAD', headers: { 'cf-access-jwt-assertion': accessToken() } }), adminEnv);
+equal(legacyImageHead.status, 200); equal(await legacyImageHead.text(), '');
+const nativeImageGet = await adminWorker.fetch(new Request(`https://admin.example.test${uploadedMedia.publicPath}`, { headers: { 'cf-access-jwt-assertion': accessToken() } }), adminEnv);
+equal(nativeImageGet.status, 200); equal(await nativeImageGet.text(), imageBytes.toString());
+const nativeImageHead = await adminWorker.fetch(new Request(`https://admin.example.test${uploadedMedia.publicPath}`, { method: 'HEAD', headers: { 'cf-access-jwt-assertion': accessToken() } }), adminEnv);
+equal(nativeImageHead.status, 200); equal(await nativeImageHead.text(), '');
+equal((await adminWorker.fetch(new Request(`https://admin.example.test${legacyEntry.publicPath}`), adminEnv)).status, 401);
 equal((await adminWorker.fetch(new Request('https://admin.example.test/api/posts', { method: 'POST', headers: { ...authHeaders, origin: 'https://evil.example' }, body: '{}' }), adminEnv)).status, 403);
 
 const ui = adminHtml('owner@example.com');

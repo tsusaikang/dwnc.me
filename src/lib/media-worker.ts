@@ -38,7 +38,8 @@ function isMediaCacheLike(value: unknown): value is MediaCacheLike {
     && 'put' in value && typeof value.put === 'function';
 }
 
-export type MediaWorkerEnvironment = Pick<Cloudflare.ProductionEnv, 'MEDIA_BUCKET' | 'ASSETS'> & {
+export type MediaWorkerEnvironment = Pick<Cloudflare.ProductionEnv, 'MEDIA_BUCKET'> & {
+  ASSETS?: Fetcher;
   MEDIA_CACHE?: MediaCacheLike;
   DWNC_DEPLOYMENT_ENVIRONMENT?: 'staging' | 'production';
   CF_VERSION_METADATA?: { id: string; tag?: string; timestamp?: string };
@@ -363,6 +364,7 @@ export function createMediaWorker(
     const response = await (async (): Promise<Response> => {
     if (!url.pathname.startsWith('/media/')) {
       if (!['GET', 'HEAD'].includes(request.method)) return invalidMethod();
+      if (!env.ASSETS) return unavailable(request.method);
       const publicPath = normalizeStaticPath(url.pathname);
       if (!publicPath || !publicPathHashes.has(await sha256Text(publicPath))) {
         return unavailable(request.method);

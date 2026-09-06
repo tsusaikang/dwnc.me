@@ -101,13 +101,15 @@ if (adminConfig.name !== 'dwnc-me-admin-inert-unconfigured'
   || adminConfig.workers_dev !== false || adminConfig.preview_urls !== false
   || 'routes' in adminConfig || 'route' in adminConfig || 'account_id' in adminConfig
   || 'vars' in adminConfig || 'secrets' in adminConfig) throw new Error('CLOUDFLARE_E_ADMIN_CONFIG');
-for (const [environment, [, , nativeBucket, database]] of Object.entries(expectedBuckets)) {
+for (const [environment, [, bucket, nativeBucket, database]] of Object.entries(expectedBuckets)) {
   const value = adminConfig.env?.[environment];
   if (value?.name !== `dwnc-me-admin${environment === 'staging' ? '-staging' : ''}`
     || value?.workers_dev !== false || value?.preview_urls !== false
-    || value?.r2_buckets?.length !== 1
-    || value.r2_buckets[0]?.binding !== 'NATIVE_MEDIA_BUCKET'
-    || value.r2_buckets[0]?.bucket_name !== nativeBucket
+    || value?.r2_buckets?.length !== 2
+    || value.r2_buckets[0]?.binding !== 'MEDIA_BUCKET'
+    || value.r2_buckets[0]?.bucket_name !== bucket
+    || value.r2_buckets[1]?.binding !== 'NATIVE_MEDIA_BUCKET'
+    || value.r2_buckets[1]?.bucket_name !== nativeBucket
     || value?.d1_databases?.length !== 1
     || value.d1_databases[0]?.binding !== 'NATIVE_DB'
     || value.d1_databases[0]?.database_name !== database

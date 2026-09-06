@@ -13,6 +13,8 @@ export interface NativePublicEnvironment {
   DWNC_DEPLOYMENT_ENVIRONMENT?: 'staging' | 'production';
   CF_VERSION_METADATA?: { id: string; tag?: string; timestamp?: string };
 }
+export type NativeMediaEnvironment = Pick<NativePublicEnvironment,
+  'NATIVE_DB' | 'NATIVE_MEDIA_BUCKET' | 'DWNC_DEPLOYMENT_ENVIRONMENT' | 'CF_VERSION_METADATA'>;
 
 type StaticHandler = (request: Request, env: NativePublicEnvironment, context: ExecutionContext) => Promise<Response>;
 interface DiscoveryPost {
@@ -35,7 +37,8 @@ function xmlEscape(value: string) {
 function unavailable(method = 'GET') {
   return new Response(method === 'HEAD' ? null : 'Not found.\n', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
 }
-function withVersion(response: Response, env: NativePublicEnvironment) {
+function withVersion(response: Response, env: Pick<NativePublicEnvironment,
+  'DWNC_DEPLOYMENT_ENVIRONMENT' | 'CF_VERSION_METADATA'>) {
   if (env.DWNC_DEPLOYMENT_ENVIRONMENT !== 'staging') return response;
   const version = env.CF_VERSION_METADATA?.id;
   if (!VERSION_PATTERN.test(version ?? '')) return new Response('Media temporarily unavailable.\n', { status: 502, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
@@ -164,9 +167,16 @@ async function postDocument(response: Response, post: NativePost, canonical: str
   const main = `<article class="article-page article-page--longform" data-category-id="${escapeHtml(post.categoryId)}"><header class="post-header"><div class="post-header__inner"><p class="post-header__kicker">${escapeHtml(post.categoryLabel)}</p><p class="post-header__meta"><a href="/category/${encodeURIComponent(post.categorySlug)}">${escapeHtml(post.categoryLabel)}</a><time datetime="${escapeHtml(post.publishedAt ?? '')}">${dateLabel(post.publishedAt ?? post.updatedAt)}</time><span>읽는 데 ${Math.max(1, Math.ceil(post.bodyText.length / 500))}분</span></p><h1>${escapeHtml(post.title)}</h1></div></header><div class="prose">${post.bodyHtml}</div><footer class="post-footer"><div class="post-footer__inner"><div class="post-tags"><a href="/category/${encodeURIComponent(post.categorySlug)}">${escapeHtml(post.categoryLabel)}</a>${tagLinks}</div></div></footer></article>`;
   return await rewriteDocument(response, main, title, description, canonical, true);
 }
-async function dynamicMedia(request: Request, env: NativePublicEnvironment, store: NativePostStore) {
+async function dynamicMedia(
+  request: Request,
+  env: NativeMediaEnvironment,
+  store: NativePostStore,
+  audience: 'public' | 'admin' = 'public',
+) {
   if (!['GET', 'HEAD'].includes(request.method)) return withVersion(new Response('Method not allowed.\n', { status: 405, headers: { allow: 'GET, HEAD', 'cache-control': 'no-store' } }), env);
-  const media = await store.getPublicMedia(new URL(request.url).pathname);
+  const media = audience === 'admin'
+    ? await store.getAdminMedia(new URL(request.url).pathname)
+    : await store.getPublicMedia(new URL(request.url).pathname);
   if (!media) return withVersion(unavailable(request.method), env);
   const object = request.method === 'HEAD' ? await env.NATIVE_MEDIA_BUCKET.head(media.objectKey) : await env.NATIVE_MEDIA_BUCKET.get(media.objectKey);
   if (!object || object.size !== media.bytes || object.httpMetadata?.contentType?.toLowerCase() !== media.mime
@@ -175,6 +185,10 @@ async function dynamicMedia(request: Request, env: NativePublicEnvironment, stor
     || bytesToHex(object.checksums.sha256) !== media.sha256) return withVersion(unavailable(request.method), env);
   const headers = new Headers({ 'content-type': media.mime, 'content-length': String(media.bytes), 'cache-control': 'public, max-age=31536000, immutable', 'x-content-type-options': 'nosniff', etag: object.httpEtag });
   return withVersion(new Response(request.method === 'HEAD' ? null : (object as R2ObjectBody).body, { headers }), env);
+}
+
+export function serveAdminNativeMedia(request: Request, env: NativeMediaEnvironment) {
+  return dynamicMedia(request, env, new NativePostStore(env.NATIVE_DB), 'admin');
 }
 
 export function createNativePublicWorker(staticHandler: StaticHandler) {
