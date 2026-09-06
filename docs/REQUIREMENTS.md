@@ -23,7 +23,7 @@
 - 시험용 주소에서 글, 예전 주소 349개, 사진 표시와 부분 전송을 모두 확인한 뒤 운영용 구성을 준비한다.
 - 실제 `dwnc.me` 주소를 새 production Worker에 연결하고 실제 주소에서 대표 글·예전 주소·사진·모바일과 데스크톱 화면을 확인했다.
 
-현재 콘텐츠 보존과 독립 사이트 구현, Cloudflare staging·production R2의 파일 2,758개 전수 확인, production Worker version 활성화, 실제 도메인 연결과 대표 화면 확인까지 완료됐다. **새 사이트는 현재 `dwnc.me`에서 운영 중이다.** 사용자는 새 글 작성 방식으로 Cloudflare 로그인을 거치는 웹 편집기를 선택했고, 해당 편집기의 로컬 구현과 시험을 완료했다. staging·production D1과 각각의 별도 private R2를 만들고 두 D1에 초기 구조도 적용했다. Zero Trust Free plan도 활성화됐고 오늘 결제액은 $0이며, 무료 한도 초과 시 등록 카드에 요금이 청구될 수 있다는 조건을 사용자가 승인했다. 관리자 로그인은 Cloudflare 이메일 OTP로 확정했고 `admin.dwnc.me` Access 앱·한 명의 허용 사용자·OTP 전용 로그인, 관리자 Worker와 주소 연결까지 완료했다. 실제 주소에서 이메일 코드 전송까지 확인했고 사용자의 직접 OTP 입력을 기다린다. production public Worker의 새 version은 아직 현재 방문자에게 적용하지 않아 기존 공개 사이트에는 영향이 없다. 관리자 로그인 후 확인, 준비된 public version의 공개 전환과 비공개 자료의 백업·복구 방식은 다음 단계로 남아 있다. 근거는 [`PROJECT_STATE.md`](../PROJECT_STATE.md), [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md), [`URL_CONTRACT.md`](URL_CONTRACT.md)에 나누어 기록한다.
+현재 콘텐츠 보존과 독립 사이트 구현, Cloudflare staging·production R2의 파일 2,758개 전수 확인, 실제 도메인 연결과 웹 편집기 운영 반영까지 완료됐다. **새 사이트는 현재 `dwnc.me`에서 운영 중이고, `admin.dwnc.me`에서 이메일 OTP로 로그인해 새 글과 기존 공개 글 349편을 편집할 수 있다.** 기존 글은 원래 주소·번호·날짜·본문·분류·이미지 참조를 보존한 편집용 사본으로 D1에 넣었고 원본 파일과 기존 R2 객체는 바꾸지 않았다. 관리자에서 349편 목록과 #595의 편집 필드 로드를 확인했으며 실제 글 내용은 변경하지 않았다. 동적 공개 Worker도 100% 적용했고 live 홈과 `/posts/595`가 정상 표시된다. Zero Trust Free plan은 활성화됐고 오늘 결제액은 $0이며, 무료 한도 초과 시 등록 카드에 요금이 청구될 수 있다는 조건을 사용자가 승인했다. 남은 주요 결정은 비공개 자료의 백업·복구 방식이다. 근거는 [`PROJECT_STATE.md`](../PROJECT_STATE.md), [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md), [`URL_CONTRACT.md`](URL_CONTRACT.md)에 나누어 기록한다.
 
 ### 전체 계획
 
@@ -42,9 +42,9 @@
 
 ### 현재 위치
 
-**현재 진행 중인 계획은 `PLAN-09` 하나다.** 기존 1–596번 글과 현재 운영 화면은 그대로 유지한 채, Cloudflare 로그인형 웹 편집기의 로컬 코드·DB 구조·설정과 시험, Zero Trust Free 활성화, staging·production D1·private R2 생성과 두 D1 migration 적용을 마쳤다. 이메일 OTP Access 앱, production 관리자 Worker 활성화와 `admin.dwnc.me` 연결도 완료했고 이메일 코드 전송까지 확인했다. production public Worker의 새 version은 올렸지만 방문자 traffic에는 적용하지 않았다.
+**현재 진행 중인 계획은 `PLAN-09` 하나다.** 로그인형 웹 편집기의 구현과 운영 반영은 완료됐다. 이메일 OTP로 보호된 관리자 화면에서 기존 공개 글 349편의 목록을 보고 글을 선택해 편집할 수 있고, 새 글은 597번부터 발행할 수 있다. 최신 공개 Worker도 실제 방문자에게 적용했으며 live 홈과 기존 글이 정상 표시된다. 남은 것은 비공개 자료의 백업·복구 방식에 대한 사용자 결정이다.
 
-사용자에게 이는 **현재 운영 사이트를 바꾸지 않은 채 웹 편집기의 데이터 저장소·로그인 제한·관리자 주소와 공개용 새 프로그램까지 준비됐다는 뜻**이다. 다음에는 사용자가 이메일 OTP를 직접 입력해 관리자 화면과 작성 API를 확인한다. 그 뒤 준비된 public version을 실제 방문자에게 적용하면 웹에서 작성한 글이 즉시 공개될 수 있다. 비공개 자료 백업 방식은 그와 별도로 사용자가 결정한다.
+사용자에게 이는 **저장소를 직접 고치거나 다시 배포하지 않고 관리자 화면에서 기존 글을 고치거나 새 글을 발행할 수 있는 운영 상태가 됐다는 뜻**이다. 이번 확인에서는 글을 저장하거나 내용을 바꾸지 않았다. 다음에는 비공개 원문·미디어를 어떤 방식으로 백업하고 복구할지 사용자가 결정한다.
 
 ### 미디어 정리 결과
 
@@ -61,15 +61,15 @@
 
 ### 아직 결정할 일과 진행을 막는 조건
 
-1. `PLAN-08` 운영 전환은 완료됐다. 로그인형 웹 편집기의 로컬 구현·시험, Zero Trust Free 활성화, staging·production D1·private R2 생성·초기 migration, 이메일 OTP Access 앱과 production 관리자 Worker·주소 연결도 완료했다. 관리자 로그인 후 확인, 준비된 public version의 공개 전환과 비공개 자료의 백업·복구 방식이 남아 있다.
+1. `PLAN-08` 운영 전환과 `PLAN-09`의 로그인형 웹 편집기 운영 반영은 완료됐다. 관리자 로그인, 기존 공개 글 349편 목록·선택 로드, 공개 Worker 전환과 live 화면 확인까지 마쳤다. 남은 주요 결정은 비공개 자료의 백업·복구 방식이다.
 2. 공유·스크랩 글 10개, 과거 댓글과 추가 개선은 사용자가 원할 때 정하는 후속 선택이다.
 
 ### 바로 다음 작업
 
-1. 사용자가 전송된 이메일 OTP를 직접 입력하고 관리자 화면·작성 API를 확인한다.
-2. 준비된 public Worker version의 공개 전환은 실제 방문자 traffic 변경이므로 그 경계에서 사용자 확인 후 적용한다. 비공개 자료 백업·복구 방식은 별도 사용자 결정으로 남긴다. 저장소 파일 덮어쓰기·삭제와 Git push는 별도 승인 없이 진행하지 않는다.
+1. 사용자가 원할 때 비공개 원문·미디어의 백업·복구 방식을 결정한다.
+2. 새 글의 실제 발행이나 기존 글의 실제 수정은 작성할 내용이 있을 때 관리자 화면에서 진행한다. 공유 글 10개·댓글·추가 개선은 사용자가 요청할 때만 다룬다. 저장소 파일 덮어쓰기·삭제와 Git push는 별도 승인 없이 진행하지 않는다.
 
-현재 `PLAN-05`부터 `PLAN-08`까지와 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`는 완료됐다. `PLAN-09`는 로컬 구현·시험, Zero Trust Free 활성화, staging·production D1·private R2·초기 migration, 이메일 OTP Access 앱과 production 관리자 Worker·주소 연결까지 완료했고 사용자 OTP 입력·관리자 화면 확인, public promotion과 비공개 백업 방식 결정을 기다린다.
+현재 `PLAN-05`부터 `PLAN-08`까지와 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`·`DWNC-OPS-002`는 완료됐다. `PLAN-09`의 웹 편집기와 동적 공개 운영 반영도 완료됐고, 비공개 백업 방식 결정을 기다린다.
 
 ### 최근 완료
 
@@ -134,20 +134,6 @@
   - 사용자가 이 후속 선택을 요청하기 전에는 진행하지 않으며 Stage 3 완료를 막지 않는다.
 - **Evidence:**
   - [`PROJECT_STATE.md`](../PROJECT_STATE.md)에 공개 목록과 직접 작성 목록 차이 10개가 미해결로 기록돼 있다.
-
-### `DWNC-OPS-002` — 지속적인 새 글 작성 방식 결정
-- **Status:** `in-progress`
-- **Updated-at:** `2026-09-06`
-- **Plans:** `PLAN-09`
-- **Priority:** `P1`
-- **Acceptance:**
-  - Cloudflare Access 이메일 OTP와 애플리케이션의 토큰 확인을 모두 통과한 허용 사용자만 별도 관리자 Worker의 작성 API와 화면을 사용할 수 있다.
-  - 새 글은 D1을 권위 자료로 사용하고 첫 발행 때 597부터 원자적으로 순번을 배정하며, 임시저장·미리보기·발행·발행 후 수정과 카테고리·태그를 지원한다.
-  - 새 이미지는 기존 2,758개 저장소와 분리된 private R2에 새 UUID key로만 저장하고 기존 객체를 덮어쓰거나 삭제하지 않는다.
-  - 공개 Worker에는 쓰기 API가 없고, 발행된 글은 홈·아카이브·카테고리·태그·검색·RSS·사이트맵에 재배포 없이 반영된다.
-- **Evidence:**
-  - [`URL_CONTRACT.md`](URL_CONTRACT.md)의 597 이후 D1 순번 계약과 [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 신규 native 미디어 경계.
-  - Zero Trust Free plan과 staging·production 데이터 저장소는 준비됐고 production public Worker의 새 version은 traffic을 바꾸지 않은 채 업로드됐다. 이메일 OTP Access 앱과 production 관리자 Worker·주소 연결은 완료했으며 사용자 OTP 입력 뒤 관리자 화면 확인과 public promotion은 남아 있다.
 
 ### `DWNC-OPS-003` — 댓글과 private backup 정책 결정
 - **Status:** `decision-needed`
@@ -226,18 +212,6 @@
 
 ## 최근 완료된 요구사항
 
-
-### `DWNC-S3-004` — 플랫폼 후보 132개 provenance·시각 감사
-- **Status:** `done`
-- **Updated-at:** `2026-08-26`
-- **Plans:** `PLAN-04`
-- **Priority:** `P1`
-- **Acceptance:**
-  - current manifest와 후보 경로·size·MIME·SHA를 exact join한다.
-  - 모든 고유 시각 자료를 검사하고 사용자 사진 오분류와 본문 의미 손실 가능성을 분리한다.
-- **Evidence:**
-  - exact candidate 132, unique SHA-256 65, manifest/disk mismatch 0.
-  - 시각 분류: 지도 99, LINE 스티커 5, blank placeholder 27, SBS 수영 GIF 1.
 
 ### `DWNC-S3-003` — private staging R2와 최소 권한 자격증명 준비
 - **Status:** `done`
@@ -416,3 +390,18 @@
   - Custom Domain은 기존 DNS와 충돌해 사용하지 않았고 DNS 삭제는 0회다. 기존 redirect 설정이 HTTP apex와 HTTPS `www`를 HTTPS apex의 같은 경로·query로 이동시키므로 새 redirect rule은 만들지 않았다.
   - 실제 루트, `/posts/596`의 제목·본문·이미지 10개, `/posts/411`의 제목·이미지 25개, `/1`→`/posts/433`, `/naver/220404726308`→`/posts/1`, 대표 GIF 표시를 확인했다.
   - 데스크톱이 정상이고 390×844 모바일의 홈과 `/posts/596`에서 모바일형 레이아웃, 가로 넘침·핵심 잘림·깨진 이미지가 모두 0이다. R2 덮어쓰기·삭제와 Git push도 0회다.
+
+### `DWNC-OPS-002` — 지속적인 새 글 작성 방식 결정
+- **Status:** `done`
+- **Updated-at:** `2026-09-06`
+- **Plans:** `PLAN-09`
+- **Priority:** `P1`
+- **Acceptance:**
+  - Cloudflare Access 이메일 OTP와 애플리케이션의 토큰 확인을 모두 통과한 허용 사용자만 별도 관리자 Worker의 작성 API와 화면을 사용할 수 있다.
+  - 기존 공개 글 349편은 원래 주소·번호·날짜·본문·분류·이미지 참조를 보존한 D1 편집 사본으로 관리자 목록에 표시되고 선택·수정할 수 있다.
+  - 새 글은 D1을 권위 자료로 사용하고 첫 발행 때 597부터 원자적으로 순번을 배정하며, 임시저장·미리보기·발행·발행 후 수정과 카테고리·태그를 지원한다.
+  - 새 이미지는 기존 2,758개 저장소와 분리된 private R2에 새 UUID key로만 저장하고 기존 객체를 덮어쓰거나 삭제하지 않는다.
+  - 공개 Worker에는 쓰기 API가 없고, 발행된 글은 홈·아카이브·카테고리·태그·검색·RSS·사이트맵에 재배포 없이 반영된다.
+- **Evidence:**
+  - [`URL_CONTRACT.md`](URL_CONTRACT.md)의 597 이후 D1 순번 계약과 [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 신규 native 미디어 경계.
+  - Zero Trust Free plan과 staging·production 데이터 저장소, 이메일 OTP Access 앱, production 관리자·공개 Worker 운영 반영을 완료했다. 로그인 뒤 관리자 목록 349편과 #595의 편집 필드 로드, public 전환 뒤 live 홈과 `/posts/595` 정상 표시를 확인했으며 실제 글 내용은 변경하지 않았다.

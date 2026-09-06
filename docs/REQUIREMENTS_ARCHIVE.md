@@ -41,3 +41,15 @@
 - **Evidence:**
   - 2026-08-25 로그인된 Chrome exact readback.
   - [`PROJECT_STATE.md`](../PROJECT_STATE.md)의 Builds guard checkpoint.
+
+### `DWNC-S3-004` — 플랫폼 후보 132개 provenance·시각 감사
+- **Status:** `done`
+- **Updated-at:** `2026-08-26`
+- **Plans:** `PLAN-04`
+- **Priority:** `P1`
+- **Acceptance:**
+  - current manifest와 후보 경로·size·MIME·SHA를 exact join한다.
+  - 모든 고유 시각 자료를 검사하고 사용자 사진 오분류와 본문 의미 손실 가능성을 분리한다.
+- **Evidence:**
+  - exact candidate 132, unique SHA-256 65, manifest/disk mismatch 0.
+  - 시각 분류: 지도 99, LINE 스티커 5, blank placeholder 27, SBS 수영 GIF 1.
