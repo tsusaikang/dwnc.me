@@ -466,12 +466,14 @@ export function validateConfiguredReleaseTarget({
   if (!RELEASE_ENVIRONMENTS.has(environment)) fail('MEDIA_E_RELEASE_TARGET');
   const target = policy[environment];
   const binding = wranglerConfig?.env?.[target.wranglerEnvironment]?.r2_buckets;
+  const targetBindings = Array.isArray(binding)
+    ? binding.filter((candidate) => candidate?.binding === target.binding)
+    : [];
   const selectedAccountIdSha256 = typeof accountId === 'string'
     ? cloudflareAccountIdSha256(accountId) : accountIdSha256;
   if (!SHA256_PATTERN.test(target.accountIdSha256 ?? '')) fail('MEDIA_E_RELEASE_POLICY_INCOMPLETE');
-  if (!Array.isArray(binding) || binding.length !== 1
-    || binding[0]?.binding !== target.binding
-    || binding[0]?.bucket_name !== target.bucket
+  if (targetBindings.length !== 1
+    || targetBindings[0]?.bucket_name !== target.bucket
     || bucket !== target.bucket
     || selectedAccountIdSha256 !== target.accountIdSha256) {
     fail('MEDIA_E_RELEASE_TARGET');

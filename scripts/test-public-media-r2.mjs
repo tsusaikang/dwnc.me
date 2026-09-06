@@ -473,6 +473,28 @@ function headFor(entry, overrides = {}) {
       binding: 'MEDIA_BUCKET', bucket_name: credentials.bucket,
     }] } } },
   }).environment, 'staging');
+  equal(validateConfiguredReleaseTarget({
+    policy,
+    environment: 'staging',
+    accountId: credentials.accountId,
+    bucket: credentials.bucket,
+    wranglerConfig: { env: { staging: { r2_buckets: [{
+      binding: 'MEDIA_BUCKET', bucket_name: credentials.bucket,
+    }, {
+      binding: 'NATIVE_MEDIA_BUCKET', bucket_name: 'native-media-staging',
+    }] } } },
+  }).environment, 'staging');
+  await rejectsCode(() => Promise.resolve(validateConfiguredReleaseTarget({
+    policy,
+    environment: 'staging',
+    accountId: credentials.accountId,
+    bucket: credentials.bucket,
+    wranglerConfig: { env: { staging: { r2_buckets: [{
+      binding: 'MEDIA_BUCKET', bucket_name: credentials.bucket,
+    }, {
+      binding: 'MEDIA_BUCKET', bucket_name: credentials.bucket,
+    }] } } },
+  })), 'MEDIA_E_RELEASE_TARGET');
   await rejectsCode(() => Promise.resolve(validateConfiguredReleaseTarget({
     policy: { ...policy, staging: { ...policy.staging, accountIdSha256: null } },
     environment: 'staging',
