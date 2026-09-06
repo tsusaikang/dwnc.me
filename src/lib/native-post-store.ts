@@ -167,7 +167,8 @@ export class NativePostStore {
     const row = await this.database.prepare(`SELECT ${POST_COLUMNS} FROM native_posts WHERE id = ?1`)
       .bind(id).first<NativePostRow>();
     if (row) return postFromRow(row);
-    const legacy = await this.database.prepare(`SELECT ${LEGACY_POST_COLUMNS} FROM legacy_posts WHERE id = ?1`)
+    const legacy = await this.database.prepare(`SELECT ${LEGACY_POST_COLUMNS} FROM legacy_posts
+      WHERE id = ?1 AND import_complete = 1`)
       .bind(id).first<NativePostRow>();
     return legacy ? postFromRow(legacy) : null;
   }
@@ -177,7 +178,7 @@ export class NativePostStore {
       'markdown' AS body_format FROM native_posts WHERE status != 'tombstone'`).all<Pick<NativePostRow,
         'id' | 'global_sequence' | 'status' | 'title' | 'updated_at' | 'body_format'>>();
     const legacy = await this.database.prepare(`SELECT id, global_sequence, status, title, updated_at,
-      'html' AS body_format FROM legacy_posts`).all<Pick<NativePostRow,
+      'html' AS body_format FROM legacy_posts WHERE import_complete = 1`).all<Pick<NativePostRow,
         'id' | 'global_sequence' | 'status' | 'title' | 'updated_at' | 'body_format'>>();
     return [...(native.results ?? []), ...(legacy.results ?? [])]
       .sort((left, right) => right.updated_at.localeCompare(left.updated_at)
@@ -251,7 +252,7 @@ export class NativePostStore {
       WHERE global_sequence = ?1 AND status = 'published'`).bind(sequence).first<NativePostRow>();
     if (row) return postFromRow(row);
     const legacy = await this.database.prepare(`SELECT ${LEGACY_POST_COLUMNS} FROM legacy_posts
-      WHERE global_sequence = ?1`).bind(sequence).first<NativePostRow>();
+      WHERE global_sequence = ?1 AND import_complete = 1`).bind(sequence).first<NativePostRow>();
     return legacy ? postFromRow(legacy) : null;
   }
 
@@ -259,7 +260,7 @@ export class NativePostStore {
     const native = await this.database.prepare(`SELECT ${POST_COLUMNS} FROM native_posts
       WHERE status = 'published' ORDER BY global_sequence DESC`).all<NativePostRow>();
     const legacy = await this.database.prepare(`SELECT ${LEGACY_POST_COLUMNS} FROM legacy_posts
-      ORDER BY global_sequence DESC`).all<NativePostRow>();
+      WHERE import_complete = 1 ORDER BY global_sequence DESC`).all<NativePostRow>();
     return [...(native.results ?? []), ...(legacy.results ?? [])].map(postFromRow)
       .sort((left, right) => (right.globalSequence ?? 0) - (left.globalSequence ?? 0));
   }
@@ -278,7 +279,7 @@ export class NativePostStore {
     const row = await this.database.prepare(`INSERT INTO ${table} (
       id, post_id, public_path, object_key, sha256, bytes, mime, alt, created_at
     ) SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9
-      WHERE EXISTS (SELECT 1 FROM ${parent} WHERE id = ?2)
+      WHERE EXISTS (SELECT 1 FROM ${parent} WHERE id = ?2${post.bodyFormat === 'html' ? ' AND import_complete = 1' : ''})
       RETURNING id, post_id, public_path, object_key, sha256, bytes, mime, alt, created_at`).bind(
       media.id, media.postId, media.publicPath, media.objectKey, media.sha256,
       media.bytes, media.mime, media.alt, media.createdAt,
@@ -299,7 +300,7 @@ export class NativePostStore {
       row = await this.database.prepare(`SELECT m.id, m.post_id, m.public_path, m.object_key,
         m.sha256, m.bytes, m.mime, m.alt, m.created_at, p.body_html AS body_markdown, p.cover_media_id
         FROM legacy_media m JOIN legacy_posts p ON p.id = m.post_id
-        WHERE m.public_path = ?1`).bind(publicPath).first<NativeMediaRow & {
+        WHERE m.public_path = ?1 AND p.import_complete = 1`).bind(publicPath).first<NativeMediaRow & {
           body_markdown: string; cover_media_id: string | null;
         }>();
       html = true;

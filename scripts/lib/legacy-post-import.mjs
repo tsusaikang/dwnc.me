@@ -90,21 +90,40 @@ export async function loadLegacyPublicPosts(root) {
 
 export function legacyImportSqlChunks(posts, size = 20) {
   if (!Array.isArray(posts) || posts.length !== PUBLIC_COUNT || !Number.isSafeInteger(size) || size < 1) fail();
-  const chunks = [];
-  for (let offset = 0; offset < posts.length; offset += size) {
-    const statements = posts.slice(offset, offset + size).map((post) => `INSERT OR IGNORE INTO legacy_posts (
+  const literalChunks = (value, maximumBytes = 48 * 1024) => {
+    const chunks = []; let chunk = ''; let bytes = 0;
+    for (const character of value) {
+      const escaped = character === "'" ? "''" : character;
+      const next = Buffer.byteLength(escaped);
+      if (chunk && bytes + next > maximumBytes) { chunks.push(chunk); chunk = ''; bytes = 0; }
+      chunk += escaped; bytes += next;
+    }
+    if (chunk || !chunks.length) chunks.push(chunk);
+    return chunks;
+  };
+  const statementsFor = (post) => {
+    const insert = `INSERT OR IGNORE INTO legacy_posts (
   id, global_sequence, status, source, source_id, source_url, legacy_path, title, description,
   body_html, body_text, category_id, category_slug, category_label, tags_json,
   legacy_categories_json, cover_path, cover_alt, cover_media_id, revision,
-  created_at, updated_at, published_at, source_updated_at
+  created_at, updated_at, published_at, source_updated_at, import_complete
 ) VALUES (${[
   post.id, post.globalSequence, 'published', post.source, post.sourceId, post.sourceUrl,
-  post.legacyPath, post.title, post.description, post.bodyHtml, post.bodyText, post.categoryId,
+  post.legacyPath, post.title, post.description, '', '', post.categoryId,
   post.categorySlug, post.categoryLabel, JSON.stringify(post.tags), JSON.stringify(post.legacyCategories),
   post.coverPath, post.coverAlt, null, 0, post.publishedAt, post.updatedAt, post.publishedAt,
-  post.sourceUpdatedAt,
-].map(sql).join(', ')});`);
-    chunks.push(`BEGIN TRANSACTION;\n${statements.join('\n')}\nCOMMIT;\n`);
+  post.sourceUpdatedAt, 0,
+].map(sql).join(', ')});`;
+    const reset = `UPDATE legacy_posts SET body_html = '', body_text = '' WHERE id = ${sql(post.id)} AND import_complete = 0;`;
+    const append = (column, value) => literalChunks(value).map((chunk) =>
+      `UPDATE legacy_posts SET ${column} = ${column} || '${chunk}' WHERE id = ${sql(post.id)} AND import_complete = 0;`);
+    const complete = `UPDATE legacy_posts SET import_complete = 1 WHERE id = ${sql(post.id)} AND import_complete = 0;`;
+    return [insert, reset, ...append('body_html', post.bodyHtml), ...append('body_text', post.bodyText), complete];
+  };
+  const chunks = [];
+  for (let offset = 0; offset < posts.length; offset += size) {
+    const statements = posts.slice(offset, offset + size).flatMap(statementsFor);
+    chunks.push(`${statements.join('\n')}\n`);
   }
   return chunks;
 }

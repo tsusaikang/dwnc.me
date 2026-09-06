@@ -43,11 +43,13 @@ function createDatabase() {
   const database = new Database();
   database.sqlite.exec(awaitableMigration);
   database.sqlite.exec(legacyMigration);
+  database.sqlite.exec(legacyImportStateMigration);
   return database;
 }
 
 const awaitableMigration = await readFile(new URL('../migrations/0001_native_editor.sql', import.meta.url), 'utf8');
 const legacyMigration = await readFile(new URL('../migrations/0002_legacy_editor.sql', import.meta.url), 'utf8');
+const legacyImportStateMigration = await readFile(new URL('../migrations/0003_legacy_import_state.sql', import.meta.url), 'utf8');
 const defaultInput = {
   title: '웹에서 쓴 첫 글', description: '새 편집기 설명', bodyMarkdown: '# 본문\n\n안전한 **내용**',
   categoryId: 'daily', tags: ['웹 기록'], coverMediaId: null,
@@ -172,6 +174,7 @@ adminDatabase.sqlite.prepare(`INSERT INTO legacy_posts (
   '/media/tistory/1/cover.jpg', '대표', 0, '2025-01-16T00:00:00.000Z',
   '2025-01-16T00:00:00.000Z', '2025-01-16T00:00:00.000Z', null,
 );
+adminDatabase.sqlite.prepare('UPDATE legacy_posts SET import_complete = 1 WHERE id = ?').run('legacy-1');
 const adminList = await (await adminWorker.fetch(new Request('https://admin.example.test/api/posts', { headers: authHeaders }), adminEnv)).json();
 equal(adminList.posts.length, 2); equal(Object.hasOwn(adminList.posts.find((post) => post.id === 'legacy-1'), 'bodyMarkdown'), false);
 const legacyGet = await adminWorker.fetch(new Request('https://admin.example.test/api/posts/legacy-1', { headers: authHeaders }), adminEnv);

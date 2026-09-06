@@ -16,14 +16,20 @@ assert.equal(posts.some((post) => post.bodyHtml.includes('/media/naver/')), true
 
 const chunks = legacyImportSqlChunks(posts);
 assert.equal(chunks.length, 18);
+assert.equal(chunks.flatMap((chunk) => chunk.split(/;\n/u)).filter(Boolean)
+  .every((statement) => Buffer.byteLength(statement) < 100 * 1024), true);
 const database = new DatabaseSync(':memory:');
 database.exec(await readFile(new URL('../migrations/0002_legacy_editor.sql', import.meta.url), 'utf8'));
+database.exec(await readFile(new URL('../migrations/0003_legacy_import_state.sql', import.meta.url), 'utf8'));
 for (const sql of chunks) database.exec(sql);
 assert.deepEqual({ ...database.prepare(`SELECT COUNT(*) AS count, MIN(global_sequence) AS minimum,
   MAX(global_sequence) AS maximum FROM legacy_posts`).get() }, { count: 349, minimum: 1, maximum: 596 });
 assert.deepEqual(database.prepare('SELECT source, COUNT(*) AS count FROM legacy_posts GROUP BY source ORDER BY source').all().map((row) => ({ ...row })), [
   { source: 'naver', count: 185 }, { source: 'tistory', count: 164 },
 ]);
+assert.equal(database.prepare('SELECT COUNT(*) AS count FROM legacy_posts WHERE import_complete = 1').get().count, 349);
+const largest = posts.toSorted((left, right) => right.bodyHtml.length - left.bodyHtml.length)[0];
+assert.equal(database.prepare('SELECT body_html FROM legacy_posts WHERE id = ?').get(largest.id).body_html, largest.bodyHtml);
 for (const sql of chunks) database.exec(sql);
 assert.equal(database.prepare('SELECT COUNT(*) AS count FROM legacy_posts').get().count, 349);
 
