@@ -1,4 +1,5 @@
 import { taxonomyNodeById } from './taxonomy.ts';
+import sanitizeHtml from 'sanitize-html';
 
 export const NATIVE_POST_ID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
 export const NATIVE_MEDIA_PATH_PATTERN = /^\/media\/native\/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\.(?:avif|gif|jpe?g|png|webp)$/u;
@@ -24,6 +25,8 @@ export interface NormalizedNativePostInput extends NativePostInput {
   bodyHtml: string;
   bodyText: string;
 }
+
+export interface NormalizedLegacyPostInput extends NormalizedNativePostInput {}
 
 function compact(value: string) {
   return value.replace(/[\u200B-\u200D\uFEFF]/gu, '').replace(/\s+/gu, ' ').normalize('NFC').trim();
@@ -150,6 +153,42 @@ export function nativeImagePaths(markdown: string) {
   return [...new Set(paths)];
 }
 
+const LEGACY_TAGS = [
+  'a', 'aside', 'b', 'blockquote', 'br', 'code', 'del', 'div', 'figcaption', 'figure',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'iframe', 'img', 'li', 'ol', 'p',
+  'pre', 's', 'span', 'strong', 'table', 'tbody', 'td', 'th', 'tr', 'u', 'ul', 'video',
+];
+const LEGACY_ATTRIBUTES = [
+  'alt', 'aria-hidden', 'aria-label', 'aria-labelledby', 'class', 'data-*', 'height', 'id',
+  'loading', 'role', 'style', 'tabindex', 'title', 'width',
+];
+
+export function sanitizeLegacyHtml(value: string) {
+  return sanitizeHtml(value.normalize('NFC'), {
+    allowedTags: LEGACY_TAGS,
+    allowedAttributes: {
+      '*': LEGACY_ATTRIBUTES,
+      a: ['href', 'rel', 'target'],
+      iframe: ['allowfullscreen', 'height', 'loading', 'referrerpolicy', 'src', 'title', 'width'],
+      img: [...LEGACY_ATTRIBUTES, 'decoding', 'src'],
+      video: [...LEGACY_ATTRIBUTES, 'autoplay', 'loop', 'muted', 'playsinline', 'poster', 'preload', 'src'],
+    },
+    allowedSchemes: ['http', 'https', 'mailto'],
+    allowedSchemesByTag: { img: ['http', 'https'], iframe: ['https'], video: ['http', 'https'] },
+    allowProtocolRelative: false,
+    parser: { lowerCaseAttributeNames: true },
+  });
+}
+
+export function nativeImagePathsInHtml(html: string) {
+  const paths: string[] = [];
+  for (const match of html.matchAll(/<img\b[^>]*\bsrc=(?:"([^"]+)"|'([^']+)')[^>]*>/giu)) {
+    const path = match[1] ?? match[2] ?? '';
+    if (NATIVE_MEDIA_PATH_PATTERN.test(path)) paths.push(path);
+  }
+  return [...new Set(paths)];
+}
+
 function normalizeTags(value: unknown) {
   if (!Array.isArray(value)) throw new Error('NATIVE_E_TAGS');
   const tags = value.map((tag) => compact(String(tag))).filter(Boolean);
@@ -184,5 +223,35 @@ export function normalizeNativePostInput(value: unknown, { requirePublishable = 
     coverMediaId,
     bodyHtml: renderNativeMarkdown(bodyMarkdown),
     bodyText: compact(bodyMarkdown.replace(/!\[[^\]]*\]\([^)]*\)|\[([^\]]+)\]\([^)]*\)|[#>*_`-]/gu, '$1')),
+  };
+}
+
+export function normalizeLegacyPostInput(value: unknown): NormalizedLegacyPostInput {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('NATIVE_E_INPUT');
+  const input = value as Record<string, unknown>;
+  const title = compact(String(input.title ?? ''));
+  const description = compact(String(input.description ?? ''));
+  const bodyHtml = sanitizeLegacyHtml(String(input.bodyMarkdown ?? ''));
+  const categoryId = compact(String(input.categoryId ?? ''));
+  const category = taxonomyNodeById(categoryId);
+  const coverMediaId = input.coverMediaId === null || input.coverMediaId === undefined || input.coverMediaId === ''
+    ? null : compact(String(input.coverMediaId));
+  const bodyText = compact(sanitizeHtml(bodyHtml, { allowedTags: [], allowedAttributes: {} }));
+  if (!title || !bodyHtml.trim() || title.length > TITLE_LIMIT || description.length > DESCRIPTION_LIMIT
+    || bodyHtml.length > BODY_LIMIT || !category
+    || (coverMediaId !== null && !NATIVE_POST_ID_PATTERN.test(coverMediaId))) {
+    throw new Error('NATIVE_E_INPUT');
+  }
+  return {
+    title,
+    description,
+    bodyHtml,
+    bodyMarkdown: bodyHtml,
+    bodyText,
+    categoryId,
+    categorySlug: category.slug,
+    categoryLabel: category.label,
+    tags: normalizeTags(input.tags),
+    coverMediaId,
   };
 }

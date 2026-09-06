@@ -33,6 +33,8 @@
     "cloudflare:surface:check": "node scripts/generate-public-request-surface.mjs",
     "cloudflare:config:check": "node scripts/validate-cloudflare-config.mjs",
     "editor:test": "node scripts/test-native-editor.mjs",
+    "editor:legacy-import:prepare": "node scripts/prepare-legacy-post-import.mjs",
+    "editor:legacy-import:test": "node scripts/test-legacy-post-import.mjs",
     "cloudflare:wrangler:check": "node scripts/check-wrangler-pin.mjs",
     "cloudflare:wrangler:require": "node scripts/check-wrangler-pin.mjs --require-installed",
     "cloudflare:wrangler:types:write": "WRANGLER_WRITE_LOGS=0 wrangler types worker-configuration.d.ts --config wrangler.jsonc --env-interface CloudflareBindings",

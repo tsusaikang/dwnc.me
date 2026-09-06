@@ -1,6 +1,8 @@
 import { verifyAccessIdentity, type AccessEnvironment } from './lib/access-auth.ts';
 import { adminHtml } from './lib/admin-ui.ts';
-import { NATIVE_POST_ID_PATTERN, normalizeNativePostInput } from './lib/native-content.ts';
+import {
+  NATIVE_POST_ID_PATTERN, normalizeLegacyPostInput, normalizeNativePostInput,
+} from './lib/native-content.ts';
 import { NativePostStore } from './lib/native-post-store.ts';
 import { TAXONOMY } from './lib/taxonomy.ts';
 
@@ -15,6 +17,12 @@ const MIME_EXTENSIONS = new Map([
 ]);
 const MAX_JSON_BYTES = 1_100_000;
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
+const LEGACY_POST_ID_PATTERN = /^legacy-([1-9]\d{0,2})$/u;
+
+function validAdminPostId(value: string) {
+  const legacy = value.match(LEGACY_POST_ID_PATTERN);
+  return NATIVE_POST_ID_PATTERN.test(value) || Boolean(legacy && Number(legacy[1]) <= 596);
+}
 
 function json(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
@@ -50,7 +58,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
     return json({ post: await store.createDraft(category) }, 201);
   }
   const match = url.pathname.match(/^\/api\/posts\/([^/]+)(?:\/(preview|publish|media))?$/u);
-  if (!match || !NATIVE_POST_ID_PATTERN.test(match[1])) return json({ error: '찾을 수 없습니다.' }, 404);
+  if (!match || !validAdminPostId(match[1])) return json({ error: '찾을 수 없습니다.' }, 404);
   const [, id, action] = match;
   if (request.method === 'GET' && !action) {
     const post = await store.getForAdmin(id);
@@ -62,7 +70,12 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
   }
   if (request.method === 'POST' && action === 'preview') {
     const body = await requestJson(request);
-    return json({ html: normalizeNativePostInput(body.input, { requirePublishable: false }).bodyHtml });
+    const post = await store.getForAdmin(id);
+    if (!post) return json({ error: '찾을 수 없습니다.' }, 404);
+    const html = post.bodyFormat === 'html'
+      ? normalizeLegacyPostInput(body.input).bodyHtml
+      : normalizeNativePostInput(body.input, { requirePublishable: false }).bodyHtml;
+    return json({ html });
   }
   if (request.method === 'POST' && action === 'publish') {
     const body = await requestJson(request);

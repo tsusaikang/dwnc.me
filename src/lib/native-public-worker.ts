@@ -145,7 +145,15 @@ async function combinedPosts(staticHandler: StaticHandler, request: Request, env
   if (!response.ok) throw new Error('NATIVE_E_DISCOVERY');
   const legacy = await response.json() as unknown;
   if (!Array.isArray(legacy) || !legacy.every(validDiscovery)) throw new Error('NATIVE_E_DISCOVERY');
-  return [...(await store.listPublished()).map(nativeDiscovery), ...legacy].sort(comparePosts);
+  const dynamic = new Map((await store.listPublished()).map((post) => [`/posts/${post.globalSequence}`, post]));
+  const merged = legacy.map((staticPost) => {
+    const post = dynamic.get(staticPost.path);
+    if (!post) return staticPost;
+    dynamic.delete(staticPost.path);
+    return { ...staticPost, ...nativeDiscovery(post), featured: staticPost.featured,
+      cover: staticPost.cover, coverAlt: staticPost.coverAlt };
+  });
+  return [...merged, ...[...dynamic.values()].map(nativeDiscovery)].sort(comparePosts);
 }
 async function postDocument(response: Response, post: NativePost, canonical: string, tags: TagNode[]) {
   const title = `${post.title} — dwnc.me`; const description = post.description || post.bodyText.slice(0, 160);
@@ -177,16 +185,17 @@ export function createNativePublicWorker(staticHandler: StaticHandler) {
     const aggregate = url.pathname === '/' || url.pathname === '/archive' || url.pathname === '/category'
       || url.pathname === '/tags' || url.pathname === '/search-index.json' || url.pathname === '/rss.xml'
       || url.pathname === '/sitemap-0.xml' || /^\/(?:category|tag)\/[^/]+(?:\/page\/[1-9]\d*)?$/u.test(url.pathname);
-    if (request.method === 'HEAD' && (aggregate || (postMatch && Number(postMatch[1]) >= 597))) {
+    if (request.method === 'HEAD' && (aggregate || postMatch)) {
       const response = await handle(new Request(request, { method: 'GET' }), env, context);
       try { await response.body?.cancel(); } catch {}
       return headOf(response);
     }
-    if (postMatch && Number(postMatch[1]) >= 597) {
+    if (postMatch) {
       if (request.method !== 'GET') return withVersion(new Response('Method not allowed.\n', { status: 405, headers: { allow: 'GET, HEAD' } }), env);
       const post = await store.getPublishedBySequence(Number(postMatch[1]));
-      if (!post) return withVersion(unavailable(), env);
-      const base = await shell(staticHandler, request, env, context);
+      if (!post) return Number(postMatch[1]) >= 597
+        ? withVersion(unavailable(), env) : staticHandler(request, env, context);
+      const base = await pageShell(staticHandler, request, env, context);
       let tags: TagNode[] = [];
       try { tags = tagNodes(await combinedPosts(staticHandler, request, env, context, store)); } catch {}
       const response = await postDocument(base, post, `https://dwnc.me/posts/${post.globalSequence}`, tags);

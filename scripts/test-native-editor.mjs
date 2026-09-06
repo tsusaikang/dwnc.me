@@ -42,10 +42,12 @@ class Database {
 function createDatabase() {
   const database = new Database();
   database.sqlite.exec(awaitableMigration);
+  database.sqlite.exec(legacyMigration);
   return database;
 }
 
 const awaitableMigration = await readFile(new URL('../migrations/0001_native_editor.sql', import.meta.url), 'utf8');
+const legacyMigration = await readFile(new URL('../migrations/0002_legacy_editor.sql', import.meta.url), 'utf8');
 const defaultInput = {
   title: '웹에서 쓴 첫 글', description: '새 편집기 설명', bodyMarkdown: '# 본문\n\n안전한 **내용**',
   categoryId: 'daily', tags: ['웹 기록'], coverMediaId: null,
@@ -158,6 +160,36 @@ const publicPost = await publicStore.update(adminDraft.id, adminCurrent.revision
   ...defaultInput, tags: ['A B', 'Native Only'], bodyMarkdown: `# 본문\n\n![사진](${uploadedMedia.publicPath})`,
 });
 
+adminDatabase.sqlite.prepare(`INSERT INTO legacy_posts (
+  id, global_sequence, source, source_id, source_url, legacy_path, title, description,
+  body_html, body_text, category_id, category_slug, category_label, tags_json,
+  legacy_categories_json, cover_path, cover_alt, revision, created_at, updated_at,
+  published_at, source_updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+  'legacy-1', 1, 'tistory', '1', 'https://dwnc.me/1', '/1', '수정 전 예전 글 1', '예전 설명',
+  '<p>예전 본문 <img src="/media/tistory/1/original.jpg" alt="원본"></p>', '예전 본문',
+  'daily', '일상', '일상', JSON.stringify(['A B']), JSON.stringify(['일상']),
+  '/media/tistory/1/cover.jpg', '대표', 0, '2025-01-16T00:00:00.000Z',
+  '2025-01-16T00:00:00.000Z', '2025-01-16T00:00:00.000Z', null,
+);
+const adminList = await (await adminWorker.fetch(new Request('https://admin.example.test/api/posts', { headers: authHeaders }), adminEnv)).json();
+equal(adminList.posts.length, 2); equal(Object.hasOwn(adminList.posts.find((post) => post.id === 'legacy-1'), 'bodyMarkdown'), false);
+const legacyGet = await adminWorker.fetch(new Request('https://admin.example.test/api/posts/legacy-1', { headers: authHeaders }), adminEnv);
+equal(legacyGet.status, 200); const legacyPost = (await legacyGet.json()).post; equal(legacyPost.bodyFormat, 'html');
+const legacyInput = { ...defaultInput, title: '수정된 예전 글 1',
+  bodyMarkdown: '<p onclick="bad()">고친 본문 <img src="/media/tistory/1/original.jpg" alt="원본"></p><script>bad()</script>',
+  tags: ['A B'] };
+const legacyPut = await adminWorker.fetch(new Request('https://admin.example.test/api/posts/legacy-1', {
+  method: 'PUT', headers: authHeaders, body: JSON.stringify({ expectedRevision: 0, input: legacyInput }),
+}), adminEnv);
+equal(legacyPut.status, 200); const legacySaved = (await legacyPut.json()).post;
+equal(legacySaved.globalSequence, 1); equal(legacySaved.publishedAt, legacyPost.publishedAt);
+equal(legacySaved.bodyHtml.includes('onclick'), false); equal(legacySaved.bodyHtml.includes('<script'), false);
+equal(legacySaved.bodyHtml.includes('/media/tistory/1/original.jpg'), true);
+equal((await adminWorker.fetch(new Request('https://admin.example.test/api/posts/legacy-1', {
+  method: 'PUT', headers: authHeaders, body: JSON.stringify({ expectedRevision: 0, input: legacyInput }),
+}), adminEnv)).status, 409);
+
 class TestHtmlRewriter {
   handlers = [];
   on(selector, handler) { this.handlers.push([selector, handler]); return this; }
@@ -194,6 +226,7 @@ const staticHandler = async (request) => {
   if (pathname === '/sitemap-0.xml') return new Response('<?xml version="1.0"?><urlset></urlset>', { headers: { 'content-type': 'application/xml' } });
   if (pathname === '/') return new Response(routeHtml('home', '<script id="home-page-script">home()</script>'), { headers: { 'content-type': 'text/html; charset=utf-8' } });
   if (pathname === '/tags') return new Response(routeHtml('tags', '<script id="tag-filter-script">filterTags()</script>'), { headers: { 'content-type': 'text/html; charset=utf-8' } });
+  if (pathname === '/posts/1') return new Response(routeHtml('legacy-post', '<script id="legacy-post-script">post()</script>'), { headers: { 'content-type': 'text/html; charset=utf-8' } });
   if (pathname === '/tag/upstream-failure') return new Response('upstream failure', { status: 503, headers: { 'content-type': 'text/plain' } });
   if (pathname === '/archive' || pathname === '/category' || pathname.startsWith('/category/%EC%9D%BC%EC%83%81') || pathname.startsWith('/tag/a-b--')) return new Response(routeHtml('known'), { headers: { 'content-type': 'text/html; charset=utf-8' } });
   if (pathname === '/about') return new Response(shellHtml, { headers: { 'content-type': 'text/html; charset=utf-8' } });
@@ -203,7 +236,9 @@ const publicWorker = createNativePublicWorker(staticHandler);
 const versionId = '123e4567-e89b-42d3-a456-426614174000';
 const publicEnv = { NATIVE_DB: adminDatabase, NATIVE_MEDIA_BUCKET: adminEnv.NATIVE_MEDIA_BUCKET, ASSETS: {}, MEDIA_BUCKET: {}, DWNC_DEPLOYMENT_ENVIRONMENT: 'staging', CF_VERSION_METADATA: { id: versionId } };
 const searchResponse = await publicWorker(new Request('https://dwnc.me/search-index.json'), publicEnv, {});
-equal(searchResponse.status, 200); equal((await searchResponse.json())[0].path, `/posts/${publicPost.globalSequence}`);
+equal(searchResponse.status, 200); const mergedSearch = await searchResponse.json();
+equal(mergedSearch[0].path, `/posts/${publicPost.globalSequence}`); equal(mergedSearch.length, 17);
+equal(mergedSearch.find((post) => post.path === '/posts/1').title, '수정된 예전 글 1');
 equal(searchResponse.headers.get('x-dwnc-staging-version'), versionId);
 equal((await publicWorker(new Request('https://dwnc.me/posts/9999'), publicEnv, {})).status, 404);
 
@@ -236,6 +271,10 @@ equal(nativePostResponse.status, 200); equal(nativePostResponse.headers.get('x-d
 equal(load(nativePostHtml)('link[rel="canonical"]').attr('href'), `https://dwnc.me/posts/${publicPost.globalSequence}`);
 equal(load(nativePostHtml)('meta[property="og:type"]').attr('content'), 'article');
 ok(nativePostHtml.includes(`/tag/${abSpaceSlug}`));
+const editedLegacyResponse = await publicWorker(new Request('https://dwnc.me/posts/1'), publicEnv, {});
+const editedLegacyHtml = await editedLegacyResponse.text();
+equal(editedLegacyResponse.status, 200); ok(editedLegacyHtml.includes('고친 본문'));
+ok(editedLegacyHtml.includes('/media/tistory/1/original.jpg')); ok(editedLegacyHtml.includes('id="legacy-post-script"'));
 
 const nativeOnlyTag = await (await publicWorker(new Request('https://dwnc.me/tag/native-only'), publicEnv, {})).text();
 ok(nativeOnlyTag.includes('Tag · 1편')); ok(nativeOnlyTag.includes(defaultInput.title));
