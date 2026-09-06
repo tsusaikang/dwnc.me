@@ -154,6 +154,9 @@ equal((await adminWorker.fetch(new Request('https://admin.example.test/api/posts
 
 const ui = adminHtml('owner@example.com');
 const uiScript = load(ui)('script').text();
+const insertOffset = uiScript.indexOf("insert='") + "insert='".length;
+equal(uiScript.charCodeAt(insertOffset), 92); equal(uiScript.charCodeAt(insertOffset + 1), 110);
+equal(uiScript.includes("insert='\n"), false);
 assert.doesNotThrow(() => new Script(uiScript)); assertions += 1;
 ok(ui.includes('while(current&&(dirty||saving))'));
 ok(ui.includes('if(change!==savedChange)dirty=true'));
