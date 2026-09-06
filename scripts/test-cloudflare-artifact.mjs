@@ -43,7 +43,7 @@ const releaseConfigFixture = {
         binding: 'NATIVE_MEDIA_BUCKET', bucket_name: 'dwnc-me-native-media-production',
       }],
       d1_databases: [{
-        binding: 'NATIVE_DB', database_name: 'dwnc-me-content-production',
+        binding: 'NATIVE_DB', database_name: 'dwnc-me-native-production',
         database_id: '11111111-1111-4111-8111-111111111111',
       }],
     },

@@ -1,6 +1,6 @@
 # dwnc.me 프로젝트 공식 상태
 
-최종 갱신: 2026-09-06 KST — PLAN-05부터 PLAN-08까지 완료 / PLAN-09 로그인형 웹 편집기 로컬 구현·시험 완료, 실제 Cloudflare 연결 전
+최종 갱신: 2026-09-06 KST — PLAN-05부터 PLAN-08까지 완료 / PLAN-09 production D1·private R2·초기 migration 완료, Access·Worker version 연결 전
 
 사용자가 확인할 현재 목표·결정·진행을 막는 조건·다음 단계와 stable requirement ID는 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)를 기준으로 한다. 이 문서는 구현 세부사항, 검증 수치, Git·Cloudflare 상태 재확인 결과와 인수인계를 보존하는 기술 기준점이다. 완료 이력은 요구사항 원장의 보관 정책에 따라 [`docs/REQUIREMENTS_ARCHIVE.md`](docs/REQUIREMENTS_ARCHIVE.md)로 이동하되 이 기술 증거를 삭제하지 않는다.
 
@@ -8,7 +8,7 @@
 
 네이버 블로그 `blog.naver.com/tsusai`와 티스토리 기반 `dwnc.me`의 직접 작성 콘텐츠를 소유자가 통제하는 새 블로그로 이전한다. 원문, 이미지, 게시일, 카테고리, 태그, 기존 주소, 공개 범위를 보존하며 이후 새 글도 지속해서 작성할 수 있어야 한다.
 
-비개발자용 현재 요약: `PLAN-08` 운영 전환과 실제 화면 확인은 완료됐다. 사용자는 저장소를 직접 고치거나 재배포하는 방식 대신 Cloudflare 로그인형 웹 편집기를 선택했다. 현재 별도 관리자 화면에서 새 글 작성·자동 임시저장·미리보기·발행·발행 후 수정·카테고리와 태그·이미지 삽입을 할 수 있는 로컬 코드를 구현했다. 첫 발행은 597번부터 DB에서 한 번만 배정하며, 공개 글은 재배포 없이 홈·아카이브·카테고리·태그·검색·RSS·사이트맵에 나타나게 한다. 기존 1–596번 글과 2,758개 미디어는 바꾸지 않는다. 실제 Cloudflare DB·신규 이미지 저장소·Access 로그인·관리자 주소 생성과 배포는 아직 수행하지 않았다.
+비개발자용 현재 요약: `PLAN-08` 운영 전환과 실제 화면 확인은 완료됐다. 사용자는 저장소를 직접 고치거나 재배포하는 방식 대신 Cloudflare 로그인형 웹 편집기를 선택했다. 별도 관리자 화면의 로컬 구현·시험을 마쳤고 production D1과 별도 private R2를 만든 뒤 D1 초기 구조를 적용했다. 첫 발행은 597번부터 DB에서 한 번만 배정하며, 공개 글은 재배포 없이 홈·아카이브·카테고리·태그·검색·RSS·사이트맵에 나타나게 한다. 기존 1–596번 글과 2,758개 미디어는 바꾸지 않는다. Access 로그인·관리자 주소와 public/admin Worker의 새 version 업로드는 아직 수행하지 않았다.
 
 전체 프로젝트 완료 조건은 다음과 같다.
 
@@ -40,7 +40,7 @@
 - 공개 URL registry: **imported 349 + native 증분 계약, 현재 collision 0**
 - 공개 본문 legacy 링크 호환: **75개 canonical 변환, unavailable 2개 중립화, Naver platform anchor 0, broken local 0**
 - 전역 순번 bootstrap: **596건(공개 349 + 비공개 예약 247), 1–596, next 597, 감사 digest 2종 PASS**
-- 웹 편집기: **Access JWT 이중 확인·별도 관리자 Worker·D1 초안/발행/수정·신규 R2 이미지·597 이후 원자적 순번·동적 공개 탐색 로컬 구현 완료, 외부 설정 전**
+- 웹 편집기: **Access JWT 이중 확인·별도 관리자 Worker·D1 초안/발행/수정·신규 R2 이미지·597 이후 원자적 순번·동적 공개 탐색 로컬 구현 완료 / production D1·private R2 생성과 초기 migration 완료 / Access·Worker version 연결 전**
 - 전역 순번 운영 내구성: **metadata-only sidecar·bootstrap seal·append journal·generation CAS·초기화/교차 파일 transaction·linked stale-transfer recovery, 순수 117 + 실제 CLI 5 fixture PASS**
 - 공개 canonical 전환: **`/posts/{globalSequence}` 349개, legacy alias 349개, private reserved route 0**
 - alias 표현·발견성: **noindex/canonical/refresh/JS/fallback 349/349, 검색·RSS·sitemap 포함 0**
@@ -69,9 +69,9 @@
 - `PLAN-06` 시험용 사이트 프로그램·버전·사이트 점검: **완료**. `DWNC-S3-009`와 `DWNC-S3-010`을 마쳤고, runtime source `05962c4c0872b5234d3a45298ab0e44d123d03da`의 artifact `81cf14fc…`를 version `bb59f4ee-55f5-4626-858b-0653d7e79900`으로 100% 적용해 live 종합 점검을 통과했다.
 - `PLAN-07` 운영용 이름의 Cloudflare 자원·버전 준비: **완료**. private production R2에 2,758개를 create-only로 올리고 전수 감사·서명·production artifact와 비활성 Worker version 준비를 마쳤다. 기존 active version과 production DNS·route·traffic은 바꾸지 않았다.
 - `PLAN-08` 실제 도메인 연결과 운영 전환 검증: **완료**. production version을 100% 활성화하고 기존 DNS를 보존한 Worker route 방식으로 연결한 뒤 실제 주소의 대표 글·예전 주소·미디어·모바일·데스크톱 화면을 확인했다.
-- `PLAN-09` 로그인형 웹 편집기: **로컬 구현·시험 완료, 실제 Cloudflare 연결 대기**. D1·신규 R2·Access 관리자 주소의 실제 연결과 비공개 백업 방식 결정이 남았고, 공유 글 10개·댓글·추가 개선은 사용자 선택 후속이다.
+- `PLAN-09` 로그인형 웹 편집기: **로컬 구현·시험과 production D1·private R2·초기 migration 완료, Access·Worker version 연결 대기**. Access audience·허용 이메일·관리자 주소와 public/admin Worker version 업로드, 비공개 백업 방식 결정이 남았고, 공유 글 10개·댓글·추가 개선은 사용자 선택 후속이다.
 
-인수인계 상태: `PLAN-05`부터 `PLAN-08`까지와 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`는 완료됐다. production R2는 private이고 2,758개 전수 감사가 통과했으며 production version `476acc86-b11d-4ba4-a699-cb26c551a93d`이 100% 활성 상태다. `dwnc.me/*` Worker route와 기존 Proxied DNS를 통해 새 사이트가 실제 운영 중이다. `PLAN-09` 웹 편집기는 로컬 구현·시험을 완료했고 실제 Cloudflare 연결과 비공개 백업 방식 결정을 기다린다.
+인수인계 상태: `PLAN-05`부터 `PLAN-08`까지와 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`는 완료됐다. production R2는 private이고 2,758개 전수 감사가 통과했으며 production version `476acc86-b11d-4ba4-a699-cb26c551a93d`이 100% 활성 상태다. `dwnc.me/*` Worker route와 기존 Proxied DNS를 통해 새 사이트가 실제 운영 중이다. `PLAN-09`는 production D1·private R2·초기 migration까지 완료했고 Access·관리자 주소·Worker version 연결과 비공개 백업 방식 결정을 기다린다.
 
 요구사항과 계획의 자세한 연결은 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)를 기준으로 한다. 최종 결과·완료조건·범위·순서·승인 범위가 실제로 바뀔 때만 요구사항 번호, 관련 계획, 우선순위, 완료 기준, 상태와 근거 및 현재 위치를 갱신한다. 단순 질문·설명·진행 확인과 이미 기록된 작업의 계속 지시는 새 요구사항으로 만들지 않는다.
 
@@ -531,8 +531,8 @@
 - 관리자 화면은 새 글, 800ms 자동 임시저장, 미리보기, 발행, 기존 웹 작성 글 수정, 카테고리·태그, 최대 25MiB 이미지 업로드와 Markdown 삽입을 제공한다. 삭제·공개 철회 기능은 이번 범위에 넣지 않았다.
 - 공개 읽기 계층은 597 이후 글과 참조된 native 이미지를 제공하고, 홈·아카이브·카테고리·태그·검색 JSON·RSS·sitemap을 D1의 현재 공개 글로 보강한다. 이미 존재하는 화면은 해당 정적 경로의 원래 HTML·화면별 script·홈 대표 이미지를 그대로 바탕으로 쓰고 목록 부분만 합치며, 아직 정적 화면이 없는 신규 태그·후속 페이지에서만 중립 shell을 사용한다. 기존 1–596번 정적 글, 예전 주소, 기존 2,758개 미디어 전달 코드는 그대로 사용한다.
 - 독립 검토에서 찾은 실제 사용 경로 문제를 보완했다. 공개 글은 제목·본문을 비워 저장할 수 없고, 글 전환 전 저장을 끝내며 저장 중 들어온 마지막 입력도 후속 저장한다. 이미지는 실제로 렌더되는 본문 이미지 또는 대표 이미지만 공개한다. 기존 글과 신규 글을 합친 홈·목록·태그·검색·RSS는 기존 페이지 크기·개수·연도·정확한 태그 이름 충돌 규칙을 유지하며, query가 붙은 신규 글·이미지와 합쳐진 응답의 HEAD도 GET과 같은 상태·header를 유지한다.
-- 구성 초안은 `wrangler.jsonc`의 환경별 `NATIVE_DB`·`NATIVE_MEDIA_BUCKET` 읽기 binding과 별도 `wrangler.admin.jsonc`의 쓰기 binding이다. 실제 database ID, D1/R2 생성, migration 적용, Access application/policy, 허용 이메일·audience 설정, 관리자 hostname/route와 두 Worker 배포는 외부 설정 단계에 남아 있다.
-- release artifact·binding digest·version attestation에도 `NATIVE_DB`·`NATIVE_MEDIA_BUCKET`을 포함해 같은 배포 경로에서 빠지지 않게 했다. 로컬 결과: 새 편집기 집중시험 87개, artifact 138개, release/attestation 62개, promotion executor 30개, Wrangler 설정·생성 타입 검사, Astro/TypeScript·요구사항 검사를 통과했다. 실제 Cloudflare 요청·리소스 생성·배포·권한 변경·R2 overwrite/delete·Git commit/push는 수행하지 않았다.
+- `wrangler.jsonc`와 `wrangler.admin.jsonc`의 production `NATIVE_DB`는 생성된 `dwnc-me-native-production`에 정확히 결속했고 `NATIVE_MEDIA_BUCKET`은 생성된 `dwnc-me-native-media-production` 이름과 일치한다. OAuth 로그인으로 두 자원을 확인하고 remote D1에 `0001_native_editor.sql`을 적용했으며 pending migration 0을 확인했다. Access application/policy, 허용 이메일·audience, 관리자 hostname/route와 두 Worker version 업로드는 남아 있다.
+- release artifact·binding digest·version attestation에도 `NATIVE_DB`·`NATIVE_MEDIA_BUCKET`을 포함해 같은 배포 경로에서 빠지지 않게 했다. 로컬 결과: 새 편집기 집중시험 87개, artifact 138개, release/attestation 62개, promotion executor 30개, Wrangler 설정·생성 타입 검사, Astro/TypeScript·요구사항 검사를 통과했다. 이번 연결 단계에서는 production D1·private R2 생성 확인과 D1 migration 적용만 수행했고 Worker version upload·traffic·DNS/route·기존 R2 객체 변경·Git push는 0회다.
 
 ## 미해결 문제
 
@@ -573,7 +573,7 @@
 ## 다음 단계
 
 1. `PLAN-05`는 실제 staging 비공개 확인, 2,758개 전수 GET/SHA-256, 이번 validator 원격·로컬 정리와 사용 불가능한 기존 원격 token 두 개의 exact identity 확인·승인된 삭제·부재 확인까지 완료했다. 보존 receipt와 capture는 유지한다.
-2. `PLAN-06`·`PLAN-07`·`PLAN-08`과 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`는 완료됐다. `PLAN-09`의 로컬 구현·시험은 완료했으며 다음은 실제 Cloudflare D1·신규 R2·Access 관리자 주소를 만들고 연결하는 단계다. 비공개 자료 백업·복구 방식은 별도 사용자 결정으로 남는다.
+2. `PLAN-06`·`PLAN-07`·`PLAN-08`과 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`는 완료됐다. `PLAN-09`의 로컬 구현·시험과 production D1·private R2·초기 migration은 완료했으며 다음은 Access audience·허용 이메일·관리자 주소를 확정하고 public/admin Worker의 보호된 새 version을 올리는 단계다. 비공개 자료 백업·복구 방식은 별도 사용자 결정으로 남는다.
 
 ## 중요한 제약과 주의사항
 

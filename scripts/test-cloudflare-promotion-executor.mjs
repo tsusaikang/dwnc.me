@@ -311,7 +311,7 @@ process.exit(24);
     stagingBucket: 'dwnc-me-public-media-staging',
     productionNativeResources: {
       nativeBucket: 'dwnc-me-native-media-production',
-      databaseName: 'dwnc-me-content-production',
+      databaseName: 'dwnc-me-native-production',
       databaseId: '11111111-1111-4111-8111-111111111111',
     },
     stagingNativeResources: {

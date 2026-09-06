@@ -34,7 +34,7 @@
         { "binding": "NATIVE_MEDIA_BUCKET", "bucket_name": "dwnc-me-native-media-production" }
       ],
       "d1_databases": [
-        { "binding": "NATIVE_DB", "database_name": "dwnc-me-content-production", "migrations_dir": "migrations" }
+        { "binding": "NATIVE_DB", "database_name": "dwnc-me-native-production", "database_id": "852b307f-58e2-42d9-b332-caa7462cb7a9", "migrations_dir": "migrations" }
       ]
     }
   }

@@ -6,7 +6,7 @@ const adminConfig = JSON.parse(await readFile('wrangler.admin.jsonc', 'utf8'));
 const releasePolicy = await loadTrackedPublicMediaReleasePolicy(process.cwd());
 const expectedBuckets = {
   staging: ['dwnc-me-staging', 'dwnc-me-public-media-staging', 'dwnc-me-native-media-staging', 'dwnc-me-content-staging'],
-  production: ['dwnc-me', 'dwnc-me-public-media-production', 'dwnc-me-native-media-production', 'dwnc-me-content-production'],
+  production: ['dwnc-me', 'dwnc-me-public-media-production', 'dwnc-me-native-media-production', 'dwnc-me-native-production'],
 };
 const expectedObservability = {
   enabled: true,

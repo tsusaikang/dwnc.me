@@ -26,7 +26,7 @@ const D1_DATABASE_ID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]
 const NATIVE_RELEASE_TARGETS = Object.freeze({
   production: Object.freeze({
     nativeBucket: 'dwnc-me-native-media-production',
-    databaseName: 'dwnc-me-content-production',
+    databaseName: 'dwnc-me-native-production',
   }),
   staging: Object.freeze({
     nativeBucket: 'dwnc-me-native-media-staging',
