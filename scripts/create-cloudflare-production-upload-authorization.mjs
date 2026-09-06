@@ -172,6 +172,6 @@ export async function createCloudflareProductionUploadAuthorizationCommand({
 }
 
 if (path.resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
-  installStructuredErrorHandler('cloudflare-production-upload-authorization-create');
+  installStructuredErrorHandler('cloudflare-production-upload-auth');
   console.log(JSON.stringify(await createCloudflareProductionUploadAuthorizationCommand(), null, 2));
 }
