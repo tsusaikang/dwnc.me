@@ -530,10 +530,11 @@
 - `migrations/0001_native_editor.sql`은 임시·공개 글, revision 기반 자동저장, 신규 미디어, 597부터의 단일 순번 표를 만든다. 임시 글에는 번호가 없고 첫 발행 transaction에서만 번호를 post ID에 결속한다.
 - 관리자 화면은 새 글, 800ms 자동 임시저장, 미리보기, 발행, 기존 웹 작성 글 수정, 카테고리·태그, 최대 25MiB 이미지 업로드와 Markdown 삽입을 제공한다. 삭제·공개 철회 기능은 이번 범위에 넣지 않았다.
 - 기존 글에 저장된 `/media/tistory/*`·`/media/naver/*`와 새 업로드의 `/media/native/*`가 관리자 편집기에서도 같은 본문 이미지로 표시되도록 관리자 Worker에 두 private R2의 읽기 전용 GET·HEAD 경로를 연결했다. 기존 미디어는 공개 미디어 manifest·metadata 계약을 그대로 확인하고, 새 미디어는 편집 가능한 글에 결속된 D1 기록을 확인한다. 저장된 글 HTML과 기존·신규 R2 객체는 수정하거나 삭제하지 않았다.
+- HTML 본문에서는 일반 이미지와 링크 미리보기 카드를 별도 블록으로 표시하고 클릭 선택, 삭제 버튼, Delete·Backspace, Escape와 바깥 클릭 해제를 지원한다. 링크 카드는 이미지 하나가 아니라 카드 전체를 선택·삭제하며 편집기 안에서는 링크가 열리지 않는다. Markdown 본문의 신규 이미지도 미리보기 블록에서 같은 방식으로 선택·삭제되고, 삭제는 기존 자동저장 흐름으로 이어진다.
 - 기존 공개 글 349편을 원래 URL·전역 번호·게시일·제목·요약·카테고리·태그·본문 HTML·이미지 참조를 유지한 편집 가능한 사본으로 production D1에 import했다. `0002_legacy_editor.sql`과 `0003_legacy_import_state.sql`을 적용했고 349편 모두 import 완료 상태다. 원본 정적 글과 기존 R2 객체는 수정·덮어쓰기·삭제하지 않았다.
 - 공개 읽기 계층은 597 이후 글과 참조된 native 이미지를 제공하고, 홈·아카이브·카테고리·태그·검색 JSON·RSS·sitemap을 D1의 현재 공개 글로 보강한다. 이미 존재하는 화면은 해당 정적 경로의 원래 HTML·화면별 script·홈 대표 이미지를 그대로 바탕으로 쓰고 목록 부분만 합치며, 아직 정적 화면이 없는 신규 태그·후속 페이지에서만 중립 shell을 사용한다. 기존 1–596번 정적 글, 예전 주소, 기존 2,758개 미디어 전달 코드는 그대로 사용한다.
 - 독립 검토에서 찾은 실제 사용 경로 문제를 보완했다. 공개 글은 제목·본문을 비워 저장할 수 없고, 글 전환 전 저장을 끝내며 저장 중 들어온 마지막 입력도 후속 저장한다. 이미지는 실제로 렌더되는 본문 이미지 또는 대표 이미지만 공개한다. 기존 글과 신규 글을 합친 홈·목록·태그·검색·RSS는 기존 페이지 크기·개수·연도·정확한 태그 이름 충돌 규칙을 유지하며, query가 붙은 신규 글·이미지와 합쳐진 응답의 HEAD도 GET과 같은 상태·header를 유지한다.
-- `wrangler.jsonc`와 `wrangler.admin.jsonc`의 `NATIVE_DB`는 생성된 `dwnc-me-native-staging`·`dwnc-me-native-production`에 각각 정확히 결속했고 `NATIVE_MEDIA_BUCKET`도 두 환경의 생성된 bucket 이름과 일치한다. OAuth 로그인으로 네 자원을 확인하고 두 remote D1에 `0001_native_editor.sql`을 적용했다. production에는 기존 글 편집용 0002·0003 migration과 349편 import도 적용했다. production admin Worker version `f05123b7-8e9e-44b5-b4cc-b9fd3fc56a66`과 public Worker version `38be46a9-f983-40d3-a522-5fb18bf27485`은 100% 활성 상태다. 관리자 이미지 수정을 담은 새 admin version `1c1c36cb-50f1-4938-9b94-173e7857a134`은 version-only 업로드만 완료해 traffic 0%이며, 공개 Worker·DNS·route는 바꾸지 않았다. staging용 새 upload/secret authorization과 smoke secret은 남아 있다.
+- `wrangler.jsonc`와 `wrangler.admin.jsonc`의 `NATIVE_DB`는 생성된 `dwnc-me-native-staging`·`dwnc-me-native-production`에 각각 정확히 결속했고 `NATIVE_MEDIA_BUCKET`도 두 환경의 생성된 bucket 이름과 일치한다. OAuth 로그인으로 네 자원을 확인하고 두 remote D1에 `0001_native_editor.sql`을 적용했다. production에는 기존 글 편집용 0002·0003 migration과 349편 import도 적용했다. production admin Worker version `f05123b7-8e9e-44b5-b4cc-b9fd3fc56a66`과 public Worker version `38be46a9-f983-40d3-a522-5fb18bf27485`은 100% 활성 상태다. 관리자 이미지 표시·선택·삭제와 링크 카드 UI를 담은 새 admin version `5210bf98-2057-411d-95db-7c36efbf68ca`은 version-only 업로드만 완료해 traffic 0%이며, 공개 Worker·DNS·route는 바꾸지 않았다. staging용 새 upload/secret authorization과 smoke secret은 남아 있다.
 - release artifact·binding digest·version attestation에도 `NATIVE_DB`·`NATIVE_MEDIA_BUCKET`을 포함해 같은 배포 경로에서 빠지지 않게 했다. 두 R2 binding을 함께 허용하도록 보호된 공개 미디어 대상 검사를 고쳤고 production upload authorization 진입점의 길이 오류도 고쳤다. 이후 기존 글 편집과 동적 공개 통합 변경을 적용해 공개 Worker를 100% 전환했으며, 기존 DNS·route·기존 R2 객체와 Git 원격은 바꾸지 않았다.
 
 ### PLAN-09 Cloudflare Access·비용 상태
@@ -541,13 +542,13 @@
 - Zero Trust Free plan 활성화를 완료했다. 2026-09-06 현재 결제액은 $0이며, 사용자는 Free plan 한도를 넘으면 등록 카드에 요금이 청구될 수 있다는 조건을 승인했다. 카드 세부정보는 프로젝트 문서에 기록하지 않는다.
 - Google OAuth는 사용하지 않고 Cloudflare 이메일 OTP를 로그인 방식으로 확정했다. `admin.dwnc.me` self-hosted Access 앱을 만들고 허용 정책은 `tsusaikang@gmail.com` 하나, 로그인 방식은 `onetimepin` 하나로 제한했으며 instant auth를 켰다.
 - production admin 설정은 Access issuer `https://ancient-term-4cf0.cloudflareaccess.com`, audience `e2607628d16bd1707b60ac68a33326591c72c0accf6e5e3da33514ad410555fb`, 허용 이메일 `tsusaikang@gmail.com`을 정확히 사용한다. 로컬 구성 검사, 관리자 기능 시험과 Wrangler bundle dry-run은 통과했다.
-- Dashboard에서 `dwnc-me-admin` Worker를 최초 생성했고 Worker-level Access의 all traffic에 기존 한 명 허용·OTP 전용 정책을 적용해 기본 workers.dev·preview 표면도 보호했다. production admin version `f05123b7-8e9e-44b5-b4cc-b9fd3fc56a66`을 100% 활성화하고 `admin.dwnc.me/*` route와 Proxied AAAA placeholder DNS를 연결했다. 이미지 수정 version `1c1c36cb-50f1-4938-9b94-173e7857a134`은 활성화 전이다.
+- Dashboard에서 `dwnc-me-admin` Worker를 최초 생성했고 Worker-level Access의 all traffic에 기존 한 명 허용·OTP 전용 정책을 적용해 기본 workers.dev·preview 표면도 보호했다. production admin version `f05123b7-8e9e-44b5-b4cc-b9fd3fc56a66`을 100% 활성화하고 `admin.dwnc.me/*` route와 Proxied AAAA placeholder DNS를 연결했다. 이미지 편집 개선 version `5210bf98-2057-411d-95db-7c36efbf68ca`은 활성화 전이다.
 - 사용자가 `https://admin.dwnc.me`에서 이메일 OTP 로그인을 마쳤다. 관리자 화면에 기존 공개 글 349편이 표시됐고 #595를 선택했을 때 제목·요약·카테고리·본문이 편집 필드에 로드됐다. 이 확인에서는 저장이나 실제 글 내용 변경을 하지 않았다.
 - public Worker 최신 version `38be46a9-f983-40d3-a522-5fb18bf27485`을 100% 활성화한 뒤 live `https://dwnc.me/`와 `https://dwnc.me/posts/595`가 정상 표시되는 것을 확인했다.
 
 ## 미해결 문제
 
-- 관리자 이미지 수정 version `1c1c36cb-50f1-4938-9b94-173e7857a134`의 traffic 전환과 로그인 뒤 대표 기존·신규 본문 이미지 표시 확인이 남아 있다. 공개 `dwnc.me`의 Worker·DNS·route·traffic에는 이번 변경을 적용하지 않았다.
+- 관리자 이미지 편집 개선 version `5210bf98-2057-411d-95db-7c36efbf68ca`의 traffic 전환과 로그인 뒤 대표 기존·신규 본문 이미지의 비파괴 선택 동작 확인이 남아 있다. 공개 `dwnc.me`의 Worker·DNS·route·traffic에는 이번 변경을 적용하지 않았다.
 - 콘텐츠 이전 정확성·완전성 측면의 알려진 문제는 없다. Stage 3 R2 전체 2,758개 업로드, 사후 목록 확인, 실제 전체 내용·bytes·SHA-256 검증이 완료됐다.
 - 웹 편집기의 로그인, 기존 글 목록·선택 로드와 공개 Worker 전환을 완료했으므로 현재 운영을 막는 편집기 선행 조건은 없다. 새 글 1편을 실제 발행하거나 기존 글을 실제 수정하는 일은 사용자가 원할 때 수행하며 이번 확인에서는 콘텐츠를 변경하지 않았다.
 - 별도 로컬 진단 실수로 loopback 회귀시험을 한 번 잘못 호출했다. sandbox에서 bind를 1회 시도한 뒤 `BRIDGE_E_BIND`로 즉시 끝났고 accepted connection·payload·initialize·Keychain·Cloudflare는 모두 0회였다. 재시도는 하지 않았다.
