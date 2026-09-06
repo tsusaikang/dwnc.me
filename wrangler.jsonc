@@ -57,7 +57,8 @@
       "d1_databases": [
         {
           "binding": "NATIVE_DB",
-          "database_name": "dwnc-me-content-staging",
+          "database_name": "dwnc-me-native-staging",
+          "database_id": "166c2c40-32d8-4f69-9cc6-9ec077574ab4",
           "migrations_dir": "migrations"
         }
       ]

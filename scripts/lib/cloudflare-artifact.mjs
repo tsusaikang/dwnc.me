@@ -30,7 +30,7 @@ const NATIVE_RELEASE_TARGETS = Object.freeze({
   }),
   staging: Object.freeze({
     nativeBucket: 'dwnc-me-native-media-staging',
-    databaseName: 'dwnc-me-content-staging',
+    databaseName: 'dwnc-me-native-staging',
   }),
 });
 

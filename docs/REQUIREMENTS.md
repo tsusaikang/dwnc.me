@@ -23,7 +23,7 @@
 - 시험용 주소에서 글, 예전 주소 349개, 사진 표시와 부분 전송을 모두 확인한 뒤 운영용 구성을 준비한다.
 - 실제 `dwnc.me` 주소를 새 production Worker에 연결하고 실제 주소에서 대표 글·예전 주소·사진·모바일과 데스크톱 화면을 확인했다.
 
-현재 콘텐츠 보존과 독립 사이트 구현, Cloudflare staging·production R2의 파일 2,758개 전수 확인, production Worker version 활성화, 실제 도메인 연결과 대표 화면 확인까지 완료됐다. **새 사이트는 현재 `dwnc.me`에서 운영 중이다.** 사용자는 새 글 작성 방식으로 Cloudflare 로그인을 거치는 웹 편집기를 선택했고, 해당 편집기의 로컬 구현과 시험을 완료했다. production D1과 별도 private R2를 만들고 D1 초기 구조도 적용했다. Access 로그인 보호·관리자 주소 연결과 두 Worker의 새 version 업로드, 비공개 자료의 백업·복구 방식은 다음 단계로 남아 있다. 근거는 [`PROJECT_STATE.md`](../PROJECT_STATE.md), [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md), [`URL_CONTRACT.md`](URL_CONTRACT.md)에 나누어 기록한다.
+현재 콘텐츠 보존과 독립 사이트 구현, Cloudflare staging·production R2의 파일 2,758개 전수 확인, production Worker version 활성화, 실제 도메인 연결과 대표 화면 확인까지 완료됐다. **새 사이트는 현재 `dwnc.me`에서 운영 중이다.** 사용자는 새 글 작성 방식으로 Cloudflare 로그인을 거치는 웹 편집기를 선택했고, 해당 편집기의 로컬 구현과 시험을 완료했다. staging·production D1과 각각의 별도 private R2를 만들고 두 D1에 초기 구조도 적용했다. Access 로그인 보호·관리자 주소 연결과 두 Worker의 새 version 업로드, 비공개 자료의 백업·복구 방식은 다음 단계로 남아 있다. 근거는 [`PROJECT_STATE.md`](../PROJECT_STATE.md), [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md), [`URL_CONTRACT.md`](URL_CONTRACT.md)에 나누어 기록한다.
 
 ### 전체 계획
 
@@ -42,7 +42,7 @@
 
 ### 현재 위치
 
-**현재 진행 중인 계획은 `PLAN-09` 하나다.** 준비된 운영용 사이트 프로그램과 기존 1–596번 글은 그대로 유지한 채, Cloudflare 로그인형 웹 편집기의 로컬 코드·DB 구조·설정 초안과 시험을 완료했다. production D1·private R2 생성과 D1 migration 적용까지 마쳤고, 로그인 정책·관리자 주소와 Worker version 업로드는 아직 하지 않았다.
+**현재 진행 중인 계획은 `PLAN-09` 하나다.** 준비된 운영용 사이트 프로그램과 기존 1–596번 글은 그대로 유지한 채, Cloudflare 로그인형 웹 편집기의 로컬 코드·DB 구조·설정 초안과 시험을 완료했다. staging·production D1·private R2 생성과 두 D1 migration 적용까지 마쳤고, 로그인 정책·관리자 주소와 Worker version 업로드는 아직 하지 않았다.
 
 사용자에게 이는 **현재 운영 사이트의 방문 흐름을 바꾸지 않고, 새 글 저장소의 빈 구조까지 준비했다는 뜻**이다. 다음에는 로그인 보호와 관리자 주소를 확정하고 두 Worker의 새 version을 올린다. 비공개 자료 백업 방식은 그와 별도로 사용자가 결정한다.
 
@@ -61,7 +61,7 @@
 
 ### 아직 결정할 일과 진행을 막는 조건
 
-1. `PLAN-08` 운영 전환은 완료됐다. 로그인형 웹 편집기의 로컬 구현·시험과 production D1·private R2 생성·초기 migration 적용도 완료했다. Access 로그인·관리자 주소·Worker version 업로드와 비공개 자료의 백업·복구 방식이 남아 있다.
+1. `PLAN-08` 운영 전환은 완료됐다. 로그인형 웹 편집기의 로컬 구현·시험과 staging·production D1·private R2 생성·초기 migration 적용도 완료했다. Access 로그인·관리자 주소·Worker version 업로드와 비공개 자료의 백업·복구 방식이 남아 있다.
 2. 공유·스크랩 글 10개, 과거 댓글과 추가 개선은 사용자가 원할 때 정하는 후속 선택이다.
 
 ### 바로 다음 작업
@@ -69,7 +69,7 @@
 1. `PLAN-09` 웹 편집기에 Access 로그인과 관리자 주소를 연결하고 public/admin Worker의 보호된 새 version을 올린다.
 2. 비공개 자료 백업·복구 방식은 별도 사용자 결정으로 남긴다. 저장소 파일 덮어쓰기·삭제와 Git push는 별도 승인 없이 진행하지 않는다.
 
-현재 `PLAN-05`부터 `PLAN-08`까지와 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`는 완료됐다. `PLAN-09`는 로컬 구현·시험과 production D1·private R2·초기 migration까지 완료했고 Access·관리자 주소·Worker version 연결과 비공개 백업 방식 결정을 기다린다.
+현재 `PLAN-05`부터 `PLAN-08`까지와 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`는 완료됐다. `PLAN-09`는 로컬 구현·시험과 staging·production D1·private R2·초기 migration까지 완료했고 Access·관리자 주소·Worker version 연결과 비공개 백업 방식 결정을 기다린다.
 
 ### 최근 완료
 

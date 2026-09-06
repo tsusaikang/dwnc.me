@@ -316,7 +316,7 @@ process.exit(24);
     },
     stagingNativeResources: {
       nativeBucket: 'dwnc-me-native-media-staging',
-      databaseName: 'dwnc-me-content-staging',
+      databaseName: 'dwnc-me-native-staging',
       databaseId: '22222222-2222-4222-8222-222222222222',
     },
     mediaManifest: { manifestSha256: mediaReceipt.manifestSha256 },
