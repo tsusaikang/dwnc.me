@@ -179,7 +179,8 @@ equal((await adminWorker.fetch(new Request(`https://admin.example.test${legacyEn
 equal((await adminWorker.fetch(new Request('https://admin.example.test/api/posts', { method: 'POST', headers: { ...authHeaders, origin: 'https://evil.example' }, body: '{}' }), adminEnv)).status, 403);
 
 const ui = adminHtml('owner@example.com');
-const uiScript = load(ui)('script').text();
+const uiDocument = load(ui);
+const uiScript = uiDocument('script').text();
 const insertOffset = uiScript.indexOf("insert='") + "insert='".length;
 equal(uiScript.charCodeAt(insertOffset), 92); equal(uiScript.charCodeAt(insertOffset + 1), 110);
 equal(uiScript.includes("insert='\n"), false);
@@ -187,6 +188,25 @@ assert.doesNotThrow(() => new Script(uiScript)); assertions += 1;
 ok(ui.includes('while(current&&(dirty||saving))'));
 ok(ui.includes('if(change!==savedChange)dirty=true'));
 ok((ui.match(/if\(!await flush\(\)\)return/gu) ?? []).length >= 5);
+equal(uiDocument('#bodyHtmlShell > #bodyHtml + #mediaSelectionOutline').length, 1);
+equal(uiDocument('#imageTools[role="toolbar"] #deleteImage').text(), '선택 항목 삭제');
+equal(uiDocument('#markdownMedia[aria-label="본문 이미지"]').length, 1);
+ok(ui.includes('.media-selection-outline{'));
+ok(ui.includes('figure[data-ke-type="opengraph"]>a'));
+ok(ui.includes('.html-editor .og-title,.html-editor .se-oglink-title'));
+ok(ui.includes('-webkit-line-clamp:2'));
+ok(ui.includes('-webkit-line-clamp:3'));
+ok(uiScript.includes("node.closest('figure[data-ke-type=\"opengraph\"],.se_component.se_oglink,.se-component.se-oglink')"));
+ok(uiScript.includes("node.closest('figure.imageblock,.se_component.se_image,.se-component.se-image')"));
+ok(uiScript.includes("event.key==='Delete'||event.key==='Backspace'"));
+ok(uiScript.includes("event.key==='Escape'&&selectedMedia"));
+ok(uiScript.includes("if(link)event.preventDefault()"));
+ok(uiScript.includes("target.remove();placeCaret(parent,next);schedule()"));
+ok(uiScript.includes("selectedMedia.kind==='markdown-image'"));
+ok(uiScript.includes("$('body').setRangeText('',start,end,'end')"));
+ok(uiScript.includes("renderMarkdownMedia();dirty=true"));
+ok(uiScript.includes("<figure class=\"imageblock alignCenter\"><span><img src=\""));
+equal(uiScript.includes('data-editor-selected'), false);
 
 const publicStore = new NativePostStore(adminDatabase);
 const adminCurrent = await publicStore.getForAdmin(adminDraft.id);
