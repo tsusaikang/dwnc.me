@@ -30,6 +30,11 @@
       "name": "dwnc-me-admin",
       "workers_dev": false,
       "preview_urls": false,
+      "vars": {
+        "ACCESS_TEAM_DOMAIN": "https://ancient-term-4cf0.cloudflareaccess.com",
+        "ACCESS_AUD": "e2607628d16bd1707b60ac68a33326591c72c0accf6e5e3da33514ad410555fb",
+        "ACCESS_ALLOWED_EMAIL": "tsusaikang@gmail.com"
+      },
       "r2_buckets": [
         { "binding": "NATIVE_MEDIA_BUCKET", "bucket_name": "dwnc-me-native-media-production" }
       ],

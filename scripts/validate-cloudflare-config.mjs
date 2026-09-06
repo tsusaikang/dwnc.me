@@ -12,6 +12,11 @@ const expectedObservability = {
   enabled: true,
   logs: { enabled: true, head_sampling_rate: 0.1, invocation_logs: false, persist: true },
 };
+const expectedAdminProductionVars = {
+  ACCESS_TEAM_DOMAIN: 'https://ancient-term-4cf0.cloudflareaccess.com',
+  ACCESS_AUD: 'e2607628d16bd1707b60ac68a33326591c72c0accf6e5e3da33514ad410555fb',
+  ACCESS_ALLOWED_EMAIL: 'tsusaikang@gmail.com',
+};
 const d1DatabaseId = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
 const validOptionalD1Id = (entry) => !Object.hasOwn(entry, 'database_id')
   || d1DatabaseId.test(entry.database_id ?? '');
@@ -108,7 +113,10 @@ for (const [environment, [, , nativeBucket, database]] of Object.entries(expecte
     || value.d1_databases[0]?.database_name !== database
     || value.d1_databases[0]?.migrations_dir !== 'migrations'
     || !validOptionalD1Id(value.d1_databases[0])
-    || 'vars' in value || 'secrets' in value || 'routes' in value || 'route' in value) {
+    || (environment === 'production'
+      ? !exactObject(value.vars, expectedAdminProductionVars)
+      : 'vars' in value)
+    || 'secrets' in value || 'routes' in value || 'route' in value) {
     throw new Error('CLOUDFLARE_E_ADMIN_BINDING');
   }
 }
