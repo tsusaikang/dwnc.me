@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
+import { Script } from 'node:vm';
 import { load } from 'cheerio';
 import adminWorker from '../src/admin-worker.ts';
 import { clearAccessKeyCacheForTests, verifyAccessIdentity } from '../src/lib/access-auth.ts';
@@ -152,6 +153,8 @@ equal(imageResponse.status, 201); const uploadedMedia = (await imageResponse.jso
 equal((await adminWorker.fetch(new Request('https://admin.example.test/api/posts', { method: 'POST', headers: { ...authHeaders, origin: 'https://evil.example' }, body: '{}' }), adminEnv)).status, 403);
 
 const ui = adminHtml('owner@example.com');
+const uiScript = load(ui)('script').text();
+assert.doesNotThrow(() => new Script(uiScript)); assertions += 1;
 ok(ui.includes('while(current&&(dirty||saving))'));
 ok(ui.includes('if(change!==savedChange)dirty=true'));
 ok((ui.match(/if\(!await flush\(\)\)return/gu) ?? []).length >= 5);
