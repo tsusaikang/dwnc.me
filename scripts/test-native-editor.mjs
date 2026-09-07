@@ -49,6 +49,8 @@ function createDatabase() {
   database.sqlite.exec(workingCopyMigration);
   database.sqlite.exec(bodyFormatMigration);
   database.sqlite.exec(managementMigration);
+  database.sqlite.exec(operationsMigration);
+  database.sqlite.exec(templatesMigration);
   return database;
 }
 
@@ -57,6 +59,8 @@ const legacyMigration = await readFile(new URL('../migrations/0002_legacy_editor
 const legacyImportStateMigration = await readFile(new URL('../migrations/0003_legacy_import_state.sql', import.meta.url), 'utf8');
 const workingCopyMigration = await readFile(new URL('../migrations/0004_editor_working_copies.sql', import.meta.url), 'utf8');
 const bodyFormatMigration = await readFile(new URL('../migrations/0005_editor_body_format.sql', import.meta.url), 'utf8');
+const operationsMigration = await readFile(new URL('../migrations/0007_content_operations.sql', import.meta.url), 'utf8');
+const templatesMigration = await readFile(new URL('../migrations/0008_cms_templates_media.sql', import.meta.url), 'utf8');
 const managementMigration = await readFile(new URL('../migrations/0006_cms_management.sql', import.meta.url), 'utf8');
 const defaultInput = {
   title: '웹에서 쓴 첫 글', description: '새 편집기 설명', bodyMarkdown: '# 본문\n\n안전한 **내용**',

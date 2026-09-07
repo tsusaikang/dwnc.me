@@ -1,3 +1,4 @@
+import { ContentOperations, contentKind, type ContentKind, type Visibility } from './content-operations.ts';
 import {
   nativeImagePathsInHtml, normalizeEditorPostInput, normalizeNativePostInput,
   type NormalizedNativePostInput,
@@ -10,6 +11,7 @@ import { slugifyLabel } from './taxonomy.ts';
 export type NativePostStatus = 'draft' | 'published' | 'tombstone';
 
 export interface NativePost {
+  kind?: ContentKind; visibility?: Visibility; scheduledAt?: string | null; publicPath?: string | null;
   id: string;
   globalSequence: number | null;
   status: NativePostStatus;
@@ -37,6 +39,7 @@ export interface NativePost {
 }
 
 export interface AdminPostSummary {
+  kind?: ContentKind; visibility?: Visibility; scheduledAt?: string | null; publicPath?: string | null;
   categoryId: string; categoryLabel: string; tags: string[]; publishedAt: string | null;
   hasUnpublishedChanges: boolean; coverPath: string | null;
   id: string;
@@ -61,6 +64,7 @@ export interface NativeMedia {
 }
 
 interface NativePostRow {
+  operation_kind?: ContentKind; operation_visibility?: Visibility; operation_scheduled_at?: string | null;
   id: string;
   global_sequence: number | null;
   status: NativePostStatus;
@@ -104,6 +108,17 @@ const LEGACY_POST_COLUMNS = `id, global_sequence, status, title, description,
   tags_json, cover_media_id, cover_path, cover_alt, source, source_id, revision, created_at, updated_at, published_at,
   'html' AS body_format, 'legacy' AS source_kind`;
 
+const policyColumns = (table: string) => `COALESCE((SELECT kind FROM content_operations WHERE post_id=${table}.id),'post') AS operation_kind,
+ COALESCE((SELECT visibility FROM content_operations WHERE post_id=${table}.id),'public') AS operation_visibility,
+ (SELECT scheduled_at FROM content_operations WHERE post_id=${table}.id) AS operation_scheduled_at`;
+const publicCondition = (table: string) => `NOT EXISTS(SELECT 1 FROM content_operations WHERE post_id=${table}.id AND visibility!='public' AND NOT(visibility='scheduled' AND scheduled_at<=?1))`;
+function policyPost(row: NativePostRow): NativePost {
+ const post=postFromRow(row), kind=row.operation_kind??'post', visibility=row.operation_visibility??'public', scheduledAt=row.operation_scheduled_at??null;
+ return {...post,kind,visibility,scheduledAt,publishedAt:visibility==='scheduled'&&scheduledAt?scheduledAt:post.publishedAt,publicPath:post.globalSequence===null?null:kind==='page'?`/pages/${post.id}`:`/posts/${post.globalSequence}`};
+}
+export function snapshotVisible(post: Pick<NativePost,'visibility'|'scheduledAt'>, now: Date = new Date()) {
+ return !post.visibility||post.visibility==='public'||post.visibility==='scheduled'&&!!post.scheduledAt&&post.scheduledAt<=now.toISOString();
+}
 const WORKING_FIELDS = ['title', 'description', 'body_markdown', 'body_html', 'body_text',
   'category_id', 'category_slug', 'category_label', 'tags_json', 'cover_media_id', 'cover_path', 'cover_alt'] as const;
 const ADMIN_POST_SOURCE = `(SELECT ${POST_COLUMNS} FROM native_posts
@@ -184,22 +199,31 @@ export class NativePostStore {
     this.now = now;
   }
 
-  async createDraft(category: { id: string; slug: string; label: string }): Promise<NativePost> {
+  async createDraft(category: { id: string; slug: string; label: string }, kind: unknown = 'post'): Promise<NativePost> {
+    kind = contentKind(kind);
     const id = crypto.randomUUID();
     const now = nowIso(this.now);
-    const row = await this.database.prepare(`INSERT INTO native_posts (
+    const insert = this.database.prepare(`INSERT INTO native_posts (
       id, status, title, description, body_markdown, body_html, body_text,
       category_id, category_slug, category_label, tags_json, revision, created_at, updated_at
     ) SELECT ?1, 'draft', '', '', '', '', '', ?2, ?3, ?4, '[]', 0, ?5, ?5
       WHERE NOT EXISTS (SELECT 1 FROM cms_configuration WHERE key='categories') OR EXISTS (SELECT 1 FROM cms_configuration, json_each(value_json) c WHERE cms_configuration.key='categories' AND json_extract(c.value,'$.id') = ?2)
-    RETURNING ${POST_COLUMNS}`).bind(id, category.id, category.slug, category.label, now).first<NativePostRow>();
+    RETURNING ${POST_COLUMNS}`).bind(id, category.id, category.slug, category.label, now);
+    const created = await this.database.batch<NativePostRow>([insert,this.database.prepare('INSERT INTO content_operations(post_id,kind) SELECT ?1,?2 WHERE changes()=1').bind(id,kind)]);
+    const row = created[0].results?.[0];
     if (!row) throw new Error('NATIVE_E_CREATE');
-    return postFromRow(row);
+    return this.decorate(postFromRow(row));
+  }
+
+  async decorate(post: NativePost): Promise<NativePost> {
+    const ops = new ContentOperations(this.database, this.now);
+    const operation = ops.publicValue(await ops.get(post.id));
+    return {...post,...operation,publishedAt:operation.visibility==='scheduled'&&operation.scheduledAt?operation.scheduledAt:post.publishedAt,publicPath:post.globalSequence===null?null:operation.kind==='page'?`/pages/${post.id}`:`/posts/${post.globalSequence}`};
   }
 
   async getForAdmin(id: string): Promise<NativePost | null> {
     const row = await this.adminPostStatement(id).first<NativePostRow>();
-    return row ? postFromRow(row) : null;
+    return row ? this.decorate(postFromRow(row)) : null;
   }
 
   private adminPostStatement(id: string) {
@@ -228,7 +252,9 @@ export class NativePostStore {
       FROM ${ADMIN_POST_SOURCE} p LEFT JOIN editor_working_copies w ON w.post_id = p.id
       WHERE p.status != 'tombstone' ORDER BY updated_at DESC, global_sequence DESC, p.id`).all<NativePostRow>();
     const categories = (await new CmsConfigurationStore(this.database).categories()).value;
+    const operations = new ContentOperations(this.database, this.now); const policies = await operations.all();
     return (posts.results ?? []).map((row) => ({
+      ...operations.publicValue(policies.get(row.id)), publicPath: row.global_sequence === null ? null : policies.get(row.id)?.kind === 'page' ? `/pages/${row.id}` : `/posts/${row.global_sequence}`,
       id: row.id, globalSequence: row.global_sequence, status: row.status, title: row.title,
       updatedAt: row.updated_at, bodyFormat: row.body_format ?? 'markdown', sourceKind: row.source_kind,
       categoryId: row.category_id, categoryLabel: categories.find((node) => node.id === row.category_id)?.label ?? row.category_label,
@@ -269,6 +295,8 @@ export class NativePostStore {
     if (!current || current.revision !== revision || current.status === 'tombstone') throw new Error('NATIVE_E_REVISION');
     const input = await this.normalizeInput(value, current);
     const raw = value as Record<string, unknown>;
+    const kind = contentKind(raw.kind ?? current.kind ?? 'post');
+    if (kind !== current.kind && current.globalSequence !== null) throw new Error('NATIVE_E_KIND_LOCKED');
     let coverPath = raw.coverPath === undefined ? current.coverPath : (raw.coverPath ? String(raw.coverPath) : null);
     const coverAlt = raw.coverAlt === undefined ? current.coverAlt : String(raw.coverAlt).slice(0, 300);
     const media = await this.mediaForPost(id);
@@ -293,17 +321,20 @@ export class NativePostStore {
         input.categoryId, input.categorySlug, input.categoryLabel, JSON.stringify(input.tags),
         input.coverMediaId, now, id, revision, input.bodyFormat, coverPath, coverAlt,
       ),
+      this.database.prepare(`INSERT INTO content_operations(post_id,kind) SELECT ?1,?2 WHERE changes()=1
+        ON CONFLICT(post_id) DO UPDATE SET kind=excluded.kind`).bind(id,kind),
       this.adminPostStatement(id),
     ]);
-    if (!results[1]?.results?.length || !results[2]?.results?.[0]) throw new Error('NATIVE_E_REVISION');
-    return postFromRow(results[2].results[0]);
+    if (!results[1]?.results?.length || !results[3]?.results?.[0]) throw new Error('NATIVE_E_REVISION');
+    return this.decorate(postFromRow(results[3].results[0]));
   }
 
-  async publish(id: string, revision: number): Promise<NativePost> {
+  async publish(id: string, revision: number, options: Record<string,unknown> = {}): Promise<NativePost> {
     if (!Number.isSafeInteger(revision) || revision < 0) throw new Error('NATIVE_E_REVISION');
     const current = await this.getForAdmin(id);
     if (!current || current.revision !== revision || current.status === 'tombstone') throw new Error('NATIVE_E_REVISION');
     await this.normalizeInput(current, current, true);
+    const policy = await new ContentOperations(this.database,this.now).preparePublish(id,options);
     const now = nowIso(this.now);
     const legacy = current.sourceKind === 'legacy';
     const fields = legacy ? WORKING_FIELDS.filter((field) => field !== 'body_markdown')
@@ -335,28 +366,64 @@ export class NativePostStore {
           ${legacy ? 'AND import_complete = 1' : "AND status IN ('draft', 'published')"}
         RETURNING ${legacy ? LEGACY_POST_COLUMNS : POST_COLUMNS}`).bind(id, now, revision),
     );
+    const publicResultIndex = statements.length - 1;
+    statements.push(this.database.prepare(`INSERT INTO content_operations(post_id,kind,visibility,scheduled_at,password_salt,password_digest)
+      SELECT ?1,?2,?3,?4,?5,?6 WHERE changes()=1 ON CONFLICT(post_id) DO UPDATE SET visibility=excluded.visibility,scheduled_at=excluded.scheduled_at,password_salt=excluded.password_salt,password_digest=excluded.password_digest`).bind(id,current.kind??'post',policy.visibility,policy.at,policy.salt,policy.hash));
+    statements.push(this.database.prepare(`DELETE FROM protected_sessions WHERE post_id=?1 AND changes()=1`).bind(id));
     const results = await this.database.batch<NativePostRow>(statements);
-    const row = results.at(-1)?.results?.[0];
+    const row = results[publicResultIndex]?.results?.[0];
     if (!row) throw new Error('NATIVE_E_REVISION');
-    return postFromRow(row);
+    return this.decorate(postFromRow(row));
+  }
+
+  async deleteEmptyDraft(id: string, revision: number) {
+    const current = await this.getForAdmin(id);
+    if (!current || current.revision !== revision) throw new Error('NATIVE_E_REVISION');
+    const html = load(current.bodyHtml);
+    const emptyBody = current.bodyFormat === 'html' ? !html('body').text().trim() && html('body *').toArray().every(node=>['p','br','div','span'].includes(node.tagName)) : !current.bodyMarkdown.trim();
+    if (current.sourceKind !== 'native' || current.status !== 'draft' || current.globalSequence !== null || current.title.trim() || !emptyBody || current.description.trim() || current.coverPath || current.tags.length) throw new Error('NATIVE_E_NOT_EMPTY');
+    const eligible = `EXISTS(SELECT 1 FROM native_posts p LEFT JOIN editor_working_copies w ON w.post_id=p.id WHERE p.id=?1 AND p.status='draft' AND COALESCE(w.revision,p.revision)=?2 AND NOT EXISTS(SELECT 1 FROM native_media WHERE post_id=?1))`;
+    // Atomically remove only an empty new working copy; never remove R2 objects.
+    const results=await this.database.batch([
+      this.database.prepare(`INSERT INTO content_operations(post_id) SELECT ?1 WHERE ${eligible} ON CONFLICT(post_id) DO NOTHING`).bind(id,revision),
+      this.database.prepare(`DELETE FROM editor_working_copies WHERE post_id=?1 AND ${eligible} RETURNING post_id`).bind(id,revision),
+      this.database.prepare(`DELETE FROM content_operations WHERE post_id=?1 AND EXISTS(SELECT 1 FROM native_posts WHERE id=?1 AND status='draft') AND (changes()=1 OR (NOT EXISTS(SELECT 1 FROM editor_working_copies WHERE post_id=?1) AND EXISTS(SELECT 1 FROM native_posts WHERE id=?1 AND revision=?2))) AND NOT EXISTS(SELECT 1 FROM native_media WHERE post_id=?1) RETURNING post_id`).bind(id,revision),
+      this.database.prepare(`DELETE FROM native_posts WHERE id=?1 AND status='draft' AND changes()=1 RETURNING id`).bind(id),
+    ]);
+    if(!results[3].results?.length)throw new Error('NATIVE_E_NOT_EMPTY');
+    return {deleted:true};
+  }
+
+  async managedSequences() {
+    const rows=await this.database.prepare(`SELECT global_sequence FROM native_posts WHERE global_sequence IS NOT NULL UNION ALL SELECT global_sequence FROM legacy_posts WHERE import_complete=1`).all<{global_sequence:number}>();
+    return new Set((rows.results??[]).map(row=>row.global_sequence));
+  }
+  async releasedPage(id: string) {
+    const row=await this.database.prepare(`SELECT ${POST_COLUMNS}, ${policyColumns('native_posts')} FROM native_posts WHERE id=?1 AND status='published'`).bind(id).first<NativePostRow>();
+    if(!row)return null;const post=policyPost(row);return post.kind==='page'?post:null;
   }
 
   async getPublishedBySequence(sequence: number): Promise<NativePost | null> {
-    const row = await this.database.prepare(`SELECT ${POST_COLUMNS} FROM native_posts
+    const post = await this.getReleasedBySequence(sequence);
+    return post && snapshotVisible(post,this.now()) ? post : null;
+  }
+
+  async getReleasedBySequence(sequence: number): Promise<NativePost | null> {
+    const row = await this.database.prepare(`SELECT ${POST_COLUMNS}, ${policyColumns('native_posts')} FROM native_posts
       WHERE global_sequence = ?1 AND status = 'published'`).bind(sequence).first<NativePostRow>();
-    if (row) return postFromRow(row);
-    const legacy = await this.database.prepare(`SELECT ${LEGACY_POST_COLUMNS} FROM legacy_posts
+    if (row) return policyPost(row);
+    const legacy = await this.database.prepare(`SELECT ${LEGACY_POST_COLUMNS}, ${policyColumns('legacy_posts')} FROM legacy_posts
       WHERE global_sequence = ?1 AND import_complete = 1`).bind(sequence).first<NativePostRow>();
-    return legacy ? postFromRow(legacy) : null;
+    return legacy ? policyPost(legacy) : null;
   }
 
   async listPublished(includeSearchText: boolean | 'full' = 'full'): Promise<NativePost[]> {
     const lite = (columns: string) => includeSearchText === 'full' ? columns : columns.replace('body_html AS body_markdown, body_html, body_text', `'' AS body_markdown, '' AS body_html, ${includeSearchText ? 'body_text' : 'substr(body_text,1,160) AS body_text'}`).replace('body_markdown, body_html,\n  body_text', `'' AS body_markdown, '' AS body_html, ${includeSearchText ? 'body_text' : 'substr(body_text,1,160) AS body_text'}`);
-    const native = await this.database.prepare(`SELECT ${lite(POST_COLUMNS)} FROM native_posts
-      WHERE status = 'published' ORDER BY global_sequence DESC`).all<NativePostRow>();
-    const legacy = await this.database.prepare(`SELECT ${lite(LEGACY_POST_COLUMNS)} FROM legacy_posts
-      WHERE import_complete = 1 ORDER BY global_sequence DESC`).all<NativePostRow>();
-    return [...(native.results ?? []), ...(legacy.results ?? [])].map(postFromRow)
+    const native = await this.database.prepare(`SELECT ${lite(POST_COLUMNS)}, ${policyColumns('native_posts')} FROM native_posts
+      WHERE status = 'published' AND ${publicCondition('native_posts')} ORDER BY global_sequence DESC`).bind(nowIso(this.now)).all<NativePostRow>();
+    const legacy = await this.database.prepare(`SELECT ${lite(LEGACY_POST_COLUMNS)}, ${policyColumns('legacy_posts')} FROM legacy_posts
+      WHERE import_complete = 1 AND ${publicCondition('legacy_posts')} ORDER BY global_sequence DESC`).bind(nowIso(this.now)).all<NativePostRow>();
+    return [...(native.results ?? []), ...(legacy.results ?? [])].map(policyPost)
       .sort((left, right) => (right.globalSequence ?? 0) - (left.globalSequence ?? 0));
   }
 
@@ -398,20 +465,23 @@ export class NativePostStore {
     return row ? mediaFromRow(row) : null;
   }
 
-  async getPublicMedia(publicPath: string): Promise<(NativeMedia & { bodyMarkdown: string; coverMediaId: string | null }) | null> {
+  async getPublicMedia(publicPath: string, request?: Request): Promise<(NativeMedia & { bodyMarkdown: string; coverMediaId: string | null }) | null> {
     let row = await this.database.prepare(`SELECT m.id, m.post_id, m.public_path, m.object_key,
-      m.sha256, m.bytes, m.mime, m.alt, m.created_at, p.body_html AS body_markdown, p.cover_media_id
+      m.sha256, m.bytes, m.mime, m.alt, m.created_at, p.body_html AS body_markdown, p.cover_media_id, p.revision AS snapshot_revision, ${policyColumns('p')}
       FROM native_media m JOIN native_posts p ON p.id = m.post_id
       WHERE m.public_path = ?1 AND p.status = 'published'`).bind(publicPath).first<NativeMediaRow & {
-        body_markdown: string; cover_media_id: string | null;
+        body_markdown: string; cover_media_id: string | null; operation_visibility: Visibility; operation_scheduled_at: string|null; snapshot_revision:number;
       }>();
     if (!row) {
       row = await this.database.prepare(`SELECT m.id, m.post_id, m.public_path, m.object_key,
-        m.sha256, m.bytes, m.mime, m.alt, m.created_at, p.body_html AS body_markdown, p.cover_media_id
+        m.sha256, m.bytes, m.mime, m.alt, m.created_at, p.body_html AS body_markdown, p.cover_media_id, p.revision AS snapshot_revision, ${policyColumns('p')}
         FROM legacy_media m JOIN legacy_posts p ON p.id = m.post_id
         WHERE m.public_path = ?1 AND p.import_complete = 1`).bind(publicPath).first<NativeMediaRow & {
-          body_markdown: string; cover_media_id: string | null;
+          body_markdown: string; cover_media_id: string | null; operation_visibility: Visibility; operation_scheduled_at: string|null; snapshot_revision:number;
         }>();
+    }
+    if (row && !snapshotVisible({visibility:row.operation_visibility,scheduledAt:row.operation_scheduled_at},this.now())) {
+      if(row.operation_visibility!=='protected'||!request||!await new ContentOperations(this.database,this.now).authorized(row.post_id,request,true,row.snapshot_revision))return null;
     }
     const references = nativeImagePathsInHtml(row?.body_markdown ?? '');
     if (!row || (row.cover_media_id !== row.id && !references.includes(row.public_path))) return null;

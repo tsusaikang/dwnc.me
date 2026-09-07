@@ -1,4 +1,4 @@
-import { lstat, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -50,6 +50,15 @@ try {
     { mode: 0o644, flag: 'wx' });
   await writeFile(path.join(temporaryPublic, '.assetsignore'), await readFile(path.join(ROOT, 'public/.assetsignore')),
     { mode: 0o644, flag: 'wx' });
+  // Remote builds still need the fonts used by imported public articles.
+  // Copy only the six reviewed files and their notices, never public/media.
+  const fontDirectory = path.join(temporaryPublic, 'fonts/nanum');
+  await mkdir(fontDirectory, { recursive: true });
+  for (const name of ['NanumGothic.woff', 'NanumGothicBold.ttf', 'NanumMyeongjo.woff', 'NanumMyeongjoBold.woff', 'NanumBarunGothic.woff', 'NanumBarunGothicBold.woff', 'LICENSE.txt', 'README.txt']) {
+    const source = path.join(ROOT, 'public/fonts/nanum', name);
+    if (!(await lstat(source)).isFile()) throw new Error('CLOUDFLARE_E_FONT_FILE');
+    await writeFile(path.join(fontDirectory, name), await readFile(source), { mode: 0o644, flag: 'wx' });
+  }
   await run(process.execPath, ['scripts/check-runtime.mjs']);
   await run(process.execPath, ['scripts/check-wrangler-pin.mjs', '--require-installed']);
   await run(process.execPath, ['scripts/validate-public-media-source.mjs']);

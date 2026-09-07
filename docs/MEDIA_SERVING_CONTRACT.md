@@ -75,6 +75,8 @@ same-origin이므로 기본 CORS header는 넣지 않는다. CORS는 hotlink 방
 
 ### 웹 편집기에서 추가하는 미디어
 
+- 2026-09-08 DWNC-CORE-006 로컬 보완: 공개 정책을 본문과 같은 snapshot으로 확인하며 비공개·예약 전·미인증 보호 글은 canonical/alias/목록/검색/피드와 사진 모두 공개하지 않는다. 기존 imported media 소유 및 공유 참조와 native 소유를 각각 검사하고 정적 fallback보다 먼저 제한한다. 응답은 no-store로 전환하되 과거 브라우저 사본 회수는 약속하지 않는다. 페이지도 같은 글별 사진 소유 규칙을 따른다. 새 아이콘은 `media/site/{UUID}`의 별도 소유 기록과 설정 참조가 확인된 경우에만 공개하며 기존 R2 객체를 덮어쓰거나 삭제하지 않는다. 이 보완은 최종 운영 반영 전 상태다.
+
 - 위 2,758개와 그 manifest는 그대로 둔다. 웹 편집기에서 새로 올리는 이미지는 별도 private R2 binding `NATIVE_MEDIA_BUCKET`에 `media/native/{UUID}.{확장자}`라는 새 key로만 저장한다.
 - 관리자 Worker만 `PUT`을 가지며 Cloudflare Access JWT의 발급처·대상·만료·서명과 허용 이메일을 애플리케이션에서도 확인한다. 공개 Worker에는 이 bucket의 `GET`·`HEAD`만 있고 쓰기 경로는 없다.
 - 허용 형식은 AVIF·GIF·JPEG·PNG·WebP, 한 파일 최대 25MiB다. 브라우저가 계산한 SHA-256을 R2 checksum으로 검사하고, 응답 size와 metadata가 맞은 뒤 D1의 해당 글에 media row를 추가한다.
@@ -237,7 +239,7 @@ npm run build:validate
 npm run cloudflare:build:source
 ```
 
-- 임시 public directory에는 tracked `_redirects`와 `.assetsignore`만 넣고, 빌드된 static tree에서 공개 request-surface manifest를 다시 계산해 tracked 1,409경로·SHA-256 `e143cefe01de35de47495e3fbd036773eb550e58f377e07467014d45f944d594`와 exact 일치시킨다. `/404.html` 파일은 빌드에 남지만 이 공개 목록에서는 제외한다.
+- 임시 public directory에는 tracked `_redirects`와 `.assetsignore`, 고정된 나눔 글꼴 6개와 LICENSE/README만 넣고, 빌드된 static tree에서 공개 request-surface manifest를 다시 계산해 최신 tracked manifest와 일치시킨다. 2026-09-08 로컬 보완의 최종 경로 수는 1,417개다. `/404.html` 파일은 빌드에 남지만 이 공개 목록에서는 제외한다. public 전체나 local media는 복사하지 않는다.
 - local media를 읽거나 내려받지 않고 manifest↔renderable reference exact set을 검증한다.
 - `dist/media`는 0이어야 한다.
 - 기존 route·alias·검색·RSS·sitemap·taxonomy·link·privacy validator를 remote-media mode로 그대로 실행한다.

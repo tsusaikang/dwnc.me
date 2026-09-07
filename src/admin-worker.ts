@@ -1,3 +1,6 @@
+import { boundedBody } from './lib/content-operations.ts';
+import { SITE_MEDIA_PATH_PATTERN } from './lib/cms-configuration.ts';
+import { serveSiteMedia } from './lib/native-public-worker.ts';
 import { prepareImportedPresentation, IMPORTED_PRESENTATION_CSS, ENGINE_DIAGRAM_CSS } from './lib/imported-presentation.ts';
 import { verifyAccessIdentity, type AccessEnvironment } from './lib/access-auth.ts';
 import { adminHtml } from './lib/admin-ui.ts';
@@ -47,7 +50,7 @@ async function requestJson(request: Request) {
   if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) throw new Error('ADMIN_E_JSON');
   const declared = Number(request.headers.get('content-length') ?? '0');
   if (declared > MAX_JSON_BYTES) throw new Error('ADMIN_E_JSON');
-  const text = await request.text();
+  const text = new TextDecoder().decode(await boundedBody(request,MAX_JSON_BYTES));
   if (new TextEncoder().encode(text).byteLength > MAX_JSON_BYTES) throw new Error('ADMIN_E_JSON');
   try { return JSON.parse(text || '{}') as Record<string, unknown>; }
   catch { throw new Error('ADMIN_E_JSON'); }
@@ -74,6 +77,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
     const headers = new Headers({'content-type':url.pathname.endsWith('.ttf')?'font/ttf':'font/woff','cache-control':'private, max-age=3600','x-content-type-options':'nosniff'});
     return new Response(request.method==='HEAD'?null:response.body,{headers});
   }
+  if (SITE_MEDIA_PATH_PATTERN.test(url.pathname)) return serveSiteMedia(request,env,true);
   if (NATIVE_MEDIA_PATH_PATTERN.test(url.pathname)) return serveAdminNativeMedia(request, env);
   if (url.pathname.startsWith('/media/')) return serveLegacyMedia(request, env, context);
   const config = new CmsConfigurationStore(env.NATIVE_DB);
@@ -88,6 +92,20 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
     if (request.method === 'GET') { const result = await config.settings(); return json({ settings: result.value, revision: result.revision }); }
     if (request.method === 'PUT') { const body = await requestJson(request); const result = await config.saveSettings(Number(body.expectedRevision), body.settings); return json({ settings: result.value, revision: result.revision }); }
   }
+  if (url.pathname === '/api/templates') {
+    if(request.method==='GET'){const result=await config.templates();return json({templates:result.value,revision:result.revision});}
+    if(request.method==='PUT'){const body=await requestJson(request),result=await config.saveTemplates(Number(body.expectedRevision),body.templates);return json({templates:result.value,revision:result.revision});}
+  }
+  if (url.pathname === '/api/icon' && request.method === 'POST') {
+    const mime=request.headers.get('content-type')?.split(';',1)[0].toLowerCase()??'', extension=MIME_EXTENSIONS.get(mime), bytes=Number(request.headers.get('x-dwnc-file-size')??''), sha256=request.headers.get('x-dwnc-file-sha256')?.toLowerCase()??'';
+    if(!extension||!Number.isSafeInteger(bytes)||bytes<1||bytes>1024*1024||!/^[a-f0-9]{64}$/u.test(sha256)||!request.body)throw new Error('ADMIN_E_MEDIA');
+    const body=await boundedBody(request,1024*1024);if(body.byteLength!==bytes)throw new Error('ADMIN_E_MEDIA');
+    const id=crypto.randomUUID(),objectKey=`media/site/${id}.${extension}`,path=`/${objectKey}`;
+    const object=await env.NATIVE_MEDIA_BUCKET.put(objectKey,body,{onlyIf:{etagDoesNotMatch:'*'},sha256,httpMetadata:{contentType:mime},customMetadata:{sha256,contract:'dwnc-site-media-v1'}});
+    if(!object||object.size!==bytes||object.customMetadata?.sha256!==sha256)throw new Error('ADMIN_E_MEDIA_STORE');
+    await env.NATIVE_DB.prepare('INSERT INTO cms_media(id,public_path,object_key,sha256,bytes,mime,created_at) VALUES(?1,?2,?3,?4,?5,?6,?7)').bind(id,path,objectKey,sha256,bytes,mime,new Date().toISOString()).run();
+    return json({path},201);
+  }
   if (request.method === 'GET' && url.pathname === '/api/tags') {
     const counts = new Map<string, number>(); for (const post of await store.listForAdmin()) for (const label of post.tags) counts.set(label, (counts.get(label) ?? 0) + 1);
     return json({ tags: [...counts].map(([label,count]) => ({label,count})).sort((a,b) => a.label.localeCompare(b.label,'ko')) });
@@ -95,19 +113,22 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
   if (request.method === 'GET' && url.pathname === '/api/posts') {
     let posts = await store.listForAdmin();
     if (!url.search) return json({posts});
-    if ([...url.searchParams.keys()].some((key) => !['q','categoryId','status','page','pageSize'].includes(key))) throw new Error('ADMIN_E_QUERY');
+    if ([...url.searchParams.keys()].some((key) => !['q','categoryId','status','kind','page','pageSize'].includes(key))) throw new Error('ADMIN_E_QUERY');
     const q = (url.searchParams.get('q') ?? '').normalize('NFC').trim().toLocaleLowerCase('ko');
     const categoryId = url.searchParams.get('categoryId'); const status = url.searchParams.get('status') ?? 'all';
     const page = Number(url.searchParams.get('page') ?? 1), pageSize = Number(url.searchParams.get('pageSize') ?? 20);
-    if (q.length > 180 || !['all','draft','published','changed'].includes(status) || !Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100) throw new Error('ADMIN_E_QUERY');
+    if (q.length > 180 || !['all','draft','published','changed','private','scheduled','protected'].includes(status) || !Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(pageSize) || pageSize < 1 || pageSize > 100) throw new Error('ADMIN_E_QUERY');
+    const kind = url.searchParams.get('kind') ?? 'all';
+    if(!['all','post','page','notice'].includes(kind)) throw new Error('ADMIN_E_QUERY');
+    const visibleNow = (post: {visibility?: string;scheduledAt?: string|null}) => !post.visibility || post.visibility==='public' || post.visibility==='scheduled' && !!post.scheduledAt && post.scheduledAt<=new Date().toISOString();
     const bodyMatches = q ? await store.searchAdminBodyIds(q) : new Set<string>();
-    posts = posts.filter((post) => (!q || bodyMatches.has(post.id) || [post.title,...post.tags,String(post.globalSequence ?? '')].join(' ').toLocaleLowerCase('ko').includes(q)) && (!categoryId || post.categoryId === categoryId) && (status === 'all' || (status === 'changed' ? post.status === 'published' && post.hasUnpublishedChanges : post.status === status)));
+    posts = posts.filter((post) => (kind === 'all' || post.kind === kind) && (!q || bodyMatches.has(post.id) || [post.title,...post.tags,String(post.globalSequence ?? '')].join(' ').toLocaleLowerCase('ko').includes(q)) && (!categoryId || post.categoryId === categoryId) && (status === 'all' || (status === 'changed' ? post.status === 'published' && post.hasUnpublishedChanges : ['private','scheduled','protected'].includes(status) ? post.visibility === status && post.status === 'published' && (status!=='scheduled'||!visibleNow(post)) : post.status === status && (status!=='published'||visibleNow(post)))));
     return json({posts:posts.slice((page-1)*pageSize,page*pageSize),total:posts.length,page,pageSize,totalPages:Math.max(1,Math.ceil(posts.length/pageSize))});
   }
   if (request.method === 'POST' && url.pathname === '/api/posts') {
-    await requestJson(request);
+    const body = await requestJson(request);
     const category = (await config.categories()).value[0];
-    return json({ post: await store.createDraft(category) }, 201);
+    return json({ post: await store.createDraft(category, body.kind ?? 'post') }, 201);
   }
   const match = url.pathname.match(/^\/api\/posts\/([^/]+)(?:\/(preview|publish|media))?$/u);
   if (!match || !validAdminPostId(match[1])) return json({ error: '찾을 수 없습니다.' }, 404);
@@ -116,6 +137,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
     const post = await store.getForAdmin(id);
     return post ? json({ post }) : json({ error: '찾을 수 없습니다.' }, 404);
   }
+  if (request.method === 'DELETE' && !action) {const body=await requestJson(request);return json(await store.deleteEmptyDraft(id,Number(body.expectedRevision)));}
   if (request.method === 'PUT' && !action) {
     const body = await requestJson(request);
     return json({ post: await store.update(id, Number(body.expectedRevision), body.input) });
@@ -130,7 +152,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
   }
   if (request.method === 'POST' && action === 'publish') {
     const body = await requestJson(request);
-    return json({ post: await store.publish(id, Number(body.expectedRevision)) });
+    return json({ post: await store.publish(id, Number(body.expectedRevision), body) });
   }
   if (request.method === 'GET' && action === 'media') return json({ media: await store.mediaForPost(id) });
   if (request.method === 'POST' && action === 'media') {
@@ -142,7 +164,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
       || !/^[a-f0-9]{64}$/u.test(sha256) || !request.body) throw new Error('ADMIN_E_MEDIA');
     const post = await store.getForAdmin(id);
     if (!post || post.status === 'tombstone') throw new Error('NATIVE_E_MEDIA_POST');
-    const body = await request.arrayBuffer();
+    const body = await boundedBody(request,MAX_IMAGE_BYTES);
     if (body.byteLength !== bytes) throw new Error('ADMIN_E_MEDIA');
     const mediaId = crypto.randomUUID();
     const objectKey = `media/native/${mediaId}.${extension}`;
@@ -166,6 +188,11 @@ function errorResponse(error: unknown) {
   const code = error instanceof Error ? error.message : '';
   if (code === 'NATIVE_E_REVISION') return json({ error: '다른 변경이 먼저 저장되었습니다. 현재 작성 내용은 유지됩니다.', code: 'revision_conflict' }, 409);
   if (code === 'NATIVE_E_CATEGORY_IN_USE') return json({error:'글에서 사용 중인 카테고리는 삭제할 수 없습니다. 해당 글의 카테고리를 먼저 변경해 주세요.',code:'category_in_use'},400);
+  if (code === 'NATIVE_E_NOT_EMPTY') return json({error:'내용이나 사진이 있는 글은 여기서 삭제할 수 없습니다. 비어 있는 새 초안만 삭제할 수 있습니다.'},400);
+  if (code === 'NATIVE_E_KIND_LOCKED') return json({error:'한 번 발행한 글은 주소를 유지하기 위해 종류를 변경할 수 없습니다.'},400);
+  if (code === 'NATIVE_E_PASSWORD') return json({error:'보호 글 비밀번호는 8~128자로 입력해 주세요.'},400);
+  if (code === 'NATIVE_E_SCHEDULE') return json({error:'예약 시각은 현재보다 미래로 지정해 주세요.'},400);
+  if (code === 'NATIVE_E_TEMPLATE_MEDIA') return json({error:'사진은 글마다 소유가 다르므로 서식에는 포함할 수 없습니다. 사진을 제외한 서식을 저장해 주세요.'},400);
   if (code.startsWith('NATIVE_E_') || code.startsWith('ADMIN_E_')) return json({ error: '입력 내용을 확인해 주세요.' }, 400);
   console.error(JSON.stringify({ event: 'dwnc_admin_error', code: 'ADMIN_E_INTERNAL' }));
   return json({ error: '잠시 후 다시 시도해 주세요.' }, 500);

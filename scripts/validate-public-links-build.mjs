@@ -3,6 +3,7 @@ import { lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { createSatteriMarkdownProcessor } from '@astrojs/markdown-satteri';
 import * as cheerio from 'cheerio';
+import { prepareImportedPresentation } from '../src/lib/imported-presentation.ts';
 import {
   createPublicLinkRegistry,
   IMPORTED_PUBLIC_BASELINE,
@@ -160,6 +161,7 @@ const builtExternal = new Map();
 const unavailableBySource = new Map();
 const unavailableRawHrefs = new Set();
 const sourceSemantic = [];
+const expectedPresentedSemantic = [];
 const builtSemantic = [];
 const naverSourceSemantic = [];
 const naverBuiltSemantic = [];
@@ -408,8 +410,13 @@ for (const post of posts) {
   }
   if (post.source === 'tistory') {
     const sourceCode = codeTokens(source.$, source.root);
+    // Approved exact-fragment repairs restore the authored diagram in place of
+    // its accidentally rendered HTML code. Preserve the original source seal,
+    // while comparing the build with the same narrowly matched presentation.
+    const presented = cheerio.load(prepareImportedPresentation(source.root.toString(), { source: post.source, sourceId: post.sourceId }), null, false);
+    const expectedCode = codeTokens(presented, presented.root());
     const routeCode = codeTokens($, root);
-    if (JSON.stringify(sourceCode) !== JSON.stringify(routeCode)) {
+    if (JSON.stringify(expectedCode) !== JSON.stringify(routeCode)) {
       issue('links.tistory-code', `${post.canonicalPath} changed its rendered pre/code semantics.`);
     }
     tistorySemanticCounts.images += source.root.find('img').length;
@@ -419,6 +426,7 @@ for (const post of posts) {
     tistorySemanticCounts.code += source.root.find('code').length;
     const semanticIdentity = `/${post.sourceId}`;
     sourceSemantic.push(`${semanticIdentity}\0${sourceMedia.join('\u001e')}\0${sourceCode.join('\u001e')}`);
+    expectedPresentedSemantic.push(`${semanticIdentity}\0${sourceMedia.join('\u001e')}\0${expectedCode.join('\u001e')}`);
     builtSemantic.push(`${semanticIdentity}\0${routeMedia.join('\u001e')}\0${routeCode.join('\u001e')}`);
   } else if (post.source === 'naver') {
     const semanticIdentity = `/naver/${post.sourceId}`;
@@ -491,21 +499,23 @@ const orderedLegacyIdentity = (source) => (left, right) => {
   return leftId.localeCompare(rightId, 'en');
 };
 sourceSemantic.sort(orderedLegacyIdentity('tistory'));
+expectedPresentedSemantic.sort(orderedLegacyIdentity('tistory'));
 builtSemantic.sort(orderedLegacyIdentity('tistory'));
 naverSourceSemantic.sort(orderedLegacyIdentity('naver'));
 naverBuiltSemantic.sort(orderedLegacyIdentity('naver'));
 const sourceSemanticSha = sha256(sourceSemantic.join('\n'));
+const expectedPresentedSemanticSha = sha256(expectedPresentedSemantic.join('\n'));
 const builtSemanticSha = sha256(builtSemantic.join('\n'));
-if (sourceSemanticSha !== builtSemanticSha) {
-  issue('links.tistory-semantic-sha', `Tistory media/pre/code semantic SHA changed in the build (${sourceSemanticSha}/${builtSemanticSha}).`);
+if (expectedPresentedSemanticSha !== builtSemanticSha) {
+  issue('links.tistory-semantic-sha', `Tistory media/pre/code semantic SHA changed in the build (${expectedPresentedSemanticSha}/${builtSemanticSha}).`);
 }
 const naverSourceSemanticSha = sha256(naverSourceSemantic.join('\n'));
 const naverBuiltSemanticSha = sha256(naverBuiltSemantic.join('\n'));
 if (naverSourceSemanticSha !== naverBuiltSemanticSha) {
   issue('links.naver-semantic-sha', `Naver media semantic SHA changed in the build (${naverSourceSemanticSha}/${naverBuiltSemanticSha}).`);
 }
-if (baselineProjection && builtSemanticSha !== EXPECTED_TISTORY_SEMANTIC_SHA256) {
-  issue('links.tistory-semantic-baseline', `Tistory legacy-identity semantic SHA is ${builtSemanticSha}; expected ${EXPECTED_TISTORY_SEMANTIC_SHA256}.`);
+if (baselineProjection && sourceSemanticSha !== EXPECTED_TISTORY_SEMANTIC_SHA256) {
+  issue('links.tistory-semantic-baseline', `Tistory original legacy-identity semantic SHA is ${sourceSemanticSha}; expected ${EXPECTED_TISTORY_SEMANTIC_SHA256}.`);
 }
 if (baselineProjection && naverBuiltSemanticSha !== EXPECTED_NAVER_SEMANTIC_SHA256) {
   issue('links.naver-semantic-baseline', `Naver legacy-identity semantic SHA is ${naverBuiltSemanticSha}; expected ${EXPECTED_NAVER_SEMANTIC_SHA256}.`);

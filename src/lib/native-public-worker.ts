@@ -1,8 +1,11 @@
+import { ContentOperations, boundedBody } from './content-operations.ts';
+import edgeRedirects from '../../docs/EDGE_REDIRECTS_V1.json' with { type: 'json' };
+import { SITE_MEDIA_PATH_PATTERN } from './cms-configuration.ts';
 import { prepareImportedPresentation, IMPORTED_PRESENTATION_CSS, ENGINE_DIAGRAM_CSS, ENGINE_DIAGRAM_BOOTSTRAP } from './imported-presentation.ts';
 import { escapeHtml, NATIVE_MEDIA_PATH_PATTERN } from './native-content.ts';
 import { CmsConfigurationStore, DEFAULT_CATEGORIES, DEFAULT_SETTINGS, categoryDescendants, categoryLineage, type CmsCategory, type CmsSettings } from './cms-configuration.ts';
 import publicSequence from '../data/public-sequence-v1.json' with { type: 'json' };
-import { NativePostStore, type NativePost } from './native-post-store.ts';
+import { NativePostStore, snapshotVisible, type NativePost } from './native-post-store.ts';
 import {
   CATEGORY_PAGE_SIZE, TAG_PAGE_SIZE, TAXONOMY, slugifyLabel,
 } from './taxonomy.ts';
@@ -20,6 +23,7 @@ export type NativeMediaEnvironment = Pick<NativePublicEnvironment,
 
 type StaticHandler = (request: Request, env: NativePublicEnvironment, context: ExecutionContext) => Promise<Response>;
 interface DiscoveryPost {
+  kind?: 'post' | 'notice';
   title: string; description: string; path: string; date: string; publishedAt: string;
   updatedAt?: string; featured?: boolean; cover?: string | null; coverAlt?: string;
   categoryId: string; categories: string[]; tags: string[]; categoryPath: string[];
@@ -51,7 +55,7 @@ function headOf(response: Response) {
   const headers = new Headers(response.headers); headers.delete('content-length');
   return new Response(null, { status: response.status, statusText: response.statusText, headers });
 }
-function dateLabel(iso: string) { return iso.slice(0, 10).replaceAll('-', '.'); }
+function dateLabel(iso: string, timezone = 'Asia/Seoul') { if (!iso || !Number.isFinite(Date.parse(iso))) return ''; return new Intl.DateTimeFormat('sv-SE',{timeZone:timezone,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(iso)).replaceAll('-','.'); }
 function sequenceOf(path: string) { return Number(path.match(/^\/posts\/(\d+)$/u)?.[1] ?? 0); }
 function comparePosts(left: DiscoveryPost, right: DiscoveryPost) {
   return right.publishedAt.localeCompare(left.publishedAt) || sequenceOf(right.path) - sequenceOf(left.path);
@@ -60,7 +64,7 @@ function nativeDiscovery(post: NativePost, categories: CmsCategory[] = DEFAULT_C
   const publishedAt = post.publishedAt ?? post.updatedAt;
   const lineage = categoryLineage(post.categoryId, categories); const category = lineage.at(-1) ?? {label:post.categoryLabel,slug:post.categorySlug};
   return {
-    title: post.title, description: post.description || post.bodyText.slice(0, 160),
+    kind: post.kind === 'notice' ? 'notice' : 'post', title: post.title, description: post.description || post.bodyText.slice(0, 160),
     path: `/posts/${post.globalSequence}`, date: dateLabel(publishedAt), publishedAt,
     updatedAt: post.updatedAt, featured: false, cover: post.coverPath, coverAlt: post.coverAlt,
     categoryId: post.categoryId, categories: [category.label], tags: [...post.tags],
@@ -117,7 +121,7 @@ function homeMain(posts: DiscoveryPost[], categories: CmsCategory[]) {
   const featured = posts.find((post) => post.featured) ?? posts.find((post) => post.cover) ?? posts[0];
   const latest = posts.filter((post) => post.path !== featured.path).slice(0, 7); const roots = categories.filter((node) => node.parentId === null);
   const cover = featured.cover ? `<a class="home-feature__image" href="${escapeHtml(featured.path)}" tabindex="-1" aria-hidden="true"><img src="${escapeHtml(featured.cover)}" alt="${escapeHtml(featured.coverAlt ?? '')}" decoding="async" fetchpriority="high"></a>` : '';
-  return `<section class="home-journal" aria-labelledby="featured-title"><article class="home-feature">${cover}<div class="home-feature__copy"><p class="home-feature__meta"><time datetime="${escapeHtml(featured.publishedAt)}">${escapeHtml(featured.date)}</time><span>${escapeHtml(featured.leafCategory.label)}</span></p><h1 id="featured-title"><a href="${escapeHtml(featured.path)}">${escapeHtml(featured.title)}</a></h1><a class="text-link" href="${escapeHtml(featured.path)}">이 글 읽기 <span aria-hidden="true">↗</span></a></div></article><aside class="home-index" aria-label="최근 글"><div class="home-index__heading"><div><p>${posts.at(-1)?.publishedAt.slice(0, 4) ?? ''}—${new Date().getUTCFullYear()}</p><h2>최근 글</h2></div><button type="button" data-search-open>찾기</button></div><ol>${latest.map((post) => `<li><a href="${escapeHtml(post.path)}">${escapeHtml(post.title)}</a><time datetime="${escapeHtml(post.publishedAt)}">${escapeHtml(post.date)}</time></li>`).join('')}</ol><a class="text-link" href="/archive">모든 글 보기 <span aria-hidden="true">↗</span></a></aside></section><section class="home-categories"><header><p class="eyebrow">Subjects</p><h2>갈래별로 읽기</h2></header><div class="home-category-list">${roots.map((category, index) => { const accepted = new Set([category.id, ...categoryDescendants(category.id, categories).map((item) => item.id)]); return `<a href="/category/${encodeURIComponent(category.slug)}"><span>${String(index + 1).padStart(2, '0')}</span><strong>${escapeHtml(category.label)}</strong><small>${posts.filter((post) => accepted.has(post.categoryId)).length}편</small></a>`; }).join('')}</div></section>`;
+  return `${posts.some(post=>post.kind==='notice')?`<section class="shell notices" aria-label="공지"><h2>공지</h2><ul>${posts.filter(post=>post.kind==='notice').map(post=>`<li><a href="${escapeHtml(post.path)}">${escapeHtml(post.title)}</a></li>`).join('')}</ul></section>`:''}<section class="home-journal" aria-labelledby="featured-title"><article class="home-feature">${cover}<div class="home-feature__copy"><p class="home-feature__meta"><time datetime="${escapeHtml(featured.publishedAt)}">${escapeHtml(featured.date)}</time><span>${escapeHtml(featured.leafCategory.label)}</span></p><h1 id="featured-title"><a href="${escapeHtml(featured.path)}">${escapeHtml(featured.title)}</a></h1><a class="text-link" href="${escapeHtml(featured.path)}">이 글 읽기 <span aria-hidden="true">↗</span></a></div></article><aside class="home-index" aria-label="최근 글"><div class="home-index__heading"><div><p>${posts.at(-1)?.publishedAt.slice(0, 4) ?? ''}—${new Date().getUTCFullYear()}</p><h2>최근 글</h2></div><button type="button" data-search-open>찾기</button></div><ol>${latest.map((post) => `<li><a href="${escapeHtml(post.path)}">${escapeHtml(post.title)}</a><time datetime="${escapeHtml(post.publishedAt)}">${escapeHtml(post.date)}</time></li>`).join('')}</ol><a class="text-link" href="/archive">모든 글 보기 <span aria-hidden="true">↗</span></a></aside></section><section class="home-categories"><header><p class="eyebrow">Subjects</p><h2>갈래별로 읽기</h2></header><div class="home-category-list">${roots.map((category, index) => { const accepted = new Set([category.id, ...categoryDescendants(category.id, categories).map((item) => item.id)]); return `<a href="/category/${encodeURIComponent(category.slug)}"><span>${String(index + 1).padStart(2, '0')}</span><strong>${escapeHtml(category.label)}</strong><small>${posts.filter((post) => accepted.has(post.categoryId)).length}편</small></a>`; }).join('')}</div></section>`;
 }
 function tagsMain(tags: TagNode[]) {
   return `<header class="page-header tag-index-header"><div class="shell"><p class="eyebrow">Index · ${tags.length}</p><h1>태그</h1></div></header><section class="section tag-index-section"><div class="shell tag-index"><label for="tag-filter">태그 찾기</label><input id="tag-filter" type="search" placeholder="태그 이름을 입력하세요" autocomplete="off" data-tag-filter><p class="tag-index__status" data-tag-status aria-live="polite">전체 ${tags.length}개</p><ol data-tag-list>${tags.map((tag) => `<li data-tag-item data-tag-label="${escapeHtml(tag.label.toLocaleLowerCase('ko-KR'))}"><a href="/tag/${encodeURIComponent(tag.slug)}"><strong>#${escapeHtml(tag.label)}</strong><small>${tag.count}편</small></a></li>`).join('')}</ol></div></section>`;
@@ -152,7 +156,9 @@ async function rewriteDocument(response: Response, main: string | null, title: s
     .on('.brand', { element(element) { element.setInnerContent(settings.title); element.setAttribute('aria-label',`${settings.title} 홈`); } })
     .on('.site-nav', { element(element) { element.setInnerContent(settings.menu.map((item)=>`<a href="${escapeHtml(item.path)}"${new URL(item.path,canonical).pathname===new URL(canonical).pathname?' aria-current="page"':''}>${escapeHtml(item.label)}</a>`).join('') + '<button type="button" data-category-open aria-controls="category-drawer" aria-expanded="false" aria-haspopup="dialog" aria-label="전체 갈래 열기">갈래 +</button><button class="search-trigger" type="button" data-search-open aria-label="글 검색 열기">찾기</button>',{html:true}); } })
     .on('#category-drawer nav', { element(element) { element.setInnerContent(categoryTree(categories,post?.categoryId),{html:true}); } })
+    .on('link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]', {element(element){if(settings.iconPath)element.setAttribute('href',settings.iconPath);}})
     .on('head', { element(element) {
+      if(settings.iconPath)element.append(`<link rel="icon" href="${escapeHtml(settings.iconPath)}">`,{html:true});
       element.append(`<meta name="author" content="${escapeHtml(settings.author)}">${image?`<meta property="og:image" content="${escapeHtml(image)}"><meta name="twitter:image" content="${escapeHtml(image)}">`:''}${!settings.paragraphSpacing?'<style>.prose p{margin-block:0}</style>':''}`,{html:true});
       if (post) {
         const schema = { '@context':'https://schema.org','@type':'BlogPosting',headline:post.title,description,url:canonical,datePublished:post.publishedAt,dateModified:post.updatedAt,author:{'@type':'Person',name:settings.author},...(image?{image}: {}) };
@@ -174,7 +180,8 @@ async function pageShell(staticHandler: StaticHandler, request: Request, env: Na
   return shell(staticHandler, request, env, context);
 }
 async function combinedPosts(staticHandler: StaticHandler, request: Request, env: NativePublicEnvironment, context: ExecutionContext, store: NativePostStore, categories: CmsCategory[], includeSearchText = false) {
-  const published = await store.listPublished(includeSearchText);
+  const published = (await store.listPublished(includeSearchText)).filter(post=>post.kind!=='page');
+  const managed = await store.managedSequences();
   const dynamic = new Map(published.map((post) => [`/posts/${post.globalSequence}`, post]));
   // A complete imported database already holds all public metadata. Do not
   // fetch the large static search index on every page or list request.
@@ -185,7 +192,7 @@ async function combinedPosts(staticHandler: StaticHandler, request: Request, env
     if (!response.ok) throw new Error('NATIVE_E_DISCOVERY');
     const value: unknown = await response.json(); if (!Array.isArray(value) || !value.every(validDiscovery)) throw new Error('NATIVE_E_DISCOVERY'); legacy = value;
   }
-  const merged = legacy.map((staticPost) => {
+  const merged = legacy.filter(staticPost=>!managed.has(sequenceOf(staticPost.path)) || dynamic.has(staticPost.path)).map((staticPost) => {
     const post = dynamic.get(staticPost.path); if (!post) {
       const lineage = categoryLineage(staticPost.categoryId,categories), leaf=lineage.at(-1);
       return leaf ? {...staticPost,categoryPath:lineage.map((node)=>node.label),leafCategory:{label:leaf.label,path:`/category/${leaf.slug}`}} : staticPost;
@@ -206,7 +213,7 @@ async function postDocument(response: Response, post: NativePost, canonical: str
   const presentation=`<style>${IMPORTED_PRESENTATION_CSS}${bodyHtml.includes('data-engine-diagram')?ENGINE_DIAGRAM_CSS:''}</style>${bodyHtml.includes('data-engine-diagram')?`<script>${ENGINE_DIAGRAM_BOOTSTRAP}</script>`:''}`;
   const images=(post.bodyHtml.match(/<img\b/giu)??[]).length;const photo=images>=8||(images>=4&&post.bodyText.length/images<400)||(images>=1&&images<=3&&post.bodyText.length<120);
   const cover=post.coverPath&&!post.bodyHtml.includes(post.coverPath)?`<img class="post-cover" src="${escapeHtml(post.coverPath)}" alt="${escapeHtml(post.coverAlt)}" decoding="async">`:'';
-  const main=`<article class="article-page article-page--${photo?'photo':'longform'}" data-category-id="${escapeHtml(post.categoryId)}"><header class="post-header"><div class="post-header__inner">${breadcrumb}<p class="post-header__kicker">${escapeHtml(category.label)}</p><p class="post-header__meta"><a href="/category/${encodeURIComponent(category.slug)}">${escapeHtml(category.label)}</a><time datetime="${escapeHtml(post.publishedAt??'')}">${dateLabel(post.publishedAt??post.updatedAt)}</time></p><h1>${escapeHtml(post.title)}</h1></div></header>${cover}<div class="prose">${bodyHtml}</div>${presentation}<footer class="post-footer"><div class="post-footer__inner"><div class="post-tags"><a href="/category/${encodeURIComponent(category.slug)}">${escapeHtml(category.label)}</a>${tagLinks}</div>${related.length?`<section class="post-related" aria-labelledby="post-related-title"><h2 id="post-related-title">같은 갈래의 글</h2><ol>${related.map((item)=>`<li><a href="${escapeHtml(item.path)}">${escapeHtml(item.title)}</a><time datetime="${escapeHtml(item.publishedAt)}">${item.date}</time></li>`).join('')}</ol></section>`:''}<nav class="post-sequence" aria-label="시간순 글 이동">${neighbor(previous,'prev','이전 글')}${neighbor(next,'next','다음 글')}</nav></div></footer></article>`;
+  const main=`<article class="article-page article-page--${photo?'photo':'longform'}" data-category-id="${escapeHtml(post.categoryId)}"><header class="post-header"><div class="post-header__inner">${breadcrumb}<p class="post-header__kicker">${escapeHtml(category.label)}</p><p class="post-header__meta"><a href="/category/${encodeURIComponent(category.slug)}">${escapeHtml(category.label)}</a><time datetime="${escapeHtml(post.publishedAt??'')}">${dateLabel(post.publishedAt??post.updatedAt,settings.timezone)}</time></p><h1>${escapeHtml(post.title)}</h1></div></header>${cover}<div class="prose">${bodyHtml}</div>${settings.ccl!=='none'?`<p class="shell post-license"><a rel="license" href="https://creativecommons.org/licenses/${settings.ccl}/4.0/">CC ${settings.ccl.toUpperCase()} 4.0</a></p>`:''}${presentation}<footer class="post-footer"><div class="post-footer__inner"><div class="post-tags"><a href="/category/${encodeURIComponent(category.slug)}">${escapeHtml(category.label)}</a>${tagLinks}</div>${related.length?`<section class="post-related" aria-labelledby="post-related-title"><h2 id="post-related-title">같은 갈래의 글</h2><ol>${related.map((item)=>`<li><a href="${escapeHtml(item.path)}">${escapeHtml(item.title)}</a><time datetime="${escapeHtml(item.publishedAt)}">${item.date}</time></li>`).join('')}</ol></section>`:''}<nav class="post-sequence" aria-label="시간순 글 이동">${neighbor(previous,'prev','이전 글')}${neighbor(next,'next','다음 글')}</nav></div></footer></article>`;
   return rewriteDocument(response,main,title,description,canonical,true,settings,categories,post);
 }
 
@@ -219,14 +226,14 @@ async function dynamicMedia(
   if (!['GET', 'HEAD'].includes(request.method)) return withVersion(new Response('Method not allowed.\n', { status: 405, headers: { allow: 'GET, HEAD', 'cache-control': 'no-store' } }), env);
   const media = audience === 'admin'
     ? await store.getAdminMedia(new URL(request.url).pathname)
-    : await store.getPublicMedia(new URL(request.url).pathname);
+    : await store.getPublicMedia(new URL(request.url).pathname,request);
   if (!media) return withVersion(unavailable(request.method), env);
   const object = request.method === 'HEAD' ? await env.NATIVE_MEDIA_BUCKET.head(media.objectKey) : await env.NATIVE_MEDIA_BUCKET.get(media.objectKey);
   if (!object || object.size !== media.bytes || object.httpMetadata?.contentType?.toLowerCase() !== media.mime
     || object.customMetadata?.contract !== 'dwnc-native-media-v1' || object.customMetadata?.sha256 !== media.sha256
     || !SHA256_PATTERN.test(media.sha256) || !(object.checksums?.sha256 instanceof ArrayBuffer)
     || bytesToHex(object.checksums.sha256) !== media.sha256) return withVersion(unavailable(request.method), env);
-  const headers = new Headers({ 'content-type': media.mime, 'content-length': String(media.bytes), 'cache-control': 'public, max-age=31536000, immutable', 'x-content-type-options': 'nosniff', etag: object.httpEtag });
+  const headers = new Headers({ 'content-type': media.mime, 'content-length': String(media.bytes), 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', etag: object.httpEtag });
   return withVersion(new Response(request.method === 'HEAD' ? null : (object as R2ObjectBody).body, { headers }), env);
 }
 
@@ -234,31 +241,89 @@ export function serveAdminNativeMedia(request: Request, env: NativeMediaEnvironm
   return dynamicMedia(request, env, new NativePostStore(env.NATIVE_DB), 'admin');
 }
 
+export async function serveSiteMedia(request: Request, env: NativeMediaEnvironment, admin = false) {
+  if(!['GET','HEAD'].includes(request.method))return unavailable(request.method);
+  const path=new URL(request.url).pathname;
+  if(!admin && (await new CmsConfigurationStore(env.NATIVE_DB).settings()).value.iconPath!==path)return unavailable(request.method);
+  const row=await env.NATIVE_DB.prepare('SELECT * FROM cms_media WHERE public_path=?1').bind(path).first<{object_key:string;mime:string;bytes:number;sha256:string}>();
+  if(!row)return unavailable(request.method);
+  const object=request.method==='HEAD'?await env.NATIVE_MEDIA_BUCKET.head(row.object_key):await env.NATIVE_MEDIA_BUCKET.get(row.object_key);
+  if(!object || object.size!==row.bytes || object.httpMetadata?.contentType!==row.mime || object.customMetadata?.contract!=='dwnc-site-media-v1' || object.customMetadata?.sha256!==row.sha256 || !(object.checksums?.sha256 instanceof ArrayBuffer) || bytesToHex(object.checksums.sha256)!==row.sha256)return unavailable(request.method);
+  return new Response(request.method==='HEAD'?null:(object as R2ObjectBody).body,{headers:{'content-type':row.mime,'content-length':String(row.bytes),'cache-control':'no-store','x-content-type-options':'nosniff'}});
+}
+async function allowedImportedMedia(path: string, request: Request, env: NativePublicEnvironment) {
+  const source=path.match(/^\/media\/(naver|tistory)\/([^/]+)\//u);
+  if(!source)return false;
+  // The indexed original owner is enough for ordinary public images. Only a
+  // restricted owner requires checking whether another public snapshot shares it.
+  const owner=await env.NATIVE_DB.prepare('SELECT id FROM legacy_posts WHERE import_complete=1 AND source=?1 AND source_id=?2').bind(source[1],source[2]).first<{id:string}>();
+  if(!owner)return true; // Original public media whose owner is not yet imported.
+  const ops=new ContentOperations(env.NATIVE_DB);
+  if(await ops.authorized(owner.id,request))return true;
+  // Working-copy-only references never authorize delivery.
+  const rows=await env.NATIVE_DB.prepare(`SELECT id FROM legacy_posts WHERE import_complete=1 AND id!=?1 AND (instr(body_html,?2)>0 OR cover_path=?2)
+    UNION SELECT id FROM native_posts WHERE status='published' AND (instr(body_html,?2)>0 OR cover_path=?2)`).bind(owner.id,path).all<{id:string}>();
+  for(const row of rows.results??[])if(await ops.authorized(row.id,request))return true;
+  return false;
+}
+function protectedPrompt(path: string, failed = false) {
+ return new Response(`<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="robots" content="noindex,nofollow"><title>보호 글</title><main><h1>보호 글</h1><p>비밀번호를 입력하면 이 글과 사진을 1시간 동안 볼 수 있습니다.</p>${failed?'<p role="alert">비밀번호를 확인하거나 잠시 후 다시 시도해 주세요.</p>':''}<form method="post" action="${escapeHtml(path)}"><label>비밀번호 <input name="password" type="password" maxlength="128" required autocomplete="current-password"></label><button type="submit">글 보기</button></form></main></html>`,{status:failed?403:200,headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store','x-robots-tag':'noindex, nofollow','content-security-policy':"default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",'x-content-type-options':'nosniff'}});
+}
+
 export function createNativePublicWorker(staticHandler: StaticHandler) {
   const handle = async (request: Request, env: NativePublicEnvironment, context: ExecutionContext): Promise<Response> => {
+    const originalRequest = request;
     const url = new URL(request.url); const store = new NativePostStore(env.NATIVE_DB);
+    let normalized: string;try{normalized=decodeURIComponent(url.pathname).replace(/\/index\.html$/u,'').replace(/\/$/u,'')||'/';}catch{return unavailable(request.method);}
+    if(normalized.includes('%')||normalized.includes('\\')||normalized.includes('//'))return unavailable(request.method);
+    const alias=edgeRedirects.redirects.find(entry=>entry.from===normalized);
+    const originalPath=url.pathname;
+    const target=alias?.to??normalized;
+    if(target!==url.pathname){url.pathname=target;request=new Request(url,request);}
+    if(SITE_MEDIA_PATH_PATTERN.test(url.pathname))return serveSiteMedia(request,env);
+    if(url.pathname.startsWith('/media/')&&!NATIVE_MEDIA_PATH_PATTERN.test(url.pathname)){
+      if(!await allowedImportedMedia(url.pathname,request,env))return unavailable(request.method);
+      const response=await staticHandler(request,env,context);const headers=new Headers(response.headers);headers.set('cache-control','no-store');return new Response(response.body,{status:response.status,headers});
+    }
     if (NATIVE_MEDIA_PATH_PATTERN.test(url.pathname)) return dynamicMedia(request, env, store);
     const postMatch = url.pathname.match(/^\/posts\/(\d+)$/u);
+    const pageMatch=url.pathname.match(/^\/pages\/([a-f0-9-]{36})$/u);
     const aggregate = url.pathname === '/about' || url.pathname === '/' || url.pathname === '/archive' || url.pathname === '/category'
       || url.pathname === '/tags' || url.pathname === '/search-index.json' || url.pathname === '/rss.xml'
       || url.pathname === '/sitemap-0.xml' || /^\/(?:category|tag)\/[^/]+(?:\/page\/[1-9]\d*)?$/u.test(url.pathname);
-    if (request.method === 'HEAD' && (aggregate || postMatch)) {
-      const response = await handle(new Request(request, { method: 'GET' }), env, context);
+    if (request.method === 'HEAD' && (aggregate || postMatch || pageMatch)) {
+      const response = await handle(new Request(originalRequest, { method: 'GET' }), env, context);
       try { await response.body?.cancel(); } catch {}
       return headOf(response);
     }
-    if (!aggregate && !postMatch) return staticHandler(request,env,context);
+    if (!aggregate && !postMatch && !pageMatch) return staticHandler(request,env,context);
     if (url.search) {url.search='';request=new Request(url,request);}
     const config = new CmsConfigurationStore(env.NATIVE_DB);
     const [{value:categories},{value:settings}] = await Promise.all([config.categories(),config.settings()]);
-    if (postMatch) {
+    if (postMatch || pageMatch) {
+      const raw = pageMatch ? await store.releasedPage(pageMatch[1]) : await store.getReleasedBySequence(Number(postMatch![1]));
+      const ops = new ContentOperations(env.NATIVE_DB);
+      if (raw && raw.visibility === 'protected' && !await ops.authorized(raw.id,request,true,raw.revision)) {
+        if(request.method==='POST') {
+          if(request.headers.get('origin')!==url.origin || !request.headers.get('content-type')?.startsWith('application/x-www-form-urlencoded') || Number(request.headers.get('content-length')??0)>2048)return unavailable();
+          let text:string;try{text=new TextDecoder().decode(await boundedBody(request,2048));}catch{return unavailable();}
+          const cookie=await ops.unlock(raw.id,new URLSearchParams(text).get('password')??'',request);
+          if(cookie)return new Response(null,{status:303,headers:{location:url.pathname,'set-cookie':cookie,'cache-control':'no-store'}});
+          return protectedPrompt(url.pathname,true);
+        }
+        return protectedPrompt(url.pathname);
+      }
+      if (raw && raw.visibility!=='protected' && !snapshotVisible(raw))return unavailable();
       if (request.method !== 'GET') return withVersion(new Response('Method not allowed.\n', { status: 405, headers: { allow: 'GET, HEAD' } }), env);
-      const post = await store.getPublishedBySequence(Number(postMatch[1]));
-      if (!post) return Number(postMatch[1]) >= 597
+      const post = raw;
+      if (!post && alias && !(await store.managedSequences()).has(Number(postMatch![1])))return new Response(null,{status:308,headers:{location:alias.to,'cache-control':'no-store'}});
+      if (!post) return pageMatch || Number(postMatch![1]) >= 597 || (await store.managedSequences()).has(Number(postMatch![1]))
         ? withVersion(unavailable(), env) : staticHandler(request, env, context);
+      if(post.kind==='page' && !pageMatch)return new Response(null,{status:308,headers:{location:post.publicPath!,'cache-control':'no-store'}});
+      if(alias || originalPath!==url.pathname)return new Response(null,{status:308,headers:{location:url.pathname,'cache-control':'no-store'}});
       const base = await pageShell(staticHandler, request, env, context);
       const posts = await combinedPosts(staticHandler, request, env, context, store,categories);
-      const response = await postDocument(base, post, `https://dwnc.me/posts/${post.globalSequence}`, posts,settings,categories);
+      const response = await postDocument(base, post, `https://dwnc.me${post.publicPath}`, posts,settings,categories);
       const headers = new Headers(response.headers); headers.set('cache-control', 'no-store'); headers.delete('content-length');
       return withVersion(new Response(response.body, { status: 200, headers }), env);
     }
@@ -266,6 +331,7 @@ export function createNativePublicWorker(staticHandler: StaticHandler) {
     let posts: DiscoveryPost[];
     try { posts = await combinedPosts(staticHandler, request, env, context, store,categories,url.pathname === '/search-index.json'); }
     catch { return new Response('잠시 후 다시 시도해 주세요.',{status:503,headers:{'cache-control':'no-store'}}); }
+    posts = posts.map(post=>({...post,date:dateLabel(post.publishedAt,settings.timezone)}));
     if (url.pathname === '/search-index.json') {
       return withVersion(new Response(JSON.stringify(posts), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } }), env);
     }
@@ -283,6 +349,7 @@ export function createNativePublicWorker(staticHandler: StaticHandler) {
     if (url.pathname === '/sitemap-0.xml') {
       const paths=new Map<string,string|undefined>([['/',undefined],['/archive',undefined],['/category',undefined],['/tags',undefined],['/about',undefined]]);
       for(const post of posts)paths.set(post.path,post.updatedAt??post.publishedAt);
+      for(const page of (await store.listPublished(false)).filter(post=>post.kind==='page'))paths.set(`/pages/${page.id}`,page.updatedAt);
       for(const category of categories){const ids=new Set([category.id,...categoryDescendants(category.id,categories).map((node)=>node.id)]);const count=posts.filter((post)=>ids.has(post.categoryId)).length;for(let page=1;page<=Math.max(1,Math.ceil(count/CATEGORY_PAGE_SIZE));page++)paths.set(`/category/${category.slug}${page>1?`/page/${page}`:''}`,undefined);}
       for(const tag of tagNodes(posts))for(let page=1;page<=Math.max(1,Math.ceil(tag.count/TAG_PAGE_SIZE));page++)paths.set(`/tag/${tag.slug}${page>1?`/page/${page}`:''}`,undefined);
       const xml=`<?xml version="1.0" encoding="utf-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${[...paths].map(([path,updated])=>`<url><loc>https://dwnc.me${xmlEscape(path)}</loc>${updated?`<lastmod>${xmlEscape(updated)}</lastmod>`:''}</url>`).join('')}</urlset>`;

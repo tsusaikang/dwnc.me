@@ -59,6 +59,8 @@ const context = createContext({ document, Element, window, Date, Error, console,
   try {
     if(requestPath==='/api/categories'){const result=options.method==='PUT'?await configuration.saveCategories(JSON.parse(options.body).expectedRevision,JSON.parse(options.body).categories):await configuration.categories();return Response.json({categories:result.value,revision:result.revision});}
     if(requestPath==='/api/settings'){const result=options.method==='PUT'?await configuration.saveSettings(JSON.parse(options.body).expectedRevision,JSON.parse(options.body).settings):await configuration.settings();return Response.json({settings:result.value,revision:result.revision});}
+    if(requestPath==='/api/templates'){const result=options.method==='PUT'?await configuration.saveTemplates(JSON.parse(options.body).expectedRevision,JSON.parse(options.body).templates):await configuration.templates();return Response.json({templates:result.value,revision:result.revision});}
+    if(options.method==='DELETE'){await store.deleteEmptyDraft(id,JSON.parse(options.body).expectedRevision);return Response.json({deleted:true});}
     if(requestPath==='/api/tags')return Response.json({tags:[]});
     if(requestPath.endsWith('/media'))return Response.json({media:await store.mediaForPost(id)});
     if (options.method === 'PUT') {
@@ -66,10 +68,10 @@ const context = createContext({ document, Element, window, Date, Error, console,
       if (holdSave) { saveStarted?.(); await holdSave; holdSave = null; }
       return Response.json({ post: await store.update(id, expectedRevision, input) });
     }
-    if (path.endsWith('/publish')) { if (holdPublish) await holdPublish; return Response.json({ post: await store.publish(id, JSON.parse(options.body).expectedRevision) }); }
+    if (path.endsWith('/publish')) { if (holdPublish) await holdPublish; return Response.json({ post: await store.publish(id, JSON.parse(options.body).expectedRevision,JSON.parse(options.body)) }); }
     if (path.endsWith('/preview')) return Response.json({ html: normalizeEditorPostInput(JSON.parse(options.body).input, await store.getForAdmin(id), { requirePublishable: false }).bodyHtml });
-    if (path === '/api/posts' && options.method === 'POST') return Response.json({ post: await store.createDraft({ id: 'daily', slug: '일상', label: '일상' }) });
-    if (requestPath === '/api/posts') return Response.json({ posts: await store.listForAdmin() });
+    if (path === '/api/posts' && options.method === 'POST') return Response.json({ post: await store.createDraft({ id: 'daily', slug: '일상', label: '일상' },JSON.parse(options.body).kind||'post') });
+    if (requestPath === '/api/posts') {const kind=new URL(path,'http://fixture.invalid').searchParams.get('kind');assert.ok(['all','post','page','notice'].includes(kind),'List kind must follow the actual API contract');return Response.json({ posts: await store.listForAdmin() });}
     return Response.json({ post: await store.getForAdmin(id) });
   } catch (error) { return Response.json({ error: error.message, code: 'revision_conflict' }, { status: 409 }); }
 } });
@@ -269,26 +271,26 @@ assert.equal((await store.listPublished()).length, 1);
 await field('showPosts').onclick();
 await field('manageSettings').onclick();
 assert.equal(field('managementDialog').open, true);
-let settingsTitle = field('managementContent').querySelectorAll('input')[0];
+let settingsTitle = field('managementContent').querySelectorAll('input').find(input=>input['aria-label']==='블로그 이름');
 settingsTitle.value = '합성 블로그 이름'; settingsTitle.oninput();
 await field('closeManagement').onclick();await field('manageCategories').onclick();
 await field('closeManagement').onclick();await field('manageSettings').onclick();
-assert.equal(field('managementContent').querySelectorAll('input')[0].value,settingsTitle.value);
+assert.equal(field('managementContent').querySelectorAll('input').find(input=>input['aria-label']==='블로그 이름').value,settingsTitle.value);
 assert.equal(runInContext('hasManagementChanges()',context),true);
 failure = 500;
 await field('saveManagement').onclick();
 assert.match(field('managementError').textContent, /합성 오류/u);
-assert.equal(field('managementContent').querySelectorAll('input')[0].value, '합성 블로그 이름');
+assert.equal(field('managementContent').querySelectorAll('input').find(input=>input['aria-label']==='블로그 이름').value, '합성 블로그 이름');
 assert.notEqual((await configuration.settings()).value.title, '합성 블로그 이름');
 await field('saveManagement').onclick();
 assert.equal((await configuration.settings()).value.title, '합성 블로그 이름');
-settingsTitle = field('managementContent').querySelectorAll('input')[0];
+settingsTitle = field('managementContent').querySelectorAll('input').find(input=>input['aria-label']==='블로그 이름');
 settingsTitle.value = '이 화면의 설정'; settingsTitle.oninput();
 const remoteSettings = await configuration.settings();
 await configuration.saveSettings(remoteSettings.revision, { ...remoteSettings.value, title: '다른 화면의 설정' });
 await field('saveManagement').onclick();
 assert.match(field('managementError').textContent, /다른 곳/u);
-assert.equal(field('managementContent').querySelectorAll('input')[0].value, '이 화면의 설정');
+assert.equal(field('managementContent').querySelectorAll('input').find(input=>input['aria-label']==='블로그 이름').value, '이 화면의 설정');
 await field('keepManagement').onclick();
 assert.equal((await configuration.settings()).value.title, '다른 화면의 설정');
 assert.equal(field('saveManagement').textContent, '현재 입력으로 저장');
@@ -333,5 +335,39 @@ assert.equal((await store.getForAdmin(activePost.id)).coverPath, '/media/native/
 field('postSearch').value='찾을 글';field('postCategory').value='daily';field('postStatus').value='changed';
 await field('showPosts').onclick();await field('postStatus').onchange();await tick();
 assert.ok(requests.some(request=>request.path.includes('q=%EC%B0%BE%EC%9D%84+%EA%B8%80')&&request.path.includes('categoryId=daily')&&request.path.includes('status=changed')));
+
+// Newly added management controls use the same emitted UI against synthetic stores.
+await field('manageSettings').onclick();
+let timeZoneField=field('managementContent').querySelectorAll('input').find(input=>input['aria-label']==='날짜 표시 시간대');
+timeZoneField.value='America/New_York';timeZoneField.oninput();
+const licenseField=field('managementContent').querySelectorAll('select').find(select=>select['aria-label']==='저작물 이용허락');
+licenseField.value='by-nc-sa';licenseField.onchange();await field('saveManagement').onclick();
+assert.equal((await configuration.settings()).value.timezone,'America/New_York');
+assert.equal((await configuration.settings()).value.ccl,'by-nc-sa');
+await field('closeManagement').onclick();await field('manageTemplates').onclick();
+field('managementContent').querySelectorAll('button').find(button=>button.textContent==='빈 서식 추가').onclick();
+const templateName=field('managementContent').querySelectorAll('input')[0];templateName.value='합성 회의록';templateName.oninput();
+let templateBody=field('managementContent').querySelectorAll('textarea')[0];templateBody.value='<p>합성 서식</p><table><tbody><tr><td>항목</td></tr></tbody></table>';templateBody.oninput();
+await field('saveManagement').onclick();assert.equal((await configuration.templates()).value[0].name,'합성 회의록');
+templateBody=field('managementContent').querySelectorAll('textarea')[0];templateBody.value='<p>유지할 입력</p><img src="/media/native/synthetic.png">';templateBody.oninput();
+const beforeTemplateReject=requests.length;await field('saveManagement').onclick();assert.equal(requests.length,beforeTemplateReject);assert.match(field('managementError').textContent,/사진/u);assert.match(templateBody.value,/유지할 입력/u);
+await field('closeManagement').onclick();await field('manageSettings').onclick();await field('closeManagement').onclick();await field('manageTemplates').onclick();
+assert.match(field('managementContent').querySelectorAll('textarea')[0].value,/유지할 입력/u);
+await field('closeManagement').onclick();
+field('postKind').value='page';await field('new').onclick();assert.equal(runInContext('current.kind',context),'page');assert.equal(field('contentKind').value,'page');
+const emptyPageId=runInContext('current.id',context);assert.equal(field('deleteEmptyDraft').hidden,false);
+await field('deleteEmptyDraft').onclick();assert.equal(await store.getForAdmin(emptyPageId),null);assert.equal(field('editorView').hidden,true);
+field('postKind').value='notice';await field('new').onclick();edit('합성 공지');field('bodyHtml').innerHTML='<p>합성 공지 본문</p>';field('bodyHtml').emit('input');await flush();
+await field('publicationOptions').onclick();field('publicationVisibility').value='private';field('publicationVisibility').onchange();await field('applyPublication').onclick();
+assert.equal(runInContext('current.visibility',context),'private');assert.equal(field('publish').textContent,'비공개본 반영');assert.match(field('lastSaved').textContent,/비공개 상태/u);
+assert.equal(field('contentKind').disabled,true);
+await field('publicationOptions').onclick();field('publicationVisibility').value='scheduled';field('publicationVisibility').onchange();field('scheduledTime').value='2000-01-01T12:00';
+const beforePastSchedule=requests.length;await field('applyPublication').onclick();assert.equal(requests.length,beforePastSchedule);assert.match(field('publicationError').textContent,/미래/u);
+const future=new Date(Date.now()+86400000);field('scheduledTime').value=new Date(future.getTime()-future.getTimezoneOffset()*60000).toISOString().slice(0,16);await field('applyPublication').onclick();
+assert.equal(runInContext('current.visibility',context),'scheduled');assert.equal(field('publish').textContent,'예약본 반영');
+await field('publish').onclick();assert.equal(runInContext('current.visibility',context),'scheduled');
+await field('publicationOptions').onclick();field('publicationVisibility').value='protected';field('publicationVisibility').onchange();field('protectionPassword').value='synthetic-only-password';await field('applyPublication').onclick();
+assert.equal(runInContext('current.visibility',context),'protected');assert.equal(field('protectionPassword').value,'');
+await field('publicationOptions').onclick();assert.equal(field('protectionPassword').value,'');await field('applyPublication').onclick();assert.equal(runInContext('current.visibility',context),'protected');
 
 console.log(JSON.stringify({ suite: 'editor-ui-state', status: 'PASS', behavior: 'actual emitted UI, preserved list/editor navigation, preview dialog and focus, autosave isolation, failure retry, login continuation, conflict choices, in-flight edit, flush-before-publish, edit lock and new post' }));

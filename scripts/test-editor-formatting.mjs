@@ -101,6 +101,8 @@ old.sqlite.exec(`INSERT INTO editor_working_copies (post_id,title,description,bo
 const oldPublic = { ...old.sqlite.prepare('SELECT * FROM native_posts').get() };
 old.sqlite.exec(await readFile(new URL('../migrations/0005_editor_body_format.sql', import.meta.url), 'utf8'));
 old.sqlite.exec(await readFile(new URL('../migrations/0006_cms_management.sql', import.meta.url), 'utf8'));
+old.sqlite.exec(await readFile(new URL('../migrations/0007_content_operations.sql', import.meta.url), 'utf8'));
+old.sqlite.exec(await readFile(new URL('../migrations/0008_cms_templates_media.sql', import.meta.url), 'utf8'));
 const upgradedStore = new NativePostStore(old);
 const upgraded = await upgradedStore.getForAdmin(oldId);
 assert.equal(upgraded.bodyFormat, 'markdown');

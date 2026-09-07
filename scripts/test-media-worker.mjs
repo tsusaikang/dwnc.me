@@ -1,3 +1,4 @@
+import { createEditorDatabase } from './fixtures/editor-database.mjs';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import edgeRedirectManifest from '../docs/EDGE_REDIRECTS_V1.json' with { type: 'json' };
@@ -480,11 +481,18 @@ for (const mutateGet of [
 {
   const productionWorker = (await import('../src/worker.ts')).default;
   const { env, calls, context } = environment();
+  env.NATIVE_DB = await createEditorDatabase();
+  const assetFetch = env.ASSETS.fetch;
+  env.ASSETS.fetch = async request => {
+    if (new URL(request.url).pathname === '/search-index.json') {calls.assets.push({url:request.url,method:request.method});return Response.json([]);}
+    return assetFetch(request);
+  };
   const response = await productionWorker.fetch(new Request('https://dwnc.me/about'), env, context);
   equal(response.status, 200);
-  equal(calls.assets.length, 1);
+  equal(calls.assets.length, 2);
 
   const productionRedirect = environment();
+  productionRedirect.env.NATIVE_DB = env.NATIVE_DB;
   const firstRedirect = edgeRedirectManifest.redirects[0];
   const redirectResponse = await productionWorker.fetch(new Request(
     `https://dwnc.me${firstRedirect.from}?source=query`, { method: 'HEAD' },

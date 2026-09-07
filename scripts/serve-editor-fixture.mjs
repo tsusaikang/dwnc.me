@@ -3,12 +3,36 @@ import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import adminWorker from '../src/admin-worker.ts';
+import { createNativePublicWorker } from '../src/lib/native-public-worker.ts';
+import { load } from 'cheerio';
 import { NativePostStore } from '../src/lib/native-post-store.ts';
 import { createEditorDatabase, seedLegacy } from './fixtures/editor-database.mjs';
 
 const database = await createEditorDatabase();
 const legacyImage = seedLegacy(database);
 const store = new NativePostStore(database);
+// Minimal local HTMLRewriter equivalent for the selectors used by the public
+// Worker. It transforms synthetic HTML, never imported article source.
+class FixtureHTMLRewriter {
+  handlers = [];
+  on(selector, handler) { this.handlers.push([selector, handler]); return this; }
+  async transform(response) {
+    const $ = load(await response.text());
+    for (const [selector, handler] of this.handlers) {
+      for (const node of $(selector).toArray()) {
+        await handler.element({
+          setInnerContent: (value, options = {}) => options.html ? $(node).html(value) : $(node).text(value),
+          setAttribute: (name, value) => $(node).attr(name, value),
+          removeAttribute: (name) => $(node).removeAttr(name),
+          remove: () => $(node).remove(),
+          append: (value, options = {}) => $(node).append(options.html ? value : $('<span>').text(value).html()),
+        });
+      }
+    }
+    return new Response($.html(), { status: response.status, headers: response.headers });
+  }
+}
+globalThis.HTMLRewriter = FixtureHTMLRewriter;
 // A long synthetic list exposes small-screen navigation without real posts.
 for (let index = 1; index <= 40; index += 1) {
   const draft = await store.createDraft({ id: 'daily', slug: '일상', label: '일상' });
@@ -45,7 +69,7 @@ globalThis.fetch = async (url) => {
 };
 let mode = 'normal';
 const counts = { saves: 0, publishes: 0 };
-const controls = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>합성 CMS 시험</title><style>body{font:18px sans-serif;max-width:900px;margin:40px auto}a{display:block;margin:18px}</style><h1>로컬 합성 CMS 시험</h1><a href="/" target="editor">관리자 열기</a><a href="/__fixture/public" target="public">방문자 사본 확인</a>${[['fail','다음 저장 실패'],['auth','로그인 만료'],['conflict','다른 세션에서 수정'],['slow','다음 저장 3초 지연'],['slow-publish','다음 공개 반영 3초 지연'],['normal','정상으로 전환']].map(([key,label])=>`<a href="/__fixture/action/${key}">${label}</a>`).join('')}<a href="/__fixture/state">현재 합성 데이터</a></html>`;
+const controls = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>합성 CMS 시험</title><style>body{font:18px sans-serif;max-width:900px;margin:40px auto}a{display:block;margin:18px}</style><h1>로컬 합성 CMS 시험</h1><a href="/" target="editor">관리자 열기</a><a href="http://127.0.0.1:4324/" target="public">실제 공개 처리기로 합성 방문자 화면 확인</a><a href="/__fixture/public" target="public-raw">저장된 공개 사본 확인</a>${[['fail','다음 저장 실패'],['auth','로그인 만료'],['conflict','다른 세션에서 수정'],['slow','다음 저장 3초 지연'],['slow-publish','다음 공개 반영 3초 지연'],['normal','정상으로 전환']].map(([key,label])=>`<a href="/__fixture/action/${key}">${label}</a>`).join('')}<a href="/__fixture/state">현재 합성 데이터</a></html>`;
 const fontFiles = new Set(['NanumGothic.woff','NanumGothicBold.ttf','NanumMyeongjo.woff','NanumMyeongjoBold.woff','NanumBarunGothic.woff','NanumBarunGothicBold.woff'].map(name=>'/fonts/nanum/'+name));
 const server = createServer(async (incoming, outgoing) => {
   try {
@@ -88,3 +112,34 @@ const server = createServer(async (incoming, outgoing) => {
   } catch { outgoing.writeHead(500); outgoing.end('Synthetic fixture error'); }
 });
 server.listen(4322, '127.0.0.1', () => console.log('Synthetic editor fixture: http://127.0.0.1:4322/__fixture'));
+
+const publicCss = await readFile(new URL('../src/styles/global.css', import.meta.url), 'utf8');
+const staticArticle = await store.getPublishedBySequence(1);
+const syntheticIndex = [{ title: staticArticle.title, description: staticArticle.description, path: '/posts/1', date: '2026.09.01', publishedAt: staticArticle.publishedAt, updatedAt: staticArticle.updatedAt, featured: true, cover: legacyImage, coverAlt: '합성 시험 이미지', categoryId: 'daily', categories: ['일상'], tags: [], categoryPath: ['일상'], leafCategory: { label: '일상', path: '/category/일상' }, searchText: '합성 기존 공개 글 방문자에게 보이는 원래 본문입니다.' }];
+const syntheticShell = (main = '') => `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>합성 공개 화면</title><meta name="description"><link rel="canonical"><meta property="og:title"><meta property="og:description"><meta property="og:url"><meta property="og:site_name"><meta property="og:type"><meta name="twitter:card"><link rel="stylesheet" href="/__fixture/global.css"></head><body><header class="site-header"><div class="shell"><a class="brand" href="/">합성 블로그</a><span class="site-header__note"></span><nav class="site-nav"></nav></div></header><main id="main">${main}</main><dialog id="category-drawer"><nav></nav></dialog><footer class="site-footer"><div class="site-footer__inner shell"><p><a href="/"></a><span></span></p><div class="site-footer__links"><span></span></div></div></footer></body></html>`;
+const publicHandler = createNativePublicWorker(async (request) => {
+  const path = new URL(request.url).pathname;
+  const html = body => new Response(request.method === 'HEAD' ? null : syntheticShell(body), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+  if (path === '/search-index.json') return Response.json(syntheticIndex);
+  if (path === '/1') return new Response(null, { status: 308, headers: { location: '/posts/1' } });
+  if (['/posts/1', '/posts/1/', '/posts/1/index.html', '/posts/1.html'].includes(path)) return html(`<article class="prose"><h1>${staticArticle.title}</h1>${staticArticle.bodyHtml}</article>`);
+  if (path === '/' || path === '/about') return html('<section class="shell"><h1>합성 소개</h1><p>실제 자료가 없는 로컬 시험입니다.</p></section>');
+  return new Response(request.method === 'HEAD' ? null : 'Not found.', { status: 404, headers: { 'cache-control': 'no-store' } });
+});
+const publicServer = createServer(async (incoming, outgoing) => {
+  try {
+    const url = new URL(incoming.url, 'http://127.0.0.1:4324');
+    let response;
+    if (url.pathname === '/__fixture/global.css') response = new Response(publicCss, { headers: { 'content-type': 'text/css' } });
+    else if (fontFiles.has(url.pathname)) response = new Response(await readFile(new URL('../public' + url.pathname, import.meta.url)), { headers: { 'content-type': url.pathname.endsWith('.ttf') ? 'font/ttf' : 'font/woff' } });
+    else {
+      const buffers = []; for await (const chunk of incoming) buffers.push(chunk);
+      const request = new Request(url, { method: incoming.method, headers: new Headers(incoming.headers), ...(!['GET', 'HEAD'].includes(incoming.method) ? { body: Buffer.concat(buffers) } : {}) });
+      response = await publicHandler(request, env, { waitUntil() {} });
+    }
+    outgoing.writeHead(response.status, Object.fromEntries(response.headers));
+    outgoing.end(incoming.method === 'HEAD' ? undefined : Buffer.from(await response.arrayBuffer()));
+  } catch { outgoing.writeHead(500); outgoing.end('Synthetic public fixture error'); }
+});
+publicServer.listen(4324, '127.0.0.1', () => console.log('Synthetic public fixture: http://127.0.0.1:4324/'));
+for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => { server.close(); publicServer.close(); });
