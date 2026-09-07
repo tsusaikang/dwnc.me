@@ -7,6 +7,9 @@ import corrections from '../src/data/imported-formatting-corrections.json' with 
 import sequence from '../src/data/public-sequence-v1.json' with { type: 'json' };
 import { prepareImportedPresentation, ENGINE_DIAGRAM_BOOTSTRAP } from '../src/lib/imported-presentation.ts';
 import { ENGINE_DIAGRAM_BASELINE, ENGINE_STATIC_BASELINE } from '../src/lib/engine-diagram-content.ts';
+import { sanitizeLegacyHtml } from '../src/lib/native-content.ts';
+import { createEditorDatabase, seedLegacy } from './fixtures/editor-database.mjs';
+import { createNativePublicWorker } from '../src/lib/native-public-worker.ts';
 import { mountEngineDiagram } from '../src/lib/engine-diagram-client.js';
 
 const text = (html) => load(html, null, false).text().replace(/\s+/g, ' ').trim();
@@ -58,6 +61,30 @@ assert.equal(prepareImportedPresentation(ENGINE_DIAGRAM_BASELINE), ENGINE_DIAGRA
 assert.equal(prepareImportedPresentation(ENGINE_STATIC_BASELINE, { source: 'tistory', sourceId: '172' }), ENGINE_STATIC_BASELINE);
 const modified = ENGINE_DIAGRAM_BASELINE.replace('v6x-lead', 'v6x-lead user-edited');
 assert.equal(prepareImportedPresentation(modified, identity), modified);
+// The live database contains the Markdown-rendered HTML after the import
+// sanitizer normalized style spacing. Test the real import-to-display pipeline.
+const imported = sanitizeLegacyHtml(rendered);
+const importedRestored = prepareImportedPresentation(imported, identity);
+const importedDom = load(importedRestored);
+assert.equal(importedDom('[data-engine-diagram]').length, 1);
+assert.equal(importedDom('[data-engine-diagram] button').length, 9);
+assert.equal(importedDom('canvas').length, 1);
+assert.equal(importedDom('svg').length, 1);
+assert.equal(prepareImportedPresentation(importedRestored, identity), importedRestored);
+// Known malformed rendered wrappers contain the original closing summary. It
+// must remain outside the repaired component instead of being removed with it.
+for (const output of [restored, importedRestored]) {
+  const displayed = load(output);
+  for (const node of load(rendered)('#v6crank3d > .v6x-wrap').nextAll().toArray()) {
+    assert(text(output).includes(text(load(node).html())));
+  }
+  assert.equal(displayed('[data-engine-diagram]').nextAll('h3').first().text(), '정리');
+}
+const editedImported = imported.replace('알고 나니 엔진 소리가 조금 다르게 들리는 것 같다.', '작성자가 바꾼 마지막 문장');
+const preservedEdited = prepareImportedPresentation(editedImported, identity);
+assert(preservedEdited.includes('작성자가 바꾼 마지막 문장'));
+assert.equal(load(preservedEdited)('[data-engine-diagram]').length, 0);
+assert.equal(load(prepareImportedPresentation(imported, {source:'tistory',sourceId:'172'}))('[data-engine-diagram]').length, 0);
 new Script(ENGINE_DIAGRAM_BOOTSTRAP);
 
 // The committed renderer contains only the one reviewed, local drawing component.
@@ -118,5 +145,37 @@ try {
   root.isConnected = false; runFrame(400); assert.equal(frames.size, 0); cleanup();
 } finally {
   for (const [key, value] of Object.entries(previous)) value === undefined ? delete globalThis[key] : globalThis[key] = value;
+}
+// Exercise the actual dynamic Worker with an isolated in-memory copy of the
+// public Markdown-to-import output, including the identity and bootstrap wiring.
+const database = await createEditorDatabase(); seedLegacy(database);
+database.sqlite.prepare("UPDATE legacy_posts SET id='legacy-588', global_sequence=588, source_id='165', body_html=?, body_text=? WHERE id='legacy-1'").run(imported,text(imported));
+class PublicRewriter {
+  handlers=[];
+  on(selector,handler){this.handlers.push([selector,handler]);return this;}
+  async transform(response){
+    const $=load(await response.text());
+    for(const [selector,handler] of this.handlers)$(selector).each((_,node)=>handler.element({
+      setInnerContent:(value,options={})=>options.html?$(node).html(value):$(node).text(value),
+      setAttribute:(name,value)=>$(node).attr(name,value),remove:()=>$(node).remove(),append:value=>$(node).append(value),
+    }));
+    return new Response($.html(),{status:response.status,headers:response.headers});
+  }
+}
+const oldRewriter=globalThis.HTMLRewriter;
+try {
+  globalThis.HTMLRewriter=PublicRewriter;
+  const worker=createNativePublicWorker(async request=>new URL(request.url).pathname==='/search-index.json'?Response.json([]):new Response('<html><head><title>합성</title></head><body><main id="main"></main></body></html>',{headers:{'content-type':'text/html'}}));
+  const response=await worker(new Request('https://dwnc.me/posts/588'),{NATIVE_DB:database},{});
+  const page=load(await response.text());
+  assert.equal(response.status,200);
+  assert.equal(page('[data-engine-diagram]').length,1);
+  assert.equal(page('[data-engine-diagram] button').length,9);
+  assert.equal(page('[data-engine-diagram] canvas').length,1);
+  assert(page('script').toArray().some(node=>page(node).text().includes('v6x-playBtn')));
+  assert.equal(page('[data-engine-diagram]').nextAll('h3').first().text(),'정리');
+  assert(page('.prose').text().includes('알고 나니 엔진 소리가 조금 다르게 들리는 것 같다.'));
+} finally {
+  if(oldRewriter===undefined)delete globalThis.HTMLRewriter;else globalThis.HTMLRewriter=oldRewriter;
 }
 console.log('Imported presentation repairs, unchanged-content isolation, and authored diagram markup PASS');

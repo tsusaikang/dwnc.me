@@ -1,4 +1,5 @@
 import { load } from 'cheerio';
+import { sanitizeLegacyHtml } from './native-content.ts';
 import corrections from '../data/imported-formatting-corrections.json' with { type: 'json' };
 import { mountEngineDiagram } from './engine-diagram-client.js';
 import {
@@ -11,6 +12,26 @@ export { ENGINE_DIAGRAM_CSS } from './engine-diagram-content.ts';
 
 export type ImportedIdentity = { source: 'naver' | 'tistory'; sourceId: string };
 
+// Markdown's historical indented block left the closing summary inside the
+// diagram wrapper. Repairing the diagram must keep those authored paragraphs.
+function renderedDiagramReplacement(expected: string) {
+  const $ = load(expected, null, false);
+  const tail = $('#v6crank3d > .v6x-wrap').nextAll().toArray().map(node => $(node).prop('outerHTML')).join('\n');
+  return ENGINE_DIAGRAM_HTML + (tail ? '\n' + tail : '');
+}
+const engineReplacements = [
+  { expected: ENGINE_DIAGRAM_BASELINE, replacement: ENGINE_DIAGRAM_HTML },
+  { expected: ENGINE_STATIC_BASELINE, replacement: ENGINE_STATIC_HTML },
+  { expected: ENGINE_DIAGRAM_RENDERED_BASELINE, replacement: renderedDiagramReplacement(ENGINE_DIAGRAM_RENDERED_BASELINE) },
+  { expected: ENGINE_STATIC_RENDERED_BASELINE, replacement: ENGINE_STATIC_HTML },
+];
+// D1's public import applies this sanitizer after Markdown rendering. Its style
+// serialization differs from static HTML, so recognize that exact known form too.
+const importedEngineReplacements = engineReplacements.map(({expected,replacement}) => ({
+  expected: load(sanitizeLegacyHtml(expected), null, false).root().html() ?? expected,
+  replacement,
+}));
+
 // Presentation repairs only match unchanged, publicly projected legacy fragments.
 // New writing and edited fragments are never replaced with the old authored text.
 export function prepareImportedPresentation(html: string, identity?: ImportedIdentity): string {
@@ -20,12 +41,7 @@ export function prepareImportedPresentation(html: string, identity?: ImportedIde
   if (!entry && !engine) return html;
   const $ = load(html, null, false);
   const pairs = entry?.corrections ?? [];
-  const replacements = engine ? [
-    { expected: ENGINE_DIAGRAM_BASELINE, replacement: ENGINE_DIAGRAM_HTML },
-    { expected: ENGINE_STATIC_BASELINE, replacement: ENGINE_STATIC_HTML },
-    { expected: ENGINE_DIAGRAM_RENDERED_BASELINE, replacement: ENGINE_DIAGRAM_HTML },
-    { expected: ENGINE_STATIC_RENDERED_BASELINE, replacement: ENGINE_STATIC_HTML },
-  ] : pairs;
+  const replacements = engine ? [...engineReplacements, ...importedEngineReplacements] : pairs;
   for (const { expected, replacement } of replacements) {
     const tag = expected.match(/^<([a-z][a-z0-9]*)\b/i)?.[1];
     if (!tag) continue;
