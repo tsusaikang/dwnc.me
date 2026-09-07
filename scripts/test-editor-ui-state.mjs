@@ -3,6 +3,7 @@ import { createContext, runInContext } from 'node:vm';
 import { load } from 'cheerio';
 import { adminHtml } from '../src/lib/admin-ui.ts';
 import { NativePostStore } from '../src/lib/native-post-store.ts';
+import { normalizeEditorPostInput } from '../src/lib/native-content.ts';
 import { createEditorDatabase } from './fixtures/editor-database.mjs';
 
 // Lightweight DOM for executable editor state tests. Layout and native selection
@@ -19,6 +20,8 @@ class Element {
   contains(node) { return this.children.includes(node); }
   focus(options) { this.focused = true; this.focusOptions = options; }
   scrollIntoView(options) { this.scrollCalls = (this.scrollCalls ?? 0) + 1; this.scrollOptions = options; }
+  showModal() { this.open = true; }
+  close() { this.open = false; this.emit('close'); }
   getBoundingClientRect() { return { height: 40, width: 500, top: 0, left: 0, bottom: 40, right: 500 }; }
   setRangeText(text, start = 0, end = 0) { this.value = this.value.slice(0, start) + text + this.value.slice(end); }
   emit(name) { for (const handler of this.listeners[name] ?? []) handler({ target: this, preventDefault() {} }); }
@@ -29,6 +32,7 @@ const draft = await store.createDraft({ id: 'daily', slug: '일상', label: '일
 const input = { title: '원래 제목', description: '설명', bodyMarkdown: '본문', categoryId: 'daily', tags: [], coverMediaId: null };
 const saved = await store.update(draft.id, 0, input);
 const published = await store.publish(draft.id, saved.revision);
+const otherDraft = await store.createDraft({ id: 'daily', slug: '일상', label: '일상' });
 const html = load(adminHtml('owner@example.test'));
 const elements = new Map(html('[id]').toArray().map((node) => [node.attribs.id, Object.assign(new Element(), { hidden: 'hidden' in node.attribs, disabled: 'disabled' in node.attribs })]));
 let failure = null;
@@ -36,8 +40,9 @@ let holdSave = null;
 let holdPublish = null;
 let saveStarted;
 const requests = [];
-const document = { getElementById: (id) => elements.get(id), createElement: (tag) => Object.assign(new Element(), { tag }), addEventListener() {}, querySelector: () => new Element() };
-const context = createContext({ document, Element, window: { addEventListener() {}, innerHeight: 800, innerWidth: 1200 }, Date, Error, console, Response, AbortController, setTimeout: () => 1, clearTimeout() {}, fetch: async (path, options = {}) => {
+const document = { body: new Element(), documentElement: new Element(), getElementById: (id) => elements.get(id), createElement: (tag) => Object.assign(new Element(), { tag }), addEventListener() {}, querySelector: () => new Element() };
+const window = { addEventListener() {}, innerHeight: 800, innerWidth: 1200, scrollY: 0, scrollTo({ top }) { this.scrollY = top; }, getSelection: () => ({ rangeCount: 0 }) };
+const context = createContext({ document, Element, window, Date, Error, console, Response, AbortController, setTimeout: () => 1, clearTimeout() {}, fetch: async (path, options = {}) => {
   requests.push({ path, method: options.method ?? 'GET', body: options.body ? JSON.parse(options.body) : null });
   if (failure) {
     const status = failure; failure = null;
@@ -54,6 +59,8 @@ const context = createContext({ document, Element, window: { addEventListener() 
       return Response.json({ post: await store.update(id, expectedRevision, input) });
     }
     if (path.endsWith('/publish')) { if (holdPublish) await holdPublish; return Response.json({ post: await store.publish(id, JSON.parse(options.body).expectedRevision) }); }
+    if (path.endsWith('/preview')) return Response.json({ html: normalizeEditorPostInput(JSON.parse(options.body).input, await store.getForAdmin(id), { requirePublishable: false }).bodyHtml });
+    if (path === '/api/posts' && options.method === 'POST') return Response.json({ post: await store.createDraft({ id: 'daily', slug: '일상', label: '일상' }) });
     if (path === '/api/posts') return Response.json({ posts: await store.listForAdmin() });
     return Response.json({ post: await store.getForAdmin(id) });
   } catch (error) { return Response.json({ error: error.message, code: 'revision_conflict' }, { status: 409 }); }
@@ -62,16 +69,29 @@ runInContext(html('script').text(), context);
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 await tick();
 const field = (id) => elements.get(id);
-const postButton = field('posts').querySelectorAll('button')[0];
+assert.equal(field('postsPanel').hidden, false);
+assert.equal(field('editorView').hidden, true);
+const postButton = field('posts').querySelectorAll('button').find((button) => button.dataset.postId === draft.id);
+const otherPostButton = field('posts').querySelectorAll('button').find((button) => button.dataset.postId === otherDraft.id);
+window.scrollY = 320;
 await postButton.onclick();
 assert.equal(field('heading').scrollCalls, 1);
 assert.equal(field('title').focused, true);
 assert.equal(postButton['aria-current'], 'true');
+assert.equal(field('postsPanel').hidden, true);
+assert.equal(field('editorView').hidden, false);
+assert.equal(field('editorFooter').hidden, false);
 const requestsBeforeListReturn = requests.length;
+window.scrollY = 640;
 await field('showPosts').onclick();
-assert.equal(field('postsPanel').scrollCalls, 1);
+assert.equal(window.scrollY, 320);
+assert.equal(field('postsPanel').hidden, false);
+assert.equal(field('editorView').hidden, true);
+assert.equal(field('editorFooter').hidden, true);
 assert.equal(postButton.focused, true);
-assert.equal(postButton.scrollOptions.block, 'nearest');
+await field('resumeEditing').onclick();
+assert.equal(window.scrollY, 640);
+assert.equal(field('editorView').hidden, false);
 assert.equal(requests.length, requestsBeforeListReturn);
 assert.equal(field('bodyHtml').innerHTML, published.bodyHtml);
 assert.equal(field('body').hidden, true);
@@ -80,19 +100,71 @@ assert.equal((await store.getPublishedBySequence(597)).bodyFormat, 'markdown');
 const edit = (title) => { field('title').value = title; field('title').emit('input'); };
 const flush = () => runInContext('flush()', context);
 
+edit('목록 왕복 중 미저장 제목');
+const workingBody = '<p>목록 왕복 중 <strong>작성 본문</strong> 유지</p>';
+field('bodyHtml').innerHTML = workingBody; field('bodyHtml').emit('input');
+const requestsBeforeDirtyReturn = requests.length;
+await field('showPosts').onclick(); await postButton.onclick();
+assert.equal(field('title').value, '목록 왕복 중 미저장 제목');
+assert.equal(field('bodyHtml').innerHTML, workingBody);
+assert.equal(requests.length, requestsBeforeDirtyReturn);
+
 edit('자동저장 작업본'); await flush();
 assert.equal((await store.getForAdmin(draft.id)).title, '자동저장 작업본');
 assert.equal((await store.getForAdmin(draft.id)).bodyFormat, 'html');
-assert.equal((await store.getForAdmin(draft.id)).bodyHtml, published.bodyHtml);
+assert.equal((await store.getForAdmin(draft.id)).bodyHtml, workingBody);
 assert.equal((await store.getPublishedBySequence(597)).title, '원래 제목');
 assert.match(field('saveStatus').textContent, /공개 반영을 기다리는/u);
 assert.match(field('lastSaved').textContent, /마지막 저장 성공/u);
 
+// Preview saves the current work first, stays isolated from publication, and
+// closes back to the editor without replacing its content or reading it again.
+const previewRequestOffset = requests.length;
+edit('미리보기 직전 미저장 제목');
+await field('preview').onclick();
+assert.deepEqual(requests.slice(previewRequestOffset).filter((request) => request.method !== 'GET').map((request) => request.method), ['PUT', 'POST']);
+assert.equal(field('previewDialog').open, true);
+assert.equal(field('previewClose').focused, true);
+assert.equal(field('previewTitle').textContent, '미리보기 직전 미저장 제목');
+assert.equal(field('previewBox').innerHTML, workingBody);
+assert.equal(field('previewViewport').dataset.size, 'desktop');
+assert.equal((await store.getPublishedBySequence(597)).title, '원래 제목');
+const requestsBeforePreviewControls = requests.length;
+await field('previewMobile').onclick();
+assert.equal(field('previewViewport').dataset.size, 'mobile');
+assert.equal(field('previewMobile')['aria-pressed'], 'true');
+await field('previewDesktop').onclick();
+assert.equal(field('previewViewport').dataset.size, 'desktop');
+field('preview').focused = false;
+await field('previewClose').onclick();
+assert.equal(field('previewDialog').open, false);
+assert.equal(field('previewBox').hidden, true);
+assert.equal(field('preview').focused, true);
+assert.equal(field('bodyHtml').innerHTML, workingBody);
+assert.equal(requests.length, requestsBeforePreviewControls);
+await field('preview').onclick();
+const requestsBeforeEscape = requests.length;
+field('preview').focused = false;
+field('previewDialog').emit('cancel');
+assert.equal(field('previewDialog').open, false);
+assert.equal(field('preview').focused, true);
+assert.equal(requests.length, requestsBeforeEscape);
+await field('attachPhoto').onclick();
+assert.equal(field('uploadPanel').hidden, false);
+await field('closeUpload').onclick();
+assert.equal(field('uploadPanel').hidden, true);
+assert.equal(field('bodyHtml').innerHTML, workingBody);
+assert.equal(requests.length, requestsBeforeEscape);
+
 failure = 500; edit('저장 실패에도 남는 입력');
 const editorScrollsBeforeFailure = field('heading').scrollCalls;
-await postButton.onclick();
+await field('showPosts').onclick(); await otherPostButton.onclick();
 assert.equal(field('title').value, '저장 실패에도 남는 입력');
 assert.equal(field('heading').scrollCalls, editorScrollsBeforeFailure);
+assert.equal(field('saveIssue').hidden, false);
+assert.equal(field('postsPanel').hidden, false);
+await field('resumeEditing').onclick();
+assert.equal(field('editorView').hidden, false);
 assert.equal(field('saveIssue').hidden, false);
 await field('retrySave').onclick();
 assert.equal((await store.getForAdmin(draft.id)).title, '저장 실패에도 남는 입력');
@@ -176,4 +248,12 @@ assert.equal((await store.getPublishedBySequence(597)).title, '공개 버튼 직
 assert.equal(field('title').value, '공개 대기 중인 내 작성본');
 assert.equal(field('keepLocal').hidden, false);
 
-console.log(JSON.stringify({ suite: 'editor-ui-state', status: 'PASS', behavior: 'actual emitted UI, autosave isolation, failure retry, login continuation, conflict choices, in-flight edit, flush-before-publish and edit lock' }));
+await field('loadLatest').onclick();
+await field('new').onclick();
+assert.equal(field('editorView').hidden, false);
+assert.equal(field('postsPanel').hidden, true);
+assert.equal(field('title').value, '');
+assert.equal((await store.listForAdmin()).length, 3);
+assert.equal((await store.listPublished()).length, 1);
+
+console.log(JSON.stringify({ suite: 'editor-ui-state', status: 'PASS', behavior: 'actual emitted UI, preserved list/editor navigation, preview dialog and focus, autosave isolation, failure retry, login continuation, conflict choices, in-flight edit, flush-before-publish, edit lock and new post' }));
