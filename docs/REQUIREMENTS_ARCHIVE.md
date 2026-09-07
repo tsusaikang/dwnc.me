@@ -99,3 +99,31 @@
   - 최종 manifest 2,758개·2,346,220,246바이트·SHA-256 `61bb577d609f97cdb014ef3a14681045fbb3bec616f2b04c8d058519b640c532`가 로컬·source-only 검증을 통과했다.
   - 현재 Cloudflare 관련 27개 시험 묶음·15,076개 확인, 정적 페이지 1,404개, redirect 349개, request surface 1,409경로·SHA-256 `e143cefe01de35de47495e3fbd036773eb550e58f377e07467014d45f944d594`가 통과했다. `/404.html`은 내부 오류 화면으로는 남지만 공개 요청 목록에는 들어가지 않는다.
   - release-source 준비를 commit `1f726f63381a903afdd04ec80c90407c742c82cd`·tree `46ec12f98c74a4fdbbc92e3749574bf085ad21ee`로 version upload보다 먼저 기록했고 push는 0이다.
+
+### `DWNC-S3-007` — staging R2 단일 객체 시험
+- **Status:** `done`
+- **Updated-at:** `2026-08-27`
+- **Plans:** `PLAN-05`
+- **Priority:** `P0`
+- **Acceptance:**
+  - 최종 manifest의 사용자 소유 객체 1개만 private staging bucket에 create-only로 만든다.
+  - PUT 전후 HEAD와 full GET의 SHA-256·size·MIME·cache metadata가 정확히 일치하는지 검증한다.
+  - 불일치하면 덮어쓰지 않고 orphan이나 기존 객체를 삭제하지 않는다.
+  - receipt는 저장소 밖 보호 경로에 덮어쓰기 없이 기록하고 자격증명은 출력하지 않는다.
+- **Evidence:**
+  - source commit `df3c678456f6af3471d846a32e28faa5751b9a2e`·tree `bbe8306cbf6577cd556533079593872020ddc8b5`에서 대표 객체를 추가 PUT 없이 HEAD 1·status 200 full GET 1로 검증했다. PUT 0·DELETE 0이고 version은 `null`이다.
+  - HEAD와 GET의 ETag `"d3ded31a7b52f467702909afbc7d5340"`·Last-Modified `2026-08-27T00:24:12.000Z`와 manifest SHA-256 세대가 일치했으며 verifiedAt은 `2026-08-27T05:07:48.418Z`다.
+  - create-only validation receipt SHA-256은 `fa72b1849496a9b6e4697721cfef9d4fcd17b8f463b41dcacd714c5f9bb2352a`다.
+  - 이어 PUT 없이 전수 inspection을 다시 수행해 exact 1·missing 2,757·mismatch 0·orphan 0을 확인했다. inspectedAt은 `2026-08-27T05:09:09.996Z`, receipt SHA-256은 `f00f3c13c9ae99f8a36599db85d7a180e31d8779776653bca72c2aee596d380e`다.
+
+### `DWNC-S3-008` — staging R2 create-only bulk upload와 full audit
+- **Status:** `done`
+- **Updated-at:** `2026-09-04`
+- **Plans:** `PLAN-05`
+- **Priority:** `P0`
+- **Acceptance:**
+  - exact final manifest만 create-only로 업로드하고, 올바른 계정의 비공개 bucket에서 manifest 전체 GET/SHA-256와 총 bytes를 확인한다.
+  - missing·mismatch·orphan을 보고하고 PUT·DELETE·overwrite 없이 `full-get-sha256` receipt를 남긴다.
+- **Evidence:**
+  - 실제 staging에서 객체 2,758개·2,346,220,246바이트·orphan 0과 full object-set SHA-256 `9345d2f06c8bd7cda457a9d4335cdc2213e71dcd30bb9e11e6f3e1f8e11ae467`이 일치했다.
+  - 논리 LIST/HEAD/GET은 3/2,758/2,758, 실제 전송 시도는 3/2,760/2,758, HEAD retry 2·전체 retry 2, PUT/DELETE 0이다. 보존 receipt storage SHA-256은 `ce4e4f38b35063ec425c2ba5e65cc1d3a89355def51486542e6bccd3c1909bdd`이며 현재 계약 재검증을 통과했다.

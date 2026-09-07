@@ -1,8 +1,17 @@
 # dwnc.me 프로젝트 공식 상태
 
-최종 갱신: 2026-09-08 KST — 기본 관리·표시 보완 운영 반영 완료, 운영 도해 표시 차이 후속 수정 중
+최종 갱신: 2026-09-08 KST — DWNC-CORE-005/006 합의된 보완 운영 반영 및 실제 확인 완료
 
-### 최신 운영 반영과 실제 확인
+### 최신 완료 상태 — 최종 운영 반영과 실제 확인
+
+- **완료:** 합의된 페이지·공지·재사용 서식, 예약·비공개·보호 글·빈 초안 삭제, 아이콘·시간대·CCL 및 1차 공개 표시·편집/관리 보완을 운영 반영했다. DWNC-CORE-005/006은 이 합의 범위에서 done이다. 댓글·방명록·통계·광고·구독·팀블로그의 미답변 포함 범위와 PLAN-09 독립 사본·신규 이미지 최적화는 후속으로 남는다.
+- 최종 런타임 source `443de0b306bf8c9270781dfbe12a202f26d41b07`에서 source-only 정적 빌드와 공개/관리 번들을 모두 새로 만들었다. 이전 배포 번들은 재사용하지 않았다. public `6507905a-2eb7-4b58-b120-8a8b407da28c`, admin `8475349d-47c6-4c02-abe2-2f24340f98db`가 각각 100% 활성화됐으며 모듈 일치와 기존 설정 보존을 확인했다. 인증 세션33949는 정상 종료했다.
+- 최종 산출물: public `/var/folders/ps/kbhx2vz12m76shzc_s9wn30w0000gn/T/dwnc-core006-public-bundle-flYl2Y/bundle/worker.js` (2425900 bytes, SHA256 `313b6e1a9255292f7d38f66a9c79e30596bc07690d66987f954ed248c7022c92`), admin `/var/folders/ps/kbhx2vz12m76shzc_s9wn30w0000gn/T/dwnc-core006-admin-bundle-kiprau/bundle/admin-worker.js` (2528741 bytes, SHA256 `5d6a1969975a48d5ca6845374754b298eb09de24c2e09d55880f978a7da26bfd`). dist1420 files/34807300 bytes, tree SHA256 `65757135bcc584a2667787456de54cf7ab70b5f39a6199333109b2899c152379`.
+- 최종 타입·정적 빌드·링크·미디어·source-bundle 검사와 실제 컴파일 Worker 응답의 도해 script VM 실행 시험 PASS. 로그 `/private/tmp/dwnc-core006-bootstrap-final-build.log`, `/private/tmp/dwnc-core006-build-bundles-443de0b.log`.
+- 메인은 하위 에이전트가 접근할 수 없는 자체 내장 브라우저 인증·운영 화면 조작만 담당했다. 최종 #588에서 엔진 도해가 실제 그려지고 90° V6 스플릿핀/측면 시점 선택·회전 각도 진행·정리 문단 보존을 확인했다. #595 읽는 시간 제거·흰 배경·system 글꼴/사진3개, #139 같은 줄 사진2개와 폰트 로딩, 관리자349개 목록/설정/서식/기존 글 읽기 확인도 완료했다. 이번 좁은 viewport 요청은 실제 적용되지 않아 신규390px 운영 확인으로 주장하지 않는다.
+- 실제 글 내용 수정·저장·발행·삭제, R2 덮어쓰기/삭제, Git push, raw deploy, DNS/route 변경은 없었다. DB는 additive migration만 반영했다. 완료된 기본 기능은 운영 관리자에서 사용 가능하며 미답변 부가 범위는 답변 전 확장하지 않는다.
+
+### 이번 운영 반영 과정의 이력 — 아래 중간 차단과 결함은 최종 완료 절에서 해소됨
 
 - 사용자가 동일 세 권한 인증 제출을 `승인`했다. 최신 source `55ada789f519ebcfc820306c6ec65aa157ee1a84`에서 새 번들을 각각 생성하고 문서 외 소스 차이가 없음을 확인했다. 자체 내장 브라우저의 Account Read / Workers Scripts Write / D1 Write 동의 제출과 메모리 인증을 완료했다. 이전 인증 차단은 해소됐다.
 - additive migration 0006/0007/0008과 최종 정적 자산을 반영했다. 공개 version `9fa44dac-7ec9-44a1-a9a2-fc78a9aa5eed`, 관리자 version `9f62d426-0865-4795-afd0-4d4f3bfa7be7`를 모두 준비한 뒤 각각 100% 활성화했고 실제 활성 모듈이 최종 번들과 일치한다. 기존 bindings/settings는 유지됐다. 실제 글 내용·R2 객체·DNS/route·Git 원격 변경은 없다. 인증 세션 `30034`는 최종 활성 확인 뒤 정상 종료했다.
@@ -14,7 +23,7 @@
 - 실제 운영 #588에서 도해1/canvas1/buttons9/마지막 정리 문단까지 나타났으나 모드/시점 버튼이 반응하지 않고 canvas가 비어 있었다. console의 `ReferenceError: __name is not defined`로 최종 Worker bundler가 `mountEngineDiagram.toString()`에 삽입한 이름 보조 함수의 browser scope 누락을 확인했다. backend가 bootstrap의 실행 독립성을 수정하고 최종 컴파일 Worker가 생성한 inline script 실행 회귀를 추가 중이다. 이번 최종 조작 검증을 마치기 전에는 도해 완료나 전체 완료로 처리하지 않는다.
 - 실행 코드 수정 완료: 함수 문자열화를 제거하고 `src/lib/engine-diagram-bootstrap-source.json`의 검토된 독립 browser script를 static/dynamic/preview에 그대로 삽입한다. 원본 client 함수와의 일치 시험으로 동기화를 확인한다. `test-imported-presentation.mjs --worker-bundle`은 실제 컴파일 Worker 응답에서 꺼낸 inline script를 helper 없는 VM에 실행해 canvas drawing/모드/시점/각도/일시정지/종료를 시험한다. 이전 운영 번들의 __name 오류를 이 시험으로 정확히 재현했고 수정 소스 시험은 통과했다. 최종 source-only 전체 빌드/타입/정적/링크/미디어/source-bundle 검사도 통과했다. dist #588 script는 JSON 원본과 byte-exact 같고 helper 참조가 없으며 정리 문단을 보존한다. 로그 `/private/tmp/dwnc-core006-bootstrap-final-build.log`. 다음은 최종 커밋의 새 번들 생성 → 그 공개 번들로 compiled VM 실행 → 운영 반영 → 실제 조작 확인이다.
 
-### 재개 중: 기본 관리 기능 2차 보완 (2026-09-08)
+### 개발 이력: 기본 관리 기능 2차 보완 (2026-09-08)
 
 - 최신 사용자 지시에 따라 `DWNC-CORE-006`의 남은 페이지·공지·재사용 서식, 예약·비공개·보호 글·빈 초안 삭제, 아이콘·시간대·CCL 개발을 재개했다. 시작 작업 트리는 깨끗하며 1차 구현과 인수인계 로컬 커밋을 보존한다.
 - 메인은 통합·내장 브라우저·공식 상태, backend는 글 종류/상태와 저장·공개·미디어 경계 및 migration, management_ui는 관리 화면, integration_review는 설정/서식 저장과 관련 시험을 담당한다. 공유 파일은 담당자 간 계약 확정 후 직렬로 연결한다.
@@ -808,7 +817,7 @@
 ## 다음 단계
 
 1. `PLAN-05`는 실제 staging 비공개 확인, 2,758개 전수 GET/SHA-256, 이번 validator 원격·로컬 정리와 사용 불가능한 기존 원격 token 두 개의 exact identity 확인·승인된 삭제·부재 확인까지 완료했다. 보존 receipt와 capture는 유지한다.
-2. `PLAN-09`의 `DWNC-CORE-002`는 로컬 구현·실행 시험·빈 작업본 테이블 추가·관리자 운영 활성화·실제 화면 읽기 확인까지 완료했다. 이어 요청받은 `DWNC-CORE-003` 기본 서식도 로컬 구현·시험과 승인된 형식 열 추가 → 공개 Worker → 관리자 Worker 적용, 자체 내장 브라우저 확인까지 완료했다. 로그인 동의 차단은 해소됐고 인증 메모리 세션도 종료했다. `DWNC-CORE-004` 새 작성 화면도 승인 후 운영 적용과 재로그인 뒤 실제 읽기 확인을 완료했다. 현재는 후속 `DWNC-CORE-006`으로 범위가 확대됐다. `DWNC-CORE-005`와 공개 원문 서식/도해·핵심 편집/관리의 1차 보완을 함께 로컬 통합하고, 위 최신 기록의 남은 페이지/공지/서식·공개 상태·추가 설정 및 서비스별 기능 범위를 이어간다. 전체 보완 후 운영 반영은 승인돼 있으며 1차 수정만 먼저 배포하지 않는다. 앞선 작업본 CMS 적용에서 공개 Worker·DNS·route·기존 글·R2 객체와 Git 원격은 변경하지 않았다. 운영에서 열어 둔 이전 관리자 화면은 미저장 입력을 처리한 뒤 새로 열어야 새 UI를 사용한다.
+2. `PLAN-09`의 `DWNC-CORE-002`는 로컬 구현·실행 시험·빈 작업본 테이블 추가·관리자 운영 활성화·실제 화면 읽기 확인까지 완료했다. 이어 요청받은 `DWNC-CORE-003` 기본 서식도 로컬 구현·시험과 승인된 형식 열 추가 → 공개 Worker → 관리자 Worker 적용, 자체 내장 브라우저 확인까지 완료했다. 로그인 동의 차단은 해소됐고 인증 메모리 세션도 종료했다. `DWNC-CORE-004` 새 작성 화면도 승인 후 운영 적용과 재로그인 뒤 실제 읽기 확인을 완료했다. 후속 `DWNC-CORE-005/006`의 합의된 공개 표시·편집/관리와 페이지/공지/서식·공개 상태·추가 설정 보완도 최종 새 빌드와 운영 반영, 실제 화면 확인까지 완료했다. 미답변 부가 기능과 PLAN-09 독립 사본 등 후속 항목은 최신 완료 절을 따른다. 앞선 작업본 CMS 적용에서 공개 Worker·DNS·route·기존 글·R2 객체와 Git 원격은 변경하지 않았다. 운영에서 열어 둔 이전 관리자 화면은 미저장 입력을 처리한 뒤 새로 열어야 새 UI를 사용한다.
 3. 공개 글 화면 통합·대표이미지·query 일관성·목록/검색 경량 조회·RSS/사이트맵·관리자 검색/필터는 위 1차 소스에 로컬 구현됐다. 남은 전체 개발과 함께 최종 빌드·운영 확인하고, 빈 초안 삭제·신규 이미지 최적화와 새 글/사진의 단순 독립 사본 한 곳을 이어간다. 최신 관리자 이미지·링크 카드·삭제 도구막대는 유지한다.
 
 ## 중요한 제약과 주의사항
