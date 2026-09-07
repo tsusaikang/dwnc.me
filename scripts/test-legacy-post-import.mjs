@@ -21,6 +21,7 @@ assert.equal(chunks.flatMap((chunk) => chunk.split(/;\n/u)).filter(Boolean)
 const database = new DatabaseSync(':memory:');
 database.exec(await readFile(new URL('../migrations/0002_legacy_editor.sql', import.meta.url), 'utf8'));
 database.exec(await readFile(new URL('../migrations/0003_legacy_import_state.sql', import.meta.url), 'utf8'));
+database.exec(await readFile(new URL('../migrations/0004_editor_working_copies.sql', import.meta.url), 'utf8'));
 for (const sql of chunks) database.exec(sql);
 assert.deepEqual({ ...database.prepare(`SELECT COUNT(*) AS count, MIN(global_sequence) AS minimum,
   MAX(global_sequence) AS maximum FROM legacy_posts`).get() }, { count: 349, minimum: 1, maximum: 596 });

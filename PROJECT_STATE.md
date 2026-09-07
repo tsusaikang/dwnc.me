@@ -1,14 +1,23 @@
 # dwnc.me 프로젝트 공식 상태
 
-최종 갱신: 2026-09-07 KST — PLAN-05부터 PLAN-08까지 완료 / PLAN-09 기본 웹 편집기와 동적 공개 전환 운영 중, 지속 운영용 CMS 보완과 비공개 백업 결정 대기
+최종 갱신: 2026-09-07 KST — PLAN-09 작업본 자동저장·명시적 공개 반영 로컬 구현·시험 완료 / 운영 활성화 승인 대기
 
 사용자가 확인할 현재 목표·결정·진행을 막는 조건·다음 단계와 stable requirement ID는 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)를 기준으로 한다. 이 문서는 구현 세부사항, 검증 수치, Git·Cloudflare 상태 재확인 결과와 인수인계를 보존하는 기술 기준점이다. 완료 이력은 요구사항 원장의 보관 정책에 따라 [`docs/REQUIREMENTS_ARCHIVE.md`](docs/REQUIREMENTS_ARCHIVE.md)로 이동하되 이 기술 증거를 삭제하지 않는다.
 
 ## 현재 목표와 완료 조건
 
+### 이번 작업의 우선 목표와 승인 범위 (2026-09-07)
+
+- 최우선은 `작업본 자동저장 + 명시적 공개 반영`이다. 자동저장은 방문자에게 보이는 글을 바꾸지 않고, `공개 반영`은 미저장 입력을 먼저 저장한 뒤 성공한 최신 작업본만 공개한다.
+- 화면에는 저장 상태와 마지막 성공 시각을 표시한다. 저장 실패·로그인 만료·수정 충돌에도 작성 내용이 남고 같은 화면에서 재시도·재로그인 후 계속·최신본 불러오기 또는 현재 작성본 유지가 가능해야 한다. 다른 작성 내용을 조용히 덮어쓰지 않는다.
+- 새 글·기존 글·597부터의 첫 발행·미리보기·이미지·링크 카드·선택/삭제·긴 본문 삭제 도구막대·기존 주소를 유지하고 관련 로컬 실행 시험을 통과한다.
+- 로컬 구현·수정·통상 시험·문서 갱신·로컬 커밋은 승인됐다. Git push, production DNS/route 변경, raw `wrangler deploy`, 실제 글 수정/삭제, R2 객체 덮어쓰기/삭제는 금지한다. 실제 외부 활성화 직전에만 승인받는다.
+- 이후 순서는 공개 글 화면 통합 → 대표이미지의 홈/목록/글/SNS 연결 → query 일관성 → 목록/검색 조회 경량화 → RSS/사이트맵/공유 최신화 → 링크 편집·관리자 검색/필터·빈 초안 삭제·신규 이미지 최적화 → 새 글/사진 독립 사본 한 곳이다. 별도의 관리·증거·복구 체계를 추가하지 않는다.
+- 이 절과 아래 최신 구현 결과가 과거의 ‘백업 결정만 남음’ 또는 ‘지속 운영 CMS 완성’ 표현보다 우선한다. 실제 코드를 기준으로 `docs/REQUIREMENTS.md`도 함께 갱신한다.
+
 네이버 블로그 `blog.naver.com/tsusai`와 티스토리 기반 `dwnc.me`의 직접 작성 콘텐츠를 소유자가 통제하는 새 블로그로 이전한다. 원문, 이미지, 게시일, 카테고리, 태그, 기존 주소, 공개 범위를 보존하며 이후 새 글도 지속해서 작성할 수 있어야 한다.
 
-비개발자용 현재 요약: `PLAN-08` 운영 전환과 실제 화면 확인은 완료됐다. `admin.dwnc.me`에서 Cloudflare 이메일 OTP로 로그인해 기존 공개 글 349편과 새 글을 편집하고, 이미지·링크 카드를 보고 선택·삭제하는 최신 관리자 버전도 실제 서비스에 활성화됐다. 공개 글·예전 주소·기존 미디어와 기본 탐색은 사용 가능하다. 다만 독립 검토 결과, 기존 공개 글은 자동저장과 동시에 실제 사이트에 반영되고, 저장 실패·로그인 만료·다른 탭과의 충돌을 화면 안에서 안전하게 복구하는 흐름이 부족하다. 따라서 읽기·탐색 서비스는 운영 가능하지만, 일상적으로 글을 안심하고 다루는 지속 운영용 CMS는 아직 미완성이다. 실제 글 내용과 원본 파일·R2 객체는 이번 검토에서 변경하지 않았다.
+비개발자용 현재 요약: `PLAN-08` 운영 전환과 실제 화면 확인은 완료됐다. `admin.dwnc.me`에서 Cloudflare 이메일 OTP로 로그인해 기존 공개 글 349편과 새 글을 편집하고, 이미지·링크 카드를 보고 선택·삭제하는 최신 관리자 버전도 실제 서비스에 활성화됐다. 공개 글·예전 주소·기존 미디어와 기본 탐색은 사용 가능하다. 다만 독립 검토 결과, 기존 공개 글은 자동저장과 동시에 실제 사이트에 반영되고, 저장 실패·로그인 만료·다른 탭과의 충돌을 화면 안에서 안전하게 복구하는 흐름이 부족하다. 이번 로컬 구현에서는 작업본과 공개본 분리, 저장 상태·재시도·재로그인·충돌 선택을 완성하고 합성 데이터 실행 시험과 내장 브라우저 확인을 통과했다. 다만 운영 활성화 전이므로 실제 관리자에는 기존 자동저장 한계가 남는다. 지속 운영용 CMS 전체에는 이후 공개 화면 보완과 독립 사본 마련도 남아 있다. 실제 글 내용·원본·R2 객체와 운영 서비스는 이번 작업에서 변경하지 않았다.
 
 전체 프로젝트 완료 조건은 다음과 같다.
 
@@ -40,7 +49,7 @@
 - 공개 URL registry: **imported 349 + native 증분 계약, 현재 collision 0**
 - 공개 본문 legacy 링크 호환: **75개 canonical 변환, unavailable 2개 중립화, Naver platform anchor 0, broken local 0**
 - 전역 순번 bootstrap: **596건(공개 349 + 비공개 예약 247), 1–596, next 597, 감사 digest 2종 PASS**
-- 웹 편집기: **이메일 OTP·애플리케이션 identity 확인·D1 초안/발행/수정·신규 R2 이미지·597 이후 순번·기존 349편 편집·최신 이미지/링크 카드 UX·동적 공개는 운영 중 / 작업 사본 후 명시적 공개 반영·저장 실패/재접속/충돌 복구는 미완성**
+- 웹 편집기: **이메일 OTP·애플리케이션 identity 확인·D1 초안/발행/수정·신규 R2 이미지·597 이후 순번·기존 349편 편집·최신 이미지/링크 카드 UX·동적 공개는 운영 중 / 작업본 자동저장·명시적 공개 반영·저장 실패/재로그인/충돌 처리는 로컬 구현·시험 완료, 운영 미적용**
 - 전역 순번 운영 내구성: **metadata-only sidecar·bootstrap seal·append journal·generation CAS·초기화/교차 파일 transaction·linked stale-transfer recovery, 순수 117 + 실제 CLI 5 fixture PASS**
 - 공개 canonical 전환: **`/posts/{globalSequence}` 349개, legacy alias 349개, private reserved route 0**
 - alias 표현·발견성: **noindex/canonical/refresh/JS/fallback 349/349, 검색·RSS·sitemap 포함 0**
@@ -69,9 +78,9 @@
 - `PLAN-06` 시험용 사이트 프로그램·버전·사이트 점검: **완료**. `DWNC-S3-009`와 `DWNC-S3-010`을 마쳤고, runtime source `05962c4c0872b5234d3a45298ab0e44d123d03da`의 artifact `81cf14fc…`를 version `bb59f4ee-55f5-4626-858b-0653d7e79900`으로 100% 적용해 live 종합 점검을 통과했다.
 - `PLAN-07` 운영용 이름의 Cloudflare 자원·버전 준비: **완료**. private production R2에 2,758개를 create-only로 올리고 전수 감사·서명·production artifact와 비활성 Worker version 준비를 마쳤다. 기존 active version과 production DNS·route·traffic은 바꾸지 않았다.
 - `PLAN-08` 실제 도메인 연결과 운영 전환 검증: **완료**. production version을 100% 활성화하고 기존 DNS를 보존한 Worker route 방식으로 연결한 뒤 실제 주소의 대표 글·예전 주소·미디어·모바일·데스크톱 화면을 확인했다.
-- `PLAN-09` 로그인형 웹 편집기: **작성·기존 글 편집·즉시 공개 운영 반영 완료 / 비공개 백업 방식 결정 대기**. Google OAuth는 사용하지 않는다. 이메일 OTP로 `https://admin.dwnc.me`에 로그인해 기존 공개 글 349편의 목록과 편집 필드 로드를 실제 확인했고, 최신 public Worker를 100% 적용한 뒤 live 홈과 `/posts/595`가 정상임을 확인했다. 실제 글 내용은 변경하지 않았다. 비공개 백업 방식과 공유 글 10개·댓글·추가 개선은 사용자 선택 후속이다.
+- `PLAN-09` 로그인형 웹 편집기: **기본 편집·동적 공개 운영 중 / 작업본 자동저장·명시적 공개 반영 로컬 완료, 운영 적용 전**. Google OAuth는 사용하지 않는다. 이메일 OTP로 `https://admin.dwnc.me`에 로그인해 기존 공개 글 349편의 목록과 편집 필드 로드를 실제 확인했고, 최신 public Worker를 100% 적용한 뒤 live 홈과 `/posts/595`가 정상임을 확인했다. 실제 글 내용은 변경하지 않았다. 비공개 백업 방식과 공유 글 10개·댓글·추가 개선은 사용자 선택 후속이다.
 
-인수인계 상태: `PLAN-05`부터 `PLAN-08`까지와 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`·`DWNC-OPS-002`는 완료됐다. production R2는 private이고 기존 미디어 2,758개 전수 감사가 통과했다. `PLAN-09`는 Zero Trust Free, staging·production D1·private R2, 이메일 OTP Access와 `admin.dwnc.me` 연결을 완료했다. production D1에는 기존 공개 글 349편의 편집 가능한 사본과 import 완료 상태가 있으며, 최신 관리자 version `f05123b7-8e9e-44b5-b4cc-b9fd3fc56a66`과 공개 version `38be46a9-f983-40d3-a522-5fb18bf27485`을 각각 100% 활성화했다. 로그인 뒤 관리자 목록 349편과 #595의 제목·요약·카테고리·본문 로드를 확인했고, 공개 전환 뒤 live 홈과 `/posts/595`도 정상 표시됐다. 실제 글 내용, 원본 파일, 기존 R2 객체와 Git 원격은 변경하지 않았다. 다음 사용자 결정은 비공개 자료 백업·복구 방식이며 공유 글 10개·댓글·추가 개선은 선택 후속이다.
+인수인계 상태: `PLAN-05`부터 `PLAN-08`까지와 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`·`DWNC-OPS-002`는 완료됐다. production R2는 private이고 기존 미디어 2,758개 전수 감사가 통과했다. `PLAN-09`는 Zero Trust Free, staging·production D1·private R2, 이메일 OTP Access와 `admin.dwnc.me` 연결을 완료했다. production D1에는 기존 공개 글 349편의 편집 가능한 사본과 import 완료 상태가 있으며, 최신 관리자 version `f05123b7-8e9e-44b5-b4cc-b9fd3fc56a66`과 공개 version `38be46a9-f983-40d3-a522-5fb18bf27485`을 각각 100% 활성화했다. 로그인 뒤 관리자 목록 349편과 #595의 제목·요약·카테고리·본문 로드를 확인했고, 공개 전환 뒤 live 홈과 `/posts/595`도 정상 표시됐다. 실제 글 내용, 원본 파일, 기존 R2 객체와 Git 원격은 변경하지 않았다. 최우선 작업본 자동저장·명시적 공개 반영과 실패/재로그인/충돌 처리는 로컬에 완성됐으며 실제 서비스 활성화 승인을 기다린다. 독립 사본 위치와 공유 글 10개·댓글은 후속 결정이다.
 
 요구사항과 계획의 자세한 연결은 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)를 기준으로 한다. 최종 결과·완료조건·범위·순서·승인 범위가 실제로 바뀔 때만 요구사항 번호, 관련 계획, 우선순위, 완료 기준, 상태와 근거 및 현재 위치를 갱신한다. 단순 질문·설명·진행 확인과 이미 기록된 작업의 계속 지시는 새 요구사항으로 만들지 않는다.
 
@@ -537,6 +546,23 @@
 - `wrangler.jsonc`와 `wrangler.admin.jsonc`의 `NATIVE_DB`는 생성된 `dwnc-me-native-staging`·`dwnc-me-native-production`에 각각 정확히 결속했고 `NATIVE_MEDIA_BUCKET`도 두 환경의 생성된 bucket 이름과 일치한다. OAuth 로그인으로 네 자원을 확인하고 두 remote D1에 `0001_native_editor.sql`을 적용했다. production에는 기존 글 편집용 0002·0003 migration과 349편 import도 적용했다. production admin Worker version `f05123b7-8e9e-44b5-b4cc-b9fd3fc56a66`과 public Worker version `38be46a9-f983-40d3-a522-5fb18bf27485`은 100% 활성 상태다. 관리자 이미지 표시·선택·삭제, 링크 카드 UI와 화면 안 삭제 도구막대를 담은 최신 관리자 버전도 100% 활성화했고 실제 관리자 화면에서 확인했다. 공개 Worker·DNS·route는 이 관리자 화면 개선으로 바꾸지 않았다.
 - release artifact·binding digest·version attestation에도 `NATIVE_DB`·`NATIVE_MEDIA_BUCKET`을 포함해 같은 배포 경로에서 빠지지 않게 했다. 두 R2 binding을 함께 허용하도록 보호된 공개 미디어 대상 검사를 고쳤고 production upload authorization 진입점의 길이 오류도 고쳤다. 이후 기존 글 편집과 동적 공개 통합 변경을 적용해 공개 Worker를 100% 전환했으며, 기존 DNS·route·기존 R2 객체와 Git 원격은 바꾸지 않았다.
 
+### PLAN-09 작업본 CMS 로컬 완료 (2026-09-07)
+
+- 시작 HEAD는 `e4861e765763e06022d8c7d7c25064fab47a2d17`, 시작 작업 폴더는 clean이었다. 이번 소스·시험·문서만 로컬 커밋 대상으로 삼았고 Git push와 원격 작업은 하지 않았다.
+- `migrations/0004_editor_working_copies.sql`은 빈 `editor_working_copies` 테이블만 추가한다. 기존 글을 사전 복사·UPDATE·DELETE하지 않는다. 관리자 GET은 공개 테이블과 작업본을 읽어 합치며, 첫 작업본 저장 때 같은 transaction에서 기존 값을 초기화한다. 운영 D1 migration은 아직 적용하지 않았다.
+- `src/lib/native-post-store.ts`는 `native_posts`/`legacy_posts`를 공개 snapshot으로 유지한다. PUT은 작업본만 revision CAS로 갱신하고 같은 D1 batch에서 응답을 읽어 다른 writer의 revision을 잘못 승인하지 않는다. 공개 반영은 요청한 revision을 확인해 작업본 세대를 올리고 그 정확한 본문·메타를 공개 테이블에 같은 batch로 반영한다. 중간 DB 오류는 함께 취소된다. [D1 batch transaction 공식 계약](https://developers.cloudflare.com/d1/worker-api/d1-database/#batch)을 따른다.
+- `src/lib/native-content.ts`와 `src/admin-worker.ts`는 빈 제목·본문의 작업본 저장/미리보기를 허용하고 공개 반영에서 유효성을 검사한다. 응답은 `publishedRevision`을 포함하며 revision 충돌은 409/`revision_conflict`, 인증 만료는 401/`authentication_required`로 구분한다.
+- `src/lib/admin-ui.ts`는 입력을 바꾸지 않고 저장 성공 메타만 갱신한다. 저장 중 추가 입력도 후속 저장하며, 새 글·글 이동·미리보기·업로드·공개 동작을 직렬 처리한다. 공개 중에는 입력을 잠그고 마지막 미저장 입력까지 먼저 저장한 뒤 그 revision만 공개한다.
+- 저장 상태와 마지막 성공 시각은 별도로 계속 보인다. 실패·요청 중단·인증 HTML/redirect·로그인 만료에도 폼을 유지한다. 일반 요청 30초/이미지 120초가 지나면 화면에서 다시 시도할 수 있다. 새 탭에서 같은 관리자 주소에 재로그인한 뒤 원래 편집 화면에서 계속한다. 재로그인 확인 자체가 실패해도 원래 재시도할 작업은 유지한다.
+- 충돌은 자동저장을 멈춘다. `현재 입력 대신 최신 작업본 불러오기` 또는 `현재 작성본 유지`를 제공한다. 유지 선택은 현재 폼과 마지막 실제 저장 성공 시각을 보존하고, 다른 곳에서 저장한 작업본을 바꾼다는 설명과 `현재 작성본으로 저장` 버튼을 따로 보여 준다. 선택 뒤 또 다른 저장이 생겨도 다시 충돌로 처리한다.
+- 공개 조회와 native 이미지 접근은 기존 공개 snapshot을 계속 사용한다. 작업본에만 넣은 사진은 공개되지 않고 작업본에서 제거한 기존 공개 사진도 공개 반영 전에는 유지된다. 공개 Worker·URL·기존 미디어 manifest를 변경하지 않았으므로 공개 Worker 교체는 이번 적용에 필요 없다.
+- 통상 시험: `npm run editor:test`(기존 편집기 + 실제 SQLite 작업본/transaction/race 시험 + 실제 생성 UI JS 실행 상태 시험), `npm run editor:legacy-import:test`, `node scripts/test-media-worker.mjs`, `npm run check`, `npm run cloudflare:config:check`, `npm run cloudflare:build:source`와 관리자 Worker 로컬 bundle dry-run PASS. source-only build에 포함된 공개 build·bundle 검사를 통과했다. 과거 `cloudflare:test` 전체 묶음의 별도 기존 실패는 이번 범위를 넓혀 재실행·수정하지 않았다.
+- 문서 검사 `npm run requirements:validate`, `npm run requirements:test`와 `git diff --check` PASS. `scripts/test-requirements-validator.mjs`의 보관 순서 위반 시험은 오래된 고정 날짜 대신 현재 원장의 최신 날짜 다음 날을 사용하도록 고쳤으며 검증 규칙과 실패 기대는 유지했다. 요구사항은 기존 번호 규칙의 비어 있던 `DWNC-CORE-002`를 사용하고 운영 적용까지 `in-progress`다.
+- 새 시험 파일은 `scripts/test-editor-working-copy.mjs`, `scripts/test-editor-ui-state.mjs`, `scripts/fixtures/editor-database.mjs`이며 `editor:test`에 연결했다. SQLite는 합성 데이터만 사용한다. 동시 writer/중복 publish/stale read 뒤 CAS/공개 write 오류 취소/기존 DB migration 보존, 실패·401·인증 redirect/HTML·네트워크 오류·재로그인 재실패·409 양쪽 선택·저장 중 입력·미저장 선저장→publish·이미지 공개 시점을 실행 확인했다.
+- 메인 내장 브라우저는 `scripts/serve-editor-fixture.mjs`의 합성 로컬 화면으로 확인했다. 기존 글 autosave 뒤 공개 제목 불변, 실패 보존/재시도, 로그인 만료 중 입력 보존 후 별도 로그인 탭으로 재개, 충돌 유지 후 명시 저장 및 최신본 불러오기, 미저장 수정의 공개 반영, 긴 본문 아래 고정 삭제 도구막대와 이미지/링크 카드 삭제의 공개 격리, 새 글 미리보기와 #597 첫 발행을 확인했다. 최신 UI 재시작 뒤 충돌 유지 선택에서 마지막 성공 시각이 바뀌지 않는 것도 확인했다. CUA의 로그인 링크 클릭으로 새 탭이 생기지 않아 같은 알려진 로컬 관리자 URL을 직접 별도 탭으로 열었으며 실제 OTP/계정 작업은 하지 않았다.
+- 한계: 실제 Cloudflare 로그인 만료·운영 D1·운영 활성화는 이번 시험 대상이 아니다. 작성 내용 보존은 열린 편집 화면 내 동작이며 브라우저 강제 종료 후 복구용 저장소는 추가하지 않았다. 관리자에 저장된 모든 초안을 백업하는 별도 체계도 이번 범위가 아니다.
+- 적용 전 사용자 선택은 신규 빈 작업본 테이블과 관리자 버전 활성화 여부 한 가지다. 승인 후 기존 공개본을 유지한 순서로 migration → 관리자 활성화 → 합의된 운영 확인을 진행한다. 이전 관리자 탭에서 작성 중인 내용을 새로고침으로 잃지 않도록 먼저 그 작성 상태를 처리하며, 실제 글 수정/삭제는 별도 승인 범위다.
+
 ### 공개 서비스 실사용 준비도 독립 검토 (2026-09-07)
 
 - 공개 블로그는 홈·글·아카이브·분류·태그·검색·기존 주소·404·RSS·sitemap과 기존 미디어의 기본 읽기·탐색이 가능하며, 즉시 사용 불가 수준의 blocker는 없다. 기존 빌드와 편집기 시험도 통과했다.
@@ -557,7 +583,7 @@
 ## 미해결 문제
 
 - 콘텐츠 이전 정확성·완전성 측면의 알려진 문제는 없다. Stage 3 R2 전체 2,758개 업로드, 사후 목록 확인, 실제 전체 내용·bytes·SHA-256 검증이 완료됐다.
-- 웹 편집기의 로그인, 기존 글 목록·선택 로드와 공개 Worker 전환을 완료했으므로 현재 운영을 막는 편집기 선행 조건은 없다. 새 글 1편을 실제 발행하거나 기존 글을 실제 수정하는 일은 사용자가 원할 때 수행하며 이번 확인에서는 콘텐츠를 변경하지 않았다.
+- 기본 공개 읽기와 관리자 편집은 운영 중이지만, 운영 관리자 자동저장은 아직 공개 글을 즉시 바꾼다. 이번 작업의 로컬 CMS 보완이 실제 활성화되기 전까지 이 한계는 남는다. 실제 글의 수정·발행·삭제는 이번 시험에 사용하지 않는다.
 - 별도 로컬 진단 실수로 loopback 회귀시험을 한 번 잘못 호출했다. sandbox에서 bind를 1회 시도한 뒤 `BRIDGE_E_BIND`로 즉시 끝났고 accepted connection·payload·initialize·Keychain·Cloudflare는 모두 0회였다. 재시도는 하지 않았다.
 - 현재 전체 Cloudflare 검사 묶음에는 `scripts/test-r2-client-entrypoints.mjs` 343행의 감사 진입점 불일치로 실패하는 기존 항목 하나가 있다. 이번 연결 변경보다 먼저 존재한 별도 문제이며, 연결 전용 212개와 계정 전용 698개 검사는 모두 통과했다. 이번에는 범위를 넓혀 고치지 않았다.
 - HTTP apex와 HTTPS `www`의 HTTPS apex 이동은 기존 redirect 설정으로 실제 경로·query 보존을 확인했다. trailing slash와 `/index.html`의 전체 edge 정규화 점검은 운영 중 후속 확인으로 남지만 `PLAN-08`에서 확인한 대표 화면과 주소 이동의 완료를 막지 않는다.
@@ -594,8 +620,8 @@
 ## 다음 단계
 
 1. `PLAN-05`는 실제 staging 비공개 확인, 2,758개 전수 GET/SHA-256, 이번 validator 원격·로컬 정리와 사용 불가능한 기존 원격 token 두 개의 exact identity 확인·승인된 삭제·부재 확인까지 완료했다. 보존 receipt와 capture는 유지한다.
-2. `PLAN-06`·`PLAN-07`·`PLAN-08`과 `DWNC-S3-009`·`DWNC-S3-010`·`DWNC-S3-011`·`DWNC-S3-014`·`DWNC-OPS-002`는 완료됐다. `PLAN-09`의 웹 편집기와 동적 공개 운영 반영도 완료했으며 현재 실제 진행을 막는 조건은 없다. 다음 주요 작업은 비공개 원문·미디어의 백업·복구 방식을 사용자가 결정하는 것이다. 공유 글 10개·댓글·접근성 등은 사용자가 원할 때만 진행하는 후속 선택이다.
-3. 공개 서비스 실사용 보완은 공개 글 화면 통합과 대표이미지 연결을 먼저 하고, query 일관성, 목록·검색 성능, RSS·sitemap·공유 정보, 신규 이미지 전달 순서로 진행한다. 최신 관리자 이미지·링크 카드 편집 UX는 완료 상태를 유지한다.
+2. `PLAN-09`의 `DWNC-CORE-002`은 로컬 구현·관련 실행 시험·내장 브라우저 확인을 완료했다. 다음 실제 서비스 변경은 기존 내용을 복사하거나 바꾸지 않는 `0004_editor_working_copies.sql`의 빈 작업본 테이블 추가와 완성된 관리자 Worker 활성화다. 이 외부 변경 직전에 승인받는다. 공개 Worker·DNS·route·기존 글·R2 객체와 Git 원격 변경은 필요하지 않다. 운영에서 열어 둔 이전 관리자 화면은 미저장 입력을 처리한 뒤 새로 열어야 새 UI를 사용한다.
+3. 이후 공개 글 화면 통합 → 대표이미지 홈/목록/글/SNS 연결 → query 일관성 → 목록/검색 경량 조회 → RSS/사이트맵/공유 최신화 → 링크 삽입/수정·관리자 검색/필터·빈 초안 삭제·신규 이미지 최적화 → 새 글/사진의 단순 독립 사본 한 곳 순으로 진행한다. 최신 관리자 이미지·링크 카드·삭제 도구막대는 유지한다.
 
 ## 중요한 제약과 주의사항
 

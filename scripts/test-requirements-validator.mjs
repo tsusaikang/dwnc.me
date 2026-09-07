@@ -12,6 +12,10 @@ const sourceArchive = fs.readFileSync(
   'utf8',
 );
 const sourceProjectState = fs.readFileSync(path.join(projectRoot, 'PROJECT_STATE.md'), 'utf8');
+const newestCurrentDate = [...sourceCurrent.matchAll(/- \*\*Updated-at:\*\* `(\d{4}-\d{2}-\d{2})`/g)]
+  .map((match) => match[1]).sort().at(-1);
+const newerThanCurrentDate = new Date(new Date(`${newestCurrentDate}T00:00:00Z`).valueOf() + 86400000)
+  .toISOString().slice(0, 10);
 
 const linkedFiles = [
   'docs/MEDIA_SERVING_CONTRACT.md',
@@ -234,7 +238,7 @@ withFixture(
   {
     archive: `${sourceArchive}\n\n${archivedRequirement({
       id: 'DWNC-P2-999',
-      updatedAt: '2026-08-27',
+      updatedAt: newerThanCurrentDate,
     })}\n`,
   },
   (result) => assertRejected(result, /oldest-first movement violated/),

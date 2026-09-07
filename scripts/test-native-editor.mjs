@@ -46,12 +46,14 @@ function createDatabase() {
   database.sqlite.exec(awaitableMigration);
   database.sqlite.exec(legacyMigration);
   database.sqlite.exec(legacyImportStateMigration);
+  database.sqlite.exec(workingCopyMigration);
   return database;
 }
 
 const awaitableMigration = await readFile(new URL('../migrations/0001_native_editor.sql', import.meta.url), 'utf8');
 const legacyMigration = await readFile(new URL('../migrations/0002_legacy_editor.sql', import.meta.url), 'utf8');
 const legacyImportStateMigration = await readFile(new URL('../migrations/0003_legacy_import_state.sql', import.meta.url), 'utf8');
+const workingCopyMigration = await readFile(new URL('../migrations/0004_editor_working_copies.sql', import.meta.url), 'utf8');
 const defaultInput = {
   title: '웹에서 쓴 첫 글', description: '새 편집기 설명', bodyMarkdown: '# 본문\n\n안전한 **내용**',
   categoryId: 'daily', tags: ['웹 기록'], coverMediaId: null,
@@ -87,12 +89,19 @@ equal(await store.getPublicMedia(publicPath), null);
 const withRawReference = await store.update(draft.id, published.revision, { ...defaultInput, bodyMarkdown: `[파일](${publicPath})` });
 equal(await store.getPublicMedia(publicPath), null);
 const withImage = await store.update(draft.id, withRawReference.revision, { ...defaultInput, bodyMarkdown: `![사진](${publicPath})` });
+equal(await store.getPublicMedia(publicPath), null);
+const imagePublished = await store.publish(draft.id, withImage.revision);
 equal((await store.getPublicMedia(publicPath))?.postId, draft.id);
 equal(withImage.status, 'published');
-const withCover = await store.update(draft.id, withImage.revision, { ...defaultInput, coverMediaId: mediaId });
+const withCover = await store.update(draft.id, imagePublished.revision, { ...defaultInput, coverMediaId: mediaId });
+equal((await store.getPublicMedia(publicPath))?.coverMediaId, null);
+await store.publish(draft.id, withCover.revision);
 equal((await store.getPublicMedia(publicPath))?.coverMediaId, mediaId);
-await rejects(() => store.update(draft.id, withCover.revision, { ...defaultInput, title: '', bodyMarkdown: '' }), /NATIVE_E_INPUT/u);
-equal((await store.getForAdmin(draft.id))?.title, defaultInput.title);
+const emptyWorking = await store.update(draft.id, withCover.revision + 1, { ...defaultInput, title: '', bodyMarkdown: '' });
+equal(emptyWorking.title, '');
+await rejects(() => store.publish(draft.id, emptyWorking.revision), /NATIVE_E_INPUT/u);
+equal((await store.getPublishedBySequence(597))?.title, defaultInput.title);
+equal((await store.getForAdmin(draft.id))?.title, '');
 
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const jwk = publicKey.export({ format: 'jwk' }); Object.assign(jwk, { kid: 'key-1', alg: 'RS256', use: 'sig' });
@@ -181,13 +190,11 @@ equal((await adminWorker.fetch(new Request('https://admin.example.test/api/posts
 const ui = adminHtml('owner@example.com');
 const uiDocument = load(ui);
 const uiScript = uiDocument('script').text();
-const insertOffset = uiScript.indexOf("insert='") + "insert='".length;
-equal(uiScript.charCodeAt(insertOffset), 92); equal(uiScript.charCodeAt(insertOffset + 1), 110);
-equal(uiScript.includes("insert='\n"), false);
 assert.doesNotThrow(() => new Script(uiScript)); assertions += 1;
-ok(ui.includes('while(current&&(dirty||saving))'));
-ok(ui.includes('if(change!==savedChange)dirty=true'));
-ok((ui.match(/if\(!await flush\(\)\)return/gu) ?? []).length >= 5);
+equal(uiDocument('#publish').text(), '공개 반영');
+equal(uiDocument('#saveIssue #loadLatest').length, 1);
+equal(uiDocument('#saveIssue #keepLocal').length, 1);
+equal(uiDocument('#saveIssue #resumeLogin').length, 1);
 equal(uiDocument('#bodyHtmlShell > #bodyHtml + #mediaSelectionOutline').length, 1);
 equal(uiDocument('#imageTools[role="toolbar"] #deleteImage').text(), '선택 항목 삭제');
 equal(uiDocument('#markdownMedia[aria-label="본문 이미지"]').length, 1);
@@ -210,15 +217,17 @@ ok(uiScript.includes('window.innerWidth-tool.width-margin'));
 ok(uiScript.includes("window.addEventListener('scroll',positionMediaSelection,true)"));
 ok(uiScript.includes("selectedMedia.kind==='markdown-image'"));
 ok(uiScript.includes("$('body').setRangeText('',start,end,'end')"));
-ok(uiScript.includes("renderMarkdownMedia();dirty=true"));
-ok(uiScript.includes("<figure class=\"imageblock alignCenter\"><span><img src=\""));
+ok(uiScript.includes('renderMarkdownMedia();dirty=true'));
+ok(uiScript.includes("figure.className='imageblock alignCenter'"));
 equal(uiScript.includes('data-editor-selected'), false);
 
 const publicStore = new NativePostStore(adminDatabase);
 const adminCurrent = await publicStore.getForAdmin(adminDraft.id);
-const publicPost = await publicStore.update(adminDraft.id, adminCurrent.revision, {
+const publicWorking = await publicStore.update(adminDraft.id, adminCurrent.revision, {
   ...defaultInput, tags: ['A B', 'Native Only'], bodyMarkdown: `# 본문\n\n![사진](${uploadedMedia.publicPath})`,
 });
+
+const publicPost = await publicStore.publish(adminDraft.id, publicWorking.revision);
 
 adminDatabase.sqlite.prepare(`INSERT INTO legacy_posts (
   id, global_sequence, source, source_id, source_url, legacy_path, title, description,
@@ -250,6 +259,13 @@ equal(legacySaved.bodyHtml.includes('/media/tistory/1/original.jpg'), true);
 equal((await adminWorker.fetch(new Request('https://admin.example.test/api/posts/legacy-1', {
   method: 'PUT', headers: authHeaders, body: JSON.stringify({ expectedRevision: 0, input: legacyInput }),
 }), adminEnv)).status, 409);
+
+equal((await publicStore.getPublishedBySequence(1)).title, '수정 전 예전 글 1');
+equal(legacySaved.publishedRevision, 0);
+const legacyPublished = await publicStore.publish('legacy-1', legacySaved.revision);
+equal(legacyPublished.publishedRevision, legacyPublished.revision);
+equal(legacyPublished.globalSequence, 1);
+equal(legacyPublished.publishedAt, legacyPost.publishedAt);
 
 class TestHtmlRewriter {
   handlers = [];

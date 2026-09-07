@@ -226,7 +226,7 @@ export function normalizeNativePostInput(value: unknown, { requirePublishable = 
   };
 }
 
-export function normalizeLegacyPostInput(value: unknown): NormalizedLegacyPostInput {
+export function normalizeLegacyPostInput(value: unknown, { requirePublishable = true } = {}): NormalizedLegacyPostInput {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('NATIVE_E_INPUT');
   const input = value as Record<string, unknown>;
   const title = compact(String(input.title ?? ''));
@@ -237,7 +237,7 @@ export function normalizeLegacyPostInput(value: unknown): NormalizedLegacyPostIn
   const coverMediaId = input.coverMediaId === null || input.coverMediaId === undefined || input.coverMediaId === ''
     ? null : compact(String(input.coverMediaId));
   const bodyText = compact(sanitizeHtml(bodyHtml, { allowedTags: [], allowedAttributes: {} }));
-  if (!title || !bodyHtml.trim() || title.length > TITLE_LIMIT || description.length > DESCRIPTION_LIMIT
+  if ((requirePublishable && (!title || !bodyHtml.trim())) || title.length > TITLE_LIMIT || description.length > DESCRIPTION_LIMIT
     || bodyHtml.length > BODY_LIMIT || !category
     || (coverMediaId !== null && !NATIVE_POST_ID_PATTERN.test(coverMediaId))) {
     throw new Error('NATIVE_E_INPUT');

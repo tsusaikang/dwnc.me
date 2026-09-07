@@ -21,6 +21,7 @@ export interface NativePost {
   tags: string[];
   coverMediaId: string | null;
   revision: number;
+  publishedRevision: number | null;
   createdAt: string;
   updatedAt: string;
   publishedAt: string | null;
@@ -63,6 +64,7 @@ interface NativePostRow {
   tags_json: string;
   cover_media_id: string | null;
   revision: number;
+  published_revision?: number | null;
   created_at: string;
   updated_at: string;
   published_at: string | null;
@@ -87,6 +89,17 @@ const POST_COLUMNS = `id, global_sequence, status, title, description, body_mark
 const LEGACY_POST_COLUMNS = `id, global_sequence, status, title, description,
   body_html AS body_markdown, body_html, body_text, category_id, category_slug, category_label,
   tags_json, cover_media_id, revision, created_at, updated_at, published_at, 'html' AS body_format`;
+
+const WORKING_FIELDS = ['title', 'description', 'body_markdown', 'body_html', 'body_text',
+  'category_id', 'category_slug', 'category_label', 'tags_json', 'cover_media_id'] as const;
+const ADMIN_POST_SOURCE = `(SELECT ${POST_COLUMNS}, 'markdown' AS body_format FROM native_posts
+  UNION ALL SELECT ${LEGACY_POST_COLUMNS} FROM legacy_posts WHERE import_complete = 1)`;
+const ADMIN_POST_COLUMNS = `p.id, p.global_sequence, p.status,
+  ${WORKING_FIELDS.map((field) => `CASE WHEN w.post_id IS NULL THEN p.${field} ELSE w.${field} END AS ${field}`).join(', ')},
+  COALESCE(w.revision, p.revision) AS revision, p.created_at,
+  COALESCE(w.updated_at, p.updated_at) AS updated_at, p.published_at, p.body_format,
+  CASE WHEN w.post_id IS NULL THEN CASE WHEN p.status = 'published' THEN p.revision ELSE NULL END
+    ELSE w.published_revision END AS published_revision`;
 
 function parseTags(value: string) {
   let tags: unknown;
@@ -117,6 +130,8 @@ function postFromRow(row: NativePostRow): NativePost {
     tags: parseTags(row.tags_json),
     coverMediaId: row.cover_media_id,
     revision: row.revision,
+    publishedRevision: row.published_revision === undefined
+      ? (row.status === 'published' ? row.revision : null) : row.published_revision,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     publishedAt: row.published_at,
@@ -164,23 +179,35 @@ export class NativePostStore {
   }
 
   async getForAdmin(id: string): Promise<NativePost | null> {
-    const row = await this.database.prepare(`SELECT ${POST_COLUMNS} FROM native_posts WHERE id = ?1`)
-      .bind(id).first<NativePostRow>();
-    if (row) return postFromRow(row);
-    const legacy = await this.database.prepare(`SELECT ${LEGACY_POST_COLUMNS} FROM legacy_posts
-      WHERE id = ?1 AND import_complete = 1`)
-      .bind(id).first<NativePostRow>();
-    return legacy ? postFromRow(legacy) : null;
+    const row = await this.adminPostStatement(id).first<NativePostRow>();
+    return row ? postFromRow(row) : null;
+  }
+
+  private adminPostStatement(id: string) {
+    return this.database.prepare(`SELECT ${ADMIN_POST_COLUMNS} FROM ${ADMIN_POST_SOURCE} p
+      LEFT JOIN editor_working_copies w ON w.post_id = p.id WHERE p.id = ?1`).bind(id);
+  }
+
+  private initializeWorkingCopy(id: string) {
+    return this.database.prepare(`INSERT INTO editor_working_copies
+      (post_id, ${WORKING_FIELDS.join(', ')}, revision, published_revision, updated_at)
+      SELECT id, ${WORKING_FIELDS.join(', ')}, revision,
+        CASE WHEN status = 'published' THEN revision ELSE NULL END, updated_at
+      FROM ${ADMIN_POST_SOURCE} WHERE id = ?1 AND status != 'tombstone'
+      ON CONFLICT(post_id) DO NOTHING`).bind(id);
   }
 
   async listForAdmin(): Promise<AdminPostSummary[]> {
-    const native = await this.database.prepare(`SELECT id, global_sequence, status, title, updated_at,
-      'markdown' AS body_format FROM native_posts WHERE status != 'tombstone'`).all<Pick<NativePostRow,
+    const posts = await this.database.prepare(`SELECT p.id, p.global_sequence, p.status,
+      COALESCE(w.title, p.title) AS title, COALESCE(w.updated_at, p.updated_at) AS updated_at,
+      p.body_format FROM (
+        SELECT id, global_sequence, status, title, updated_at, 'markdown' AS body_format
+          FROM native_posts WHERE status != 'tombstone'
+        UNION ALL SELECT id, global_sequence, status, title, updated_at, 'html' AS body_format
+          FROM legacy_posts WHERE import_complete = 1
+      ) p LEFT JOIN editor_working_copies w ON w.post_id = p.id`).all<Pick<NativePostRow,
         'id' | 'global_sequence' | 'status' | 'title' | 'updated_at' | 'body_format'>>();
-    const legacy = await this.database.prepare(`SELECT id, global_sequence, status, title, updated_at,
-      'html' AS body_format FROM legacy_posts WHERE import_complete = 1`).all<Pick<NativePostRow,
-        'id' | 'global_sequence' | 'status' | 'title' | 'updated_at' | 'body_format'>>();
-    return [...(native.results ?? []), ...(legacy.results ?? [])]
+    return (posts.results ?? [])
       .sort((left, right) => right.updated_at.localeCompare(left.updated_at)
         || (right.global_sequence ?? 0) - (left.global_sequence ?? 0) || left.id.localeCompare(right.id))
       .map((row) => ({
@@ -194,55 +221,67 @@ export class NativePostStore {
     const current = await this.getForAdmin(id);
     if (!current || current.revision !== revision || current.status === 'tombstone') throw new Error('NATIVE_E_REVISION');
     const input = current.bodyFormat === 'html'
-      ? normalizeLegacyPostInput(value)
-      : normalizeNativePostInput(value, { requirePublishable: current.status === 'published' });
+      ? normalizeLegacyPostInput(value, { requirePublishable: false })
+      : normalizeNativePostInput(value, { requirePublishable: false });
     const now = nowIso(this.now);
-    if (current.bodyFormat === 'html') {
-      const row = await this.database.prepare(`UPDATE legacy_posts SET
-        title = ?1, description = ?2, body_html = ?3, body_text = ?4,
-        category_id = ?5, category_slug = ?6, category_label = ?7, tags_json = ?8,
-        cover_media_id = ?9, revision = revision + 1, updated_at = ?10
-        WHERE id = ?11 AND revision = ?12
-        RETURNING ${LEGACY_POST_COLUMNS}`).bind(
-        input.title, input.description, input.bodyHtml, input.bodyText,
+    // The result is read inside the write transaction so a later writer's
+    // revision can never be acknowledged as this client's successful save.
+    const results = await this.database.batch<NativePostRow>([
+      this.initializeWorkingCopy(id),
+      this.database.prepare(`UPDATE editor_working_copies SET
+        title = ?1, description = ?2, body_markdown = ?3, body_html = ?4, body_text = ?5,
+        category_id = ?6, category_slug = ?7, category_label = ?8, tags_json = ?9,
+        cover_media_id = ?10, revision = revision + 1, updated_at = ?11
+        WHERE post_id = ?12 AND revision = ?13
+          AND EXISTS (SELECT 1 FROM ${ADMIN_POST_SOURCE} WHERE id = ?12 AND status != 'tombstone')
+        RETURNING revision`).bind(
+        input.title, input.description, input.bodyMarkdown, input.bodyHtml, input.bodyText,
         input.categoryId, input.categorySlug, input.categoryLabel, JSON.stringify(input.tags),
         input.coverMediaId, now, id, revision,
-      ).first<NativePostRow>();
-      if (!row) throw new Error('NATIVE_E_REVISION');
-      return postFromRow(row);
-    }
-    const row = await this.database.prepare(`UPDATE native_posts SET
-      title = ?1, description = ?2, body_markdown = ?3, body_html = ?4, body_text = ?5,
-      category_id = ?6, category_slug = ?7, category_label = ?8, tags_json = ?9,
-      cover_media_id = ?10, revision = revision + 1, updated_at = ?11
-      WHERE id = ?12 AND revision = ?13 AND status IN ('draft', 'published')
-      RETURNING ${POST_COLUMNS}`).bind(
-      input.title, input.description, input.bodyMarkdown, input.bodyHtml, input.bodyText,
-      input.categoryId, input.categorySlug, input.categoryLabel, JSON.stringify(input.tags),
-      input.coverMediaId, now, id, revision,
-    ).first<NativePostRow>();
-    if (!row) throw new Error('NATIVE_E_REVISION');
-    return postFromRow(row);
+      ),
+      this.adminPostStatement(id),
+    ]);
+    if (!results[1]?.results?.length || !results[2]?.results?.[0]) throw new Error('NATIVE_E_REVISION');
+    return postFromRow(results[2].results[0]);
   }
 
   async publish(id: string, revision: number): Promise<NativePost> {
     if (!Number.isSafeInteger(revision) || revision < 0) throw new Error('NATIVE_E_REVISION');
     const current = await this.getForAdmin(id);
     if (!current || current.revision !== revision || current.status === 'tombstone') throw new Error('NATIVE_E_REVISION');
-    if (current.status === 'published') return current;
-    normalizeNativePostInput(current, { requirePublishable: true });
+    if (current.bodyFormat === 'html') normalizeLegacyPostInput(current);
+    else normalizeNativePostInput(current, { requirePublishable: true });
     const now = nowIso(this.now);
-    const results = await this.database.batch<NativePostRow>([
-      this.database.prepare(`INSERT INTO native_sequence_claims (post_id, claimed_at)
-        SELECT ?1, ?2 WHERE EXISTS (SELECT 1 FROM native_posts WHERE id = ?1 AND status = 'draft' AND revision = ?3)
-        ON CONFLICT(post_id) DO NOTHING`).bind(id, now, revision),
-      this.database.prepare(`UPDATE native_posts SET
-        global_sequence = (SELECT global_sequence FROM native_sequence_claims WHERE post_id = ?1),
-        status = 'published', published_at = ?2, updated_at = ?2, revision = revision + 1
-        WHERE id = ?1 AND revision = ?3 AND status = 'draft'
-        RETURNING ${POST_COLUMNS}`).bind(id, now, revision),
-    ]);
-    const row = results[1]?.results?.[0];
+    const legacy = current.bodyFormat === 'html';
+    const fields = WORKING_FIELDS.filter((field) => !legacy || field !== 'body_markdown');
+    const statements = [this.initializeWorkingCopy(id)];
+    if (!legacy) {
+      statements.push(this.database.prepare(`INSERT INTO native_sequence_claims (post_id, claimed_at)
+        SELECT ?1, ?2 WHERE EXISTS (
+          SELECT 1 FROM native_posts p JOIN editor_working_copies w ON w.post_id = p.id
+          WHERE p.id = ?1 AND p.status = 'draft' AND w.revision = ?3)
+        ON CONFLICT(post_id) DO NOTHING`).bind(id, now, revision));
+    }
+    // D1 batch is transactional. changes() ties the public snapshot write to
+    // this exact CAS, even when another tab saved or published first.
+    statements.push(
+      this.database.prepare(`UPDATE editor_working_copies SET
+        revision = revision + 1, published_revision = revision + 1, updated_at = ?1
+        WHERE post_id = ?2 AND revision = ?3
+          AND EXISTS (SELECT 1 FROM ${ADMIN_POST_SOURCE} WHERE id = ?2 AND status != 'tombstone')
+        RETURNING revision`).bind(now, id, revision),
+      this.database.prepare(`UPDATE ${legacy ? 'legacy_posts' : 'native_posts'} SET
+        (${fields.join(', ')}) = (SELECT ${fields.join(', ')} FROM editor_working_copies WHERE post_id = ?1),
+        revision = ?3 + 1, updated_at = ?2${legacy ? '' : `,
+        global_sequence = COALESCE(global_sequence, (SELECT global_sequence FROM native_sequence_claims WHERE post_id = ?1)),
+        status = 'published', published_at = COALESCE(published_at, ?2)`}
+        WHERE id = ?1 AND changes() = 1
+          AND EXISTS (SELECT 1 FROM editor_working_copies WHERE post_id = ?1 AND revision = ?3 + 1)
+          ${legacy ? 'AND import_complete = 1' : "AND status IN ('draft', 'published')"}
+        RETURNING ${legacy ? LEGACY_POST_COLUMNS : POST_COLUMNS}`).bind(id, now, revision),
+    );
+    const results = await this.database.batch<NativePostRow>(statements);
+    const row = results.at(-1)?.results?.[0];
     if (!row) throw new Error('NATIVE_E_REVISION');
     return postFromRow(row);
   }

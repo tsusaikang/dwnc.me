@@ -88,7 +88,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
     const post = await store.getForAdmin(id);
     if (!post) return json({ error: '찾을 수 없습니다.' }, 404);
     const html = post.bodyFormat === 'html'
-      ? normalizeLegacyPostInput(body.input).bodyHtml
+      ? normalizeLegacyPostInput(body.input, { requirePublishable: false }).bodyHtml
       : normalizeNativePostInput(body.input, { requirePublishable: false }).bodyHtml;
     return json({ html });
   }
@@ -127,7 +127,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
 
 function errorResponse(error: unknown) {
   const code = error instanceof Error ? error.message : '';
-  if (code === 'NATIVE_E_REVISION') return json({ error: '다른 변경이 먼저 저장되었습니다. 글을 다시 여세요.' }, 409);
+  if (code === 'NATIVE_E_REVISION') return json({ error: '다른 변경이 먼저 저장되었습니다. 현재 작성 내용은 유지됩니다.', code: 'revision_conflict' }, 409);
   if (code.startsWith('NATIVE_E_') || code.startsWith('ADMIN_E_')) return json({ error: '입력 내용을 확인해 주세요.' }, 400);
   console.error(JSON.stringify({ event: 'dwnc_admin_error', code: 'ADMIN_E_INTERNAL' }));
   return json({ error: '잠시 후 다시 시도해 주세요.' }, 500);
@@ -137,7 +137,7 @@ export default {
   async fetch(request: Request, env: AdminEnvironment, context: ExecutionContext): Promise<Response> {
     let identity;
     try { identity = await verifyAccessIdentity(request, env); }
-    catch { return json({ error: '로그인이 필요합니다.' }, 401); }
+    catch { return json({ error: '로그인이 필요합니다.', code: 'authentication_required' }, 401); }
     try { return await route(request, env, identity.email, context); }
     catch (error) { return errorResponse(error); }
   },
