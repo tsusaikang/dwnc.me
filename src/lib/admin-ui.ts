@@ -1,4 +1,5 @@
 import { TAXONOMY } from './taxonomy.ts';
+import { formattingCss, formattingScript, formattingToolbarHtml } from './admin-formatting.ts';
 
 function jsonForScript(value: unknown) {
   return JSON.stringify(value).replace(/</gu, '\\u003c');
@@ -51,6 +52,7 @@ button.secondary{background:#666}button.publish{background:#075b2a}button:disabl
 .status{min-height:1.5em;color:#555}
 .save-state{position:sticky;top:0;z-index:10;padding:10px 0;background:#f5f5f2;border-bottom:1px solid #ddd}.save-state p{margin:4px 0}.save-detail{font-size:.9rem;color:#555}.save-issue{padding:12px;margin:10px 0;background:#fff4df;border:1px solid #c98920;border-radius:5px}.save-issue p{margin:0 0 10px}.save-issue a{color:#174e9c}.save-state [hidden],.save-issue [hidden]{display:none}
 .preview{padding:18px;background:#fff;border:1px solid #ccc;margin-top:16px}.preview img{max-width:100%;height:auto}
+${formattingCss}
 @media(max-width:760px){main{display:block}aside{border-right:0;border-bottom:1px solid #ccc}.html-editor figure[data-ke-type="opengraph"]>a,.html-editor .se-oglink-info:has(.se-oglink-thumbnail){display:block}}
 </style></head><body>
 <header><strong>dwnc.me 글쓰기</strong><span>${identityEmail.replace(/[&<>"']/gu, '')}</span></header>
@@ -59,7 +61,7 @@ button.secondary{background:#666}button.publish{background:#075b2a}button:disabl
 <div class="save-state" aria-live="polite"><p id="saveStatus">글을 선택하면 작업본 저장 상태가 표시됩니다.</p><p id="lastSaved" class="save-detail"></p></div>
 <div id="saveIssue" class="save-issue" role="alert" hidden><p id="issueMessage"></p><div class="row"><button id="retrySave" type="button">다시 시도</button><a id="loginLink" href="/" target="_blank" rel="noopener">새 탭에서 로그인</a><button id="resumeLogin" type="button" class="secondary">로그인 완료 · 이어서 저장</button><button id="loadLatest" type="button" class="secondary" hidden>현재 입력 대신 최신 작업본 불러오기</button><button id="keepLocal" type="button" hidden>현재 작성본 유지</button></div></div>
 <p id="status" class="status" aria-live="polite"></p>
-<form id="editor" hidden><label>제목<input id="title" maxlength="180"></label><label>요약<input id="description" maxlength="320"></label><div class="row"><label class="grow">카테고리<select id="category"></select></label><label class="grow">태그 (쉼표 구분)<input id="tags"></label></div><label id="bodyLabel" for="body">본문 (Markdown)</label><textarea id="body"></textarea><div id="markdownMedia" class="markdown-media" aria-label="본문 이미지" hidden></div><div id="bodyHtmlShell" class="html-editor-shell" hidden><div id="bodyHtml" class="html-editor" contenteditable="true" role="textbox" aria-multiline="true"></div><div id="mediaSelectionOutline" class="media-selection-outline" hidden></div></div><div id="imageTools" class="image-tools" role="toolbar" aria-label="선택한 본문 이미지" hidden><span id="imageSelectionLabel" class="image-tools__label"></span><button id="deleteImage" type="button">선택 항목 삭제</button></div><div class="row"><input id="image" type="file" accept="image/avif,image/gif,image/jpeg,image/png,image/webp"><button id="upload" type="button" class="secondary">이미지 올리고 본문에 넣기</button></div></form><article id="previewBox" class="preview" hidden></article></section></main>
+<form id="editor" hidden><label>제목<input id="title" maxlength="180"></label><label>요약<input id="description" maxlength="320"></label><div class="row"><label class="grow">카테고리<select id="category"></select></label><label class="grow">태그 (쉼표 구분)<input id="tags"></label></div><label id="bodyLabel" for="bodyHtml">본문</label>${formattingToolbarHtml}<textarea id="body" hidden></textarea><div id="markdownMedia" class="markdown-media" aria-label="본문 이미지" hidden></div><div id="bodyHtmlShell" class="html-editor-shell"><div id="bodyHtml" class="html-editor" contenteditable="true" role="textbox" aria-label="본문" aria-multiline="true"></div><div id="mediaSelectionOutline" class="media-selection-outline" hidden></div></div><div id="imageTools" class="image-tools" role="toolbar" aria-label="선택한 본문 이미지" hidden><span id="imageSelectionLabel" class="image-tools__label"></span><button id="deleteImage" type="button">선택 항목 삭제</button></div><div class="row"><input id="image" type="file" accept="image/avif,image/gif,image/jpeg,image/png,image/webp"><button id="upload" type="button" class="secondary">이미지 올리고 본문에 넣기</button></div></form><article id="previewBox" class="preview" hidden></article></section></main>
 <script>
 const categories=${jsonForScript(categories)};let current=null,timer=null,saving=null,dirty=false,change=0,selectedMedia=null,busy=false,blocked=null,retryAction=null,lastSavedAt=null;
 const $=id=>document.getElementById(id), status=m=>$('status').textContent=m;
@@ -86,7 +88,7 @@ function renderSaveState(){
   else if(!dirty&&!saving&&current.status==='published')message+=current.revision===current.publishedRevision?' · 공개 내용과 같습니다.':' · 공개 반영을 기다리는 변경이 있습니다.';
   $('saveStatus').textContent=message;$('lastSaved').textContent=(lastSavedAt?'마지막 저장 성공: '+new Date(lastSavedAt).toLocaleString('ko-KR'):'아직 저장 성공을 확인하지 못했습니다.')+' · '+publicState;
 }
-function setBusy(value){busy=value;for(const id of ['new','preview','publish','upload','retrySave','resumeLogin','loadLatest','keepLocal'])$(id).disabled=value||(['preview','publish','upload'].includes(id)&&!current);for(const node of $('posts').querySelectorAll('button'))node.disabled=value;for(const id of ['title','description','category','tags','body','image'])$(id).disabled=value;$('bodyHtml').contentEditable=value?'false':'true';$('deleteImage').disabled=value}
+function setBusy(value){busy=value;for(const id of ['new','preview','publish','upload','retrySave','resumeLogin','loadLatest','keepLocal'])$(id).disabled=value||(['preview','publish','upload'].includes(id)&&!current);for(const node of $('posts').querySelectorAll('button'))node.disabled=value;for(const id of ['title','description','category','tags','body','image'])$(id).disabled=value;$('bodyHtml').contentEditable=value?'false':'true';$('deleteImage').disabled=value;setFormattingBusy(value)}
 function clearIssue(){blocked=null;retryAction=null;$('saveIssue').hidden=true;renderSaveState()}
 function showIssue(error,retry){
   clearTimeout(timer);blocked=error.code==='revision_conflict'?'conflict':error.code||'request_failed';retryAction=retry;$('saveIssue').hidden=false;
@@ -94,7 +96,7 @@ function showIssue(error,retry){
   const conflict=blocked==='conflict';$('loadLatest').hidden=!conflict;$('keepLocal').hidden=!conflict;$('retrySave').hidden=conflict||blocked==='authentication_required';$('retrySave').textContent='다시 시도';$('loginLink').hidden=conflict;$('resumeLogin').hidden=conflict;renderSaveState();
 }
 async function action(work){if(busy)return;setBusy(true);try{await work()}catch(error){showIssue(error,work)}finally{setBusy(false);renderSaveState()}}
-function values(){return{title:$('title').value,description:$('description').value,bodyMarkdown:current?.bodyFormat==='html'?$('bodyHtml').innerHTML:$('body').value,categoryId:$('category').value,tags:$('tags').value.split(',').map(v=>v.trim()).filter(Boolean),coverMediaId:current?.coverMediaId||null}}
+function values(){return{title:$('title').value,description:$('description').value,bodyFormat:'html',bodyMarkdown:$('bodyHtml').innerHTML,categoryId:$('category').value,tags:$('tags').value.split(',').map(v=>v.trim()).filter(Boolean),coverMediaId:current?.coverMediaId||null}}
 function clearMediaSelection(){if(selectedMedia?.kind==='markdown-image')selectedMedia.node.setAttribute('aria-pressed','false');selectedMedia=null;$('mediaSelectionOutline').hidden=true;$('imageTools').hidden=true}
 function positionImageTools(node){const tools=$('imageTools'),box=node.getBoundingClientRect(),tool=tools.getBoundingClientRect(),gap=8,margin=12;let top=box.top-tool.height-gap;if(top<margin)top=box.bottom+gap;top=Math.max(margin,Math.min(top,window.innerHeight-tool.height-margin));let left=box.right-tool.width;left=Math.max(margin,Math.min(left,window.innerWidth-tool.width-margin));tools.style.top=top+'px';tools.style.left=left+'px'}
 function positionMediaSelection(){if(!selectedMedia)return;if(selectedMedia.kind==='markdown-image'){if(!$('markdownMedia').contains(selectedMedia.node)){clearMediaSelection();return}$('mediaSelectionOutline').hidden=true;positionImageTools(selectedMedia.node);return}if(!$('bodyHtml').contains(selectedMedia.node)){clearMediaSelection();return}const shell=$('bodyHtmlShell'),box=selectedMedia.node.getBoundingClientRect(),host=shell.getBoundingClientRect(),outline=$('mediaSelectionOutline');outline.style.left=box.left-host.left+shell.scrollLeft+'px';outline.style.top=box.top-host.top+shell.scrollTop+'px';outline.style.width=box.width+'px';outline.style.height=box.height+'px';outline.hidden=false;positionImageTools(selectedMedia.node)}
@@ -105,7 +107,7 @@ function selectMarkdownMedia(node,image){clearMediaSelection();selectedMedia={no
 function renderMarkdownMedia(){const container=$('markdownMedia'),images=current?.bodyFormat==='html'?[]:markdownImageRanges($('body').value);container.replaceChildren();container.hidden=!images.length;for(const image of images){const button=document.createElement('button'),preview=document.createElement('img'),label=document.createElement('span');button.type='button';button.setAttribute('aria-pressed','false');button.setAttribute('aria-label',(image.alt||'본문 이미지')+' 선택');preview.src=image.path;preview.alt=image.alt;preview.loading='lazy';label.textContent=image.alt||'본문 이미지';button.append(preview,label);button.onclick=event=>{event.preventDefault();selectMarkdownMedia(button,image)};container.append(button)}}
 function placeCaret(parent,next){$('bodyHtml').focus();const range=document.createRange();if(next&&$('bodyHtml').contains(next))range.setStartBefore(next);else if(parent&&$('bodyHtml').contains(parent))range.setStart(parent,parent.childNodes.length);else range.selectNodeContents($('bodyHtml'));range.collapse(true);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range)}
 function deleteSelectedMedia(){if(busy||!selectedMedia)return false;if(selectedMedia.kind==='markdown-image'){const start=selectedMedia.start,end=selectedMedia.end;clearMediaSelection();$('body').setRangeText('',start,end,'end');$('body').focus();schedule();status('이미지를 삭제했습니다. 저장 대기 중입니다.');return true}if(!$('bodyHtml').contains(selectedMedia.node))return false;const target=selectedMedia.node,parent=target.parentNode,next=target.nextSibling,kind=selectedMedia.kind;clearMediaSelection();target.remove();placeCaret(parent,next);schedule();status(kind==='link-card'?'링크 카드를 삭제했습니다. 저장 대기 중입니다.':'이미지를 삭제했습니다. 저장 대기 중입니다.');return true}
-function fill(p){clearTimeout(timer);clearMediaSelection();dirty=false;change=0;current=p;lastSavedAt=p.updatedAt;clearIssue();$('editor').hidden=false;$('heading').textContent=p.title||'제목 없는 작업본';$('title').value=p.title;$('description').value=p.description;const html=p.bodyFormat==='html';$('body').hidden=html;$('bodyHtmlShell').hidden=!html;$('bodyLabel').htmlFor=html?'bodyHtml':'body';$('bodyLabel').textContent=html?'본문':'본문 (Markdown)';$('body').value=html?'':p.bodyMarkdown;$('bodyHtml').innerHTML=html?p.bodyMarkdown:'';$('category').value=p.categoryId;$('tags').value=p.tags.join(', ');$('image').value='';renderMarkdownMedia();$('previewBox').hidden=true;setBusy(busy);status('입력은 작업본에만 자동저장됩니다. 공개 반영을 눌러야 방문자에게 보입니다.');renderSaveState()}
+function fill(p){clearTimeout(timer);clearMediaSelection();resetFormatting();dirty=false;change=0;current=p;lastSavedAt=p.updatedAt;clearIssue();$('editor').hidden=false;$('heading').textContent=p.title||'제목 없는 작업본';$('title').value=p.title;$('description').value=p.description;$('body').hidden=true;$('bodyHtmlShell').hidden=false;$('bodyLabel').htmlFor='bodyHtml';$('bodyLabel').textContent='본문';$('body').value='';$('bodyHtml').innerHTML=p.bodyFormat==='html'?p.bodyMarkdown:p.bodyHtml;$('category').value=p.categoryId;$('tags').value=p.tags.join(', ');$('image').value='';$('markdownMedia').replaceChildren();$('markdownMedia').hidden=true;$('previewBox').hidden=true;setBusy(busy);status('입력은 작업본에만 자동저장됩니다. 공개 반영을 눌러야 방문자에게 보입니다.');renderSaveState();positionFormatToolbar()}
 async function list(){const {posts}=await api('/posts');const ul=$('posts');ul.replaceChildren();for(const p of posts){const li=document.createElement('li'),b=document.createElement('button'),number=p.globalSequence?'#'+p.globalSequence+' ':'';b.textContent=number+(p.status==='published'?'공개 ':'작업본 ')+(p.title||'제목 없음');b.dataset.postId=p.id;b.disabled=busy;b.onclick=()=>action(async()=>{if(!await flush())return;fill((await api('/posts/'+encodeURIComponent(p.id))).post)});li.append(b);ul.append(li)}}
 async function refreshList(){try{await list()}catch(error){showIssue(error,list)}}
 function updateListTitle(post){for(const button of $('posts').querySelectorAll('button')){if(button.dataset.postId===post.id)button.textContent=(post.globalSequence?'#'+post.globalSequence+' ':'')+(post.status==='published'?'공개 ':'작업본 ')+(post.title||'제목 없음')}}
@@ -123,7 +125,7 @@ async function flush(){
   }
   return true;
 }
-function schedule(){if(!current||busy)return;if(current.bodyFormat!=='html')renderMarkdownMedia();dirty=true;change+=1;renderSaveState();clearTimeout(timer);if(!blocked)timer=setTimeout(()=>{void flush()},800)}
+function schedule(){if(!current||busy)return;dirty=true;change+=1;renderSaveState();clearTimeout(timer);if(!blocked)timer=setTimeout(()=>{void flush()},800)}
 for(const id of ['title','description','category','tags'])$(id).addEventListener('input',schedule);
 $('body').addEventListener('input',()=>{clearMediaSelection();schedule()});
 $('bodyHtml').addEventListener('input',()=>{schedule();positionMediaSelection()});
@@ -132,7 +134,7 @@ $('bodyHtml').addEventListener('keydown',event=>{if(selectedMedia&&(event.key===
 $('bodyHtml').addEventListener('scroll',positionMediaSelection);
 window.addEventListener('resize',positionMediaSelection);
 window.addEventListener('scroll',positionMediaSelection,true);
-document.addEventListener('click',event=>{const element=event.target instanceof Element?event.target:null;if(!element||(!$('bodyHtml').contains(element)&&!$('markdownMedia').contains(element)&&!$('imageTools').contains(element)))clearMediaSelection()});
+document.addEventListener('click',event=>{const element=event.target instanceof Element?event.target:null;if(!element||(!$('bodyHtml').contains(element)&&!$('markdownMedia').contains(element)&&!$('imageTools').contains(element)&&!$('formatToolbar').contains(element)&&!$('linkPanel').contains(element)&&!$('tablePanel').contains(element)))clearMediaSelection()});
 document.addEventListener('keydown',event=>{if(event.key==='Escape'&&selectedMedia){event.preventDefault();clearMediaSelection()}else if(selectedMedia?.kind==='markdown-image'&&(event.key==='Delete'||event.key==='Backspace')){event.preventDefault();deleteSelectedMedia()}});
 $('deleteImage').onclick=()=>deleteSelectedMedia();
 $('editor').addEventListener('submit',event=>event.preventDefault());
@@ -145,11 +147,11 @@ async function uploadImage(){
   const j=await api('/posts/'+encodeURIComponent(postId)+'/media',{method:'POST',headers:{'content-type':f.type,'x-dwnc-file-size':String(f.size),'x-dwnc-file-sha256':hash,'x-dwnc-file-name':encodeURIComponent(f.name)},body:bytes});
   if(current?.id!==postId)return;
   const name=(f.name||'이미지').replace(/[<>&"']/g,'');
-  if(current.bodyFormat==='html'){
+  {
     const figure=document.createElement('figure'),span=document.createElement('span'),image=document.createElement('img');figure.className='imageblock alignCenter';image.src=j.media.publicPath;image.alt=name;image.loading='lazy';image.decoding='async';span.append(image);figure.append(span);
     const selection=window.getSelection();if(selection.rangeCount&&$('bodyHtml').contains(selection.getRangeAt(0).commonAncestorContainer)){const range=selection.getRangeAt(0);range.deleteContents();range.insertNode(figure);range.setStartAfter(figure);range.collapse(true);selection.removeAllRanges();selection.addRange(range)}else $('bodyHtml').append(figure);
-  }else{const area=$('body'),insert=String.fromCharCode(10)+'!['+name.split('[').join('').split(']').join('')+']('+j.media.publicPath+')'+String.fromCharCode(10);area.setRangeText(insert,area.selectionStart,area.selectionEnd,'end')}
-  clearMediaSelection();renderMarkdownMedia();dirty=true;change+=1;$('image').value='';renderSaveState();await flush();status(blocked?'이미지는 본문에 넣었습니다. 작업본 저장을 다시 시도하세요.':'이미지를 본문에 넣고 작업본에 저장했습니다.');
+  }
+  clearMediaSelection();dirty=true;change+=1;$('image').value='';renderSaveState();await flush();status(blocked?'이미지는 본문에 넣었습니다. 작업본 저장을 다시 시도하세요.':'이미지를 본문에 넣고 작업본에 저장했습니다.');
 }
 $('upload').onclick=()=>action(uploadImage);
 $('retrySave').onclick=()=>{const retry=retryAction||flush;return action(async()=>{clearIssue();await retry();if(!blocked&&dirty)await flush()})};
@@ -160,6 +162,7 @@ $('keepLocal').onclick=()=>action(async()=>{
   current={...latest,coverMediaId:current.coverMediaId};dirty=true;blocked='review';retryAction=async()=>{await flush()};$('issueMessage').textContent='현재 작성 내용은 그대로 유지했습니다. 아래 버튼을 누르면 다른 곳에서 저장한 최신 작업본을 현재 작성 내용으로 바꿉니다. 공개 글은 공개 반영 전까지 바뀌지 않습니다.';$('retrySave').textContent='현재 작성본으로 저장';$('retrySave').hidden=false;$('loadLatest').hidden=false;$('keepLocal').hidden=true;$('loginLink').hidden=true;$('resumeLogin').hidden=true;renderSaveState();
 });
 window.addEventListener('beforeunload',event=>{if(dirty||saving||busy){event.preventDefault();event.returnValue=''}});
+${formattingScript}
 void action(list);
 
 </script></body></html>`;

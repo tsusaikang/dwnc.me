@@ -8,7 +8,7 @@ import { createEditorDatabase } from './fixtures/editor-database.mjs';
 // Lightweight DOM for executable editor state tests. Layout and native selection
 // are checked separately in the browser fixture using the same emitted HTML.
 class Element {
-  value = ''; textContent = ''; innerHTML = ''; children = []; dataset = {}; style = {}; listeners = {}; hidden = false; disabled = false; files = [];
+  value = ''; textContent = ''; innerHTML = ''; children = []; dataset = {}; style = { setProperty() {} }; listeners = {}; hidden = false; disabled = false; files = [];
   append(...children) { this.children.push(...children); }
   replaceChildren(...children) { this.children = children; }
   setAttribute(name, value) { this[name] = value; }
@@ -16,6 +16,7 @@ class Element {
   querySelectorAll(selector) { return this.children.flatMap((child) => [...(child.tag === selector ? [child] : []), ...child.querySelectorAll(selector)]); }
   contains(node) { return this.children.includes(node); }
   focus() {}
+  getBoundingClientRect() { return { height: 40, width: 500, top: 0, left: 0, bottom: 40, right: 500 }; }
   setRangeText(text, start = 0, end = 0) { this.value = this.value.slice(0, start) + text + this.value.slice(end); }
   emit(name) { for (const handler of this.listeners[name] ?? []) handler({ target: this, preventDefault() {} }); }
 }
@@ -32,7 +33,7 @@ let holdSave = null;
 let holdPublish = null;
 let saveStarted;
 const requests = [];
-const document = { getElementById: (id) => elements.get(id), createElement: (tag) => Object.assign(new Element(), { tag }), addEventListener() {} };
+const document = { getElementById: (id) => elements.get(id), createElement: (tag) => Object.assign(new Element(), { tag }), addEventListener() {}, querySelector: () => new Element() };
 const context = createContext({ document, Element, window: { addEventListener() {}, innerHeight: 800, innerWidth: 1200 }, Date, Error, console, Response, AbortController, setTimeout: () => 1, clearTimeout() {}, fetch: async (path, options = {}) => {
   requests.push({ path, method: options.method ?? 'GET', body: options.body ? JSON.parse(options.body) : null });
   if (failure) {
@@ -59,11 +60,17 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
 await tick();
 runInContext(`fill(${JSON.stringify(published)})`, context);
 const field = (id) => elements.get(id);
+assert.equal(field('bodyHtml').innerHTML, published.bodyHtml);
+assert.equal(field('body').hidden, true);
+assert.equal(requests.some((request) => request.method === 'PUT'), false);
+assert.equal((await store.getPublishedBySequence(597)).bodyFormat, 'markdown');
 const edit = (title) => { field('title').value = title; field('title').emit('input'); };
 const flush = () => runInContext('flush()', context);
 
 edit('자동저장 작업본'); await flush();
 assert.equal((await store.getForAdmin(draft.id)).title, '자동저장 작업본');
+assert.equal((await store.getForAdmin(draft.id)).bodyFormat, 'html');
+assert.equal((await store.getForAdmin(draft.id)).bodyHtml, published.bodyHtml);
 assert.equal((await store.getPublishedBySequence(597)).title, '원래 제목');
 assert.match(field('saveStatus').textContent, /공개 반영을 기다리는/u);
 assert.match(field('lastSaved').textContent, /마지막 저장 성공/u);

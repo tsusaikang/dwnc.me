@@ -4,7 +4,7 @@ import edgeRedirectManifest from '../docs/EDGE_REDIRECTS_V1.json' with { type: '
 import mediaManifest from './data/public-media-r2-v1.json' with { type: 'json' };
 import publicRequestSurface from './data/public-request-surface-v1.json' with { type: 'json' };
 import {
-  NATIVE_MEDIA_PATH_PATTERN, NATIVE_POST_ID_PATTERN, normalizeLegacyPostInput, normalizeNativePostInput,
+  NATIVE_MEDIA_PATH_PATTERN, NATIVE_POST_ID_PATTERN, normalizeEditorPostInput,
 } from './lib/native-content.ts';
 import { createMediaWorker } from './lib/media-worker.ts';
 import { serveAdminNativeMedia } from './lib/native-public-worker.ts';
@@ -87,9 +87,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
     const body = await requestJson(request);
     const post = await store.getForAdmin(id);
     if (!post) return json({ error: '찾을 수 없습니다.' }, 404);
-    const html = post.bodyFormat === 'html'
-      ? normalizeLegacyPostInput(body.input, { requirePublishable: false }).bodyHtml
-      : normalizeNativePostInput(body.input, { requirePublishable: false }).bodyHtml;
+    const html = normalizeEditorPostInput(body.input, post, { requirePublishable: false }).bodyHtml;
     return json({ html });
   }
   if (request.method === 'POST' && action === 'publish') {

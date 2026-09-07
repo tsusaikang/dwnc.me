@@ -17,9 +17,11 @@ export interface NativePostInput {
   categoryId: string;
   tags: string[];
   coverMediaId: string | null;
+  bodyFormat?: 'markdown' | 'html';
 }
 
 export interface NormalizedNativePostInput extends NativePostInput {
+  bodyFormat: 'markdown' | 'html';
   categorySlug: string;
   categoryLabel: string;
   bodyHtml: string;
@@ -154,19 +156,28 @@ export function nativeImagePaths(markdown: string) {
 }
 
 const LEGACY_TAGS = [
-  'a', 'aside', 'b', 'blockquote', 'br', 'code', 'del', 'div', 'figcaption', 'figure',
+  'a', 'aside', 'b', 'blockquote', 'br', 'caption', 'code', 'col', 'colgroup', 'del', 'div', 'em', 'figcaption', 'figure', 'font',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'iframe', 'img', 'li', 'ol', 'p',
-  'pre', 's', 'span', 'strong', 'table', 'tbody', 'td', 'th', 'tr', 'u', 'ul', 'video',
+  'pre', 's', 'span', 'strong', 'sub', 'sup', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'u', 'ul', 'video',
 ];
 const LEGACY_ATTRIBUTES = [
   'alt', 'aria-hidden', 'aria-label', 'aria-labelledby', 'class', 'data-*', 'height', 'id',
-  'loading', 'role', 'style', 'tabindex', 'title', 'width',
+  'loading', 'role', 'style', 'tabindex', 'title', 'width', 'align',
 ];
+
+const TABLE_LIST_ATTRIBUTES = {
+  ol: ['start', 'reversed', 'type'], li: ['value'], ul: ['type'],
+  table: ['border', 'cellpadding', 'cellspacing', 'summary'],
+  td: ['colspan', 'rowspan', 'headers', 'valign', 'bgcolor'],
+  th: ['colspan', 'rowspan', 'headers', 'scope', 'valign', 'bgcolor'],
+  col: ['span'], colgroup: ['span'], font: ['color', 'size', 'face'],
+};
 
 export function sanitizeLegacyHtml(value: string) {
   return sanitizeHtml(value.normalize('NFC'), {
     allowedTags: LEGACY_TAGS,
     allowedAttributes: {
+      ...TABLE_LIST_ATTRIBUTES,
       '*': LEGACY_ATTRIBUTES,
       a: ['href', 'rel', 'target'],
       iframe: ['allowfullscreen', 'height', 'loading', 'referrerpolicy', 'src', 'title', 'width'],
@@ -176,6 +187,50 @@ export function sanitizeLegacyHtml(value: string) {
     allowedSchemes: ['http', 'https', 'mailto'],
     allowedSchemesByTag: { img: ['http', 'https'], iframe: ['https'], video: ['http', 'https'] },
     allowProtocolRelative: false,
+    parser: { lowerCaseAttributeNames: true },
+  });
+}
+
+// New rich text has no imported platform embeds or layout CSS to preserve.
+// Accept the editor's visible formatting, without script handlers or CSS URLs.
+const COLOR_STYLE = /^(?:#[\da-f]{3,8}|[a-z]+|(?:rgba?|hsla?)\([\d\s.,%/+\-]+\))(?:\s*!important)?$/iu;
+const SIZE_STYLE = /^(?:\d{1,3}(?:\.\d+)?(?:px|pt|em|rem|%)|xx-small|x-small|small|medium|large|x-large|xx-large)(?:\s*!important)?$/iu;
+export function sanitizeNativeHtml(value: string) {
+  return sanitizeHtml(value.normalize('NFC'), {
+    allowedTags: LEGACY_TAGS.filter((tag) => !['aside', 'iframe', 'video'].includes(tag)),
+    allowedAttributes: {
+      ...TABLE_LIST_ATTRIBUTES,
+      '*': ['style', 'align', 'title', 'lang', 'dir'],
+      a: ['href', 'rel', 'target'],
+      img: ['src', 'alt', 'width', 'height', 'loading', 'decoding'],
+      figure: ['class'],
+    },
+    allowedClasses: { figure: ['imageblock'] },
+    allowedStyles: {
+      '*': {
+        color: [COLOR_STYLE], 'background-color': [COLOR_STYLE],
+        'font-size': [SIZE_STYLE],
+        'font-weight': [/^(?:normal|bold|bolder|lighter|[1-9]00)(?:\s*!important)?$/iu],
+        'font-style': [/^(?:normal|italic|oblique)(?:\s*!important)?$/iu],
+        'text-decoration': [/^(?:none|underline|line-through|overline)(?:\s+(?:underline|line-through|overline))*(?:\s*!important)?$/iu],
+        'text-decoration-line': [/^(?:none|underline|line-through|overline)(?:\s+(?:underline|line-through|overline))*(?:\s*!important)?$/iu],
+        'text-align': [/^(?:left|center|right|justify|start|end)(?:\s*!important)?$/iu],
+        'vertical-align': [/^(?:top|middle|bottom|baseline|sub|super)$/iu],
+        width: [SIZE_STYLE], height: [SIZE_STYLE],
+      },
+    },
+    allowedSchemes: ['http', 'https', 'mailto'],
+    allowProtocolRelative: false,
+    transformTags: {
+      img: (_tagName, attribs) => ({ tagName: 'img', attribs: {
+        ...attribs, src: safeHref(attribs.src ?? '', true) ?? '', loading: 'lazy', decoding: 'async',
+      } }),
+      a: (_tagName, attribs) => ({ tagName: 'a', attribs: {
+        ...attribs, href: safeHref(attribs.href ?? '') ?? '',
+        ...(attribs.target === '_blank' ? { rel: 'noopener noreferrer' } : {}),
+      } }),
+    },
+    exclusiveFilter: (frame) => frame.tag === 'img' && !frame.attribs.src,
     parser: { lowerCaseAttributeNames: true },
   });
 }
@@ -213,6 +268,7 @@ export function normalizeNativePostInput(value: unknown, { requirePublishable = 
     throw new Error('NATIVE_E_INPUT');
   }
   return {
+    bodyFormat: 'markdown',
     title,
     description,
     bodyMarkdown,
@@ -226,23 +282,29 @@ export function normalizeNativePostInput(value: unknown, { requirePublishable = 
   };
 }
 
-export function normalizeLegacyPostInput(value: unknown, { requirePublishable = true } = {}): NormalizedLegacyPostInput {
+function normalizeHtmlPostInput(value: unknown, { requirePublishable = true, legacy = false } = {}): NormalizedLegacyPostInput {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('NATIVE_E_INPUT');
   const input = value as Record<string, unknown>;
   const title = compact(String(input.title ?? ''));
   const description = compact(String(input.description ?? ''));
-  const bodyHtml = sanitizeLegacyHtml(String(input.bodyMarkdown ?? ''));
+  const rawHtml = String(input.bodyMarkdown ?? '');
+  if (rawHtml.length > BODY_LIMIT) throw new Error('NATIVE_E_INPUT');
+  const bodyHtml = legacy ? sanitizeLegacyHtml(rawHtml) : sanitizeNativeHtml(rawHtml);
   const categoryId = compact(String(input.categoryId ?? ''));
   const category = taxonomyNodeById(categoryId);
   const coverMediaId = input.coverMediaId === null || input.coverMediaId === undefined || input.coverMediaId === ''
     ? null : compact(String(input.coverMediaId));
   const bodyText = compact(sanitizeHtml(bodyHtml, { allowedTags: [], allowedAttributes: {} }));
-  if ((requirePublishable && (!title || !bodyHtml.trim())) || title.length > TITLE_LIMIT || description.length > DESCRIPTION_LIMIT
+  const nativeContentPresent = Boolean(bodyText.replace(/&(?:nbsp|#160|#x0*a0);/giu, ' ').trim())
+    || nativeImagePathsInHtml(bodyHtml).length > 0;
+  if ((requirePublishable && (!title || !bodyHtml.trim() || (!legacy && !nativeContentPresent)))
+    || title.length > TITLE_LIMIT || description.length > DESCRIPTION_LIMIT
     || bodyHtml.length > BODY_LIMIT || !category
     || (coverMediaId !== null && !NATIVE_POST_ID_PATTERN.test(coverMediaId))) {
     throw new Error('NATIVE_E_INPUT');
   }
   return {
+    bodyFormat: 'html',
     title,
     description,
     bodyHtml,
@@ -254,4 +316,21 @@ export function normalizeLegacyPostInput(value: unknown, { requirePublishable = 
     tags: normalizeTags(input.tags),
     coverMediaId,
   };
+}
+
+export function normalizeLegacyPostInput(value: unknown, options: { requirePublishable?: boolean } = {}) {
+  return normalizeHtmlPostInput(value, { ...options, legacy: true });
+}
+
+export function normalizeEditorPostInput(value: unknown,
+  current: { bodyFormat: 'markdown' | 'html'; sourceKind: 'native' | 'legacy' },
+  options: { requirePublishable?: boolean } = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('NATIVE_E_INPUT');
+  const format = (value as Record<string, unknown>).bodyFormat ?? current.bodyFormat;
+  if ((format !== 'markdown' && format !== 'html') || (current.sourceKind === 'legacy' && format !== 'html')) {
+    throw new Error('NATIVE_E_INPUT');
+  }
+  return format === 'html'
+    ? normalizeHtmlPostInput(value, { ...options, legacy: current.sourceKind === 'legacy' })
+    : normalizeNativePostInput(value, options);
 }

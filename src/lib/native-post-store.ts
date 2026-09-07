@@ -1,5 +1,5 @@
 import {
-  nativeImagePaths, nativeImagePathsInHtml, normalizeLegacyPostInput, normalizeNativePostInput,
+  nativeImagePathsInHtml, normalizeEditorPostInput, normalizeNativePostInput,
   type NormalizedNativePostInput,
 } from './native-content.ts';
 import { slugifyLabel } from './taxonomy.ts';
@@ -26,6 +26,7 @@ export interface NativePost {
   updatedAt: string;
   publishedAt: string | null;
   bodyFormat: 'markdown' | 'html';
+  sourceKind: 'native' | 'legacy';
 }
 
 export interface AdminPostSummary {
@@ -35,6 +36,7 @@ export interface AdminPostSummary {
   title: string;
   updatedAt: string;
   bodyFormat: 'markdown' | 'html';
+  sourceKind: 'native' | 'legacy';
 }
 
 export interface NativeMedia {
@@ -69,6 +71,7 @@ interface NativePostRow {
   updated_at: string;
   published_at: string | null;
   body_format?: 'markdown' | 'html';
+  source_kind: 'native' | 'legacy';
 }
 
 interface NativeMediaRow {
@@ -85,19 +88,21 @@ interface NativeMediaRow {
 
 const POST_COLUMNS = `id, global_sequence, status, title, description, body_markdown, body_html,
   body_text, category_id, category_slug, category_label, tags_json, cover_media_id,
-  revision, created_at, updated_at, published_at`;
+  revision, created_at, updated_at, published_at, body_format, 'native' AS source_kind`;
 const LEGACY_POST_COLUMNS = `id, global_sequence, status, title, description,
   body_html AS body_markdown, body_html, body_text, category_id, category_slug, category_label,
-  tags_json, cover_media_id, revision, created_at, updated_at, published_at, 'html' AS body_format`;
+  tags_json, cover_media_id, revision, created_at, updated_at, published_at,
+  'html' AS body_format, 'legacy' AS source_kind`;
 
 const WORKING_FIELDS = ['title', 'description', 'body_markdown', 'body_html', 'body_text',
   'category_id', 'category_slug', 'category_label', 'tags_json', 'cover_media_id'] as const;
-const ADMIN_POST_SOURCE = `(SELECT ${POST_COLUMNS}, 'markdown' AS body_format FROM native_posts
+const ADMIN_POST_SOURCE = `(SELECT ${POST_COLUMNS} FROM native_posts
   UNION ALL SELECT ${LEGACY_POST_COLUMNS} FROM legacy_posts WHERE import_complete = 1)`;
 const ADMIN_POST_COLUMNS = `p.id, p.global_sequence, p.status,
   ${WORKING_FIELDS.map((field) => `CASE WHEN w.post_id IS NULL THEN p.${field} ELSE w.${field} END AS ${field}`).join(', ')},
   COALESCE(w.revision, p.revision) AS revision, p.created_at,
-  COALESCE(w.updated_at, p.updated_at) AS updated_at, p.published_at, p.body_format,
+  COALESCE(w.updated_at, p.updated_at) AS updated_at, p.published_at,
+  COALESCE(w.body_format, p.body_format) AS body_format, p.source_kind,
   CASE WHEN w.post_id IS NULL THEN CASE WHEN p.status = 'published' THEN p.revision ELSE NULL END
     ELSE w.published_revision END AS published_revision`;
 
@@ -112,6 +117,7 @@ function postFromRow(row: NativePostRow): NativePost {
   if (!row || !['draft', 'published', 'tombstone'].includes(row.status)
     || !Number.isSafeInteger(row.revision) || row.revision < 0
     || !['markdown', 'html'].includes(row.body_format ?? 'markdown')
+    || !['native', 'legacy'].includes(row.source_kind)
     || (row.global_sequence !== null && (!Number.isSafeInteger(row.global_sequence) || row.global_sequence < 1))) {
     throw new Error('NATIVE_E_STORED_POST');
   }
@@ -136,6 +142,7 @@ function postFromRow(row: NativePostRow): NativePost {
     updatedAt: row.updated_at,
     publishedAt: row.published_at,
     bodyFormat: row.body_format ?? 'markdown',
+    sourceKind: row.source_kind,
   };
 }
 
@@ -190,8 +197,8 @@ export class NativePostStore {
 
   private initializeWorkingCopy(id: string) {
     return this.database.prepare(`INSERT INTO editor_working_copies
-      (post_id, ${WORKING_FIELDS.join(', ')}, revision, published_revision, updated_at)
-      SELECT id, ${WORKING_FIELDS.join(', ')}, revision,
+      (post_id, ${WORKING_FIELDS.join(', ')}, body_format, revision, published_revision, updated_at)
+      SELECT id, ${WORKING_FIELDS.join(', ')}, body_format, revision,
         CASE WHEN status = 'published' THEN revision ELSE NULL END, updated_at
       FROM ${ADMIN_POST_SOURCE} WHERE id = ?1 AND status != 'tombstone'
       ON CONFLICT(post_id) DO NOTHING`).bind(id);
@@ -200,19 +207,20 @@ export class NativePostStore {
   async listForAdmin(): Promise<AdminPostSummary[]> {
     const posts = await this.database.prepare(`SELECT p.id, p.global_sequence, p.status,
       COALESCE(w.title, p.title) AS title, COALESCE(w.updated_at, p.updated_at) AS updated_at,
-      p.body_format FROM (
-        SELECT id, global_sequence, status, title, updated_at, 'markdown' AS body_format
+      COALESCE(w.body_format, p.body_format) AS body_format, p.source_kind FROM (
+        SELECT id, global_sequence, status, title, updated_at, body_format, 'native' AS source_kind
           FROM native_posts WHERE status != 'tombstone'
-        UNION ALL SELECT id, global_sequence, status, title, updated_at, 'html' AS body_format
+        UNION ALL SELECT id, global_sequence, status, title, updated_at, 'html' AS body_format, 'legacy' AS source_kind
           FROM legacy_posts WHERE import_complete = 1
       ) p LEFT JOIN editor_working_copies w ON w.post_id = p.id`).all<Pick<NativePostRow,
-        'id' | 'global_sequence' | 'status' | 'title' | 'updated_at' | 'body_format'>>();
+        'id' | 'global_sequence' | 'status' | 'title' | 'updated_at' | 'body_format' | 'source_kind'>>();
     return (posts.results ?? [])
       .sort((left, right) => right.updated_at.localeCompare(left.updated_at)
         || (right.global_sequence ?? 0) - (left.global_sequence ?? 0) || left.id.localeCompare(right.id))
       .map((row) => ({
         id: row.id, globalSequence: row.global_sequence, status: row.status, title: row.title,
         updatedAt: row.updated_at, bodyFormat: row.body_format ?? 'markdown',
+        sourceKind: row.source_kind,
       }));
   }
 
@@ -220,9 +228,7 @@ export class NativePostStore {
     if (!Number.isSafeInteger(revision) || revision < 0) throw new Error('NATIVE_E_REVISION');
     const current = await this.getForAdmin(id);
     if (!current || current.revision !== revision || current.status === 'tombstone') throw new Error('NATIVE_E_REVISION');
-    const input = current.bodyFormat === 'html'
-      ? normalizeLegacyPostInput(value, { requirePublishable: false })
-      : normalizeNativePostInput(value, { requirePublishable: false });
+    const input = normalizeEditorPostInput(value, current, { requirePublishable: false });
     const now = nowIso(this.now);
     // The result is read inside the write transaction so a later writer's
     // revision can never be acknowledged as this client's successful save.
@@ -231,13 +237,13 @@ export class NativePostStore {
       this.database.prepare(`UPDATE editor_working_copies SET
         title = ?1, description = ?2, body_markdown = ?3, body_html = ?4, body_text = ?5,
         category_id = ?6, category_slug = ?7, category_label = ?8, tags_json = ?9,
-        cover_media_id = ?10, revision = revision + 1, updated_at = ?11
+        cover_media_id = ?10, revision = revision + 1, updated_at = ?11, body_format = ?14
         WHERE post_id = ?12 AND revision = ?13
           AND EXISTS (SELECT 1 FROM ${ADMIN_POST_SOURCE} WHERE id = ?12 AND status != 'tombstone')
         RETURNING revision`).bind(
         input.title, input.description, input.bodyMarkdown, input.bodyHtml, input.bodyText,
         input.categoryId, input.categorySlug, input.categoryLabel, JSON.stringify(input.tags),
-        input.coverMediaId, now, id, revision,
+        input.coverMediaId, now, id, revision, input.bodyFormat,
       ),
       this.adminPostStatement(id),
     ]);
@@ -249,11 +255,11 @@ export class NativePostStore {
     if (!Number.isSafeInteger(revision) || revision < 0) throw new Error('NATIVE_E_REVISION');
     const current = await this.getForAdmin(id);
     if (!current || current.revision !== revision || current.status === 'tombstone') throw new Error('NATIVE_E_REVISION');
-    if (current.bodyFormat === 'html') normalizeLegacyPostInput(current);
-    else normalizeNativePostInput(current, { requirePublishable: true });
+    normalizeEditorPostInput(current, current, { requirePublishable: true });
     const now = nowIso(this.now);
-    const legacy = current.bodyFormat === 'html';
-    const fields = WORKING_FIELDS.filter((field) => !legacy || field !== 'body_markdown');
+    const legacy = current.sourceKind === 'legacy';
+    const fields = legacy ? WORKING_FIELDS.filter((field) => field !== 'body_markdown')
+      : [...WORKING_FIELDS, 'body_format'];
     const statements = [this.initializeWorkingCopy(id)];
     if (!legacy) {
       statements.push(this.database.prepare(`INSERT INTO native_sequence_claims (post_id, claimed_at)
@@ -271,7 +277,8 @@ export class NativePostStore {
           AND EXISTS (SELECT 1 FROM ${ADMIN_POST_SOURCE} WHERE id = ?2 AND status != 'tombstone')
         RETURNING revision`).bind(now, id, revision),
       this.database.prepare(`UPDATE ${legacy ? 'legacy_posts' : 'native_posts'} SET
-        (${fields.join(', ')}) = (SELECT ${fields.join(', ')} FROM editor_working_copies WHERE post_id = ?1),
+        (${fields.join(', ')}) = (SELECT ${fields.map((field) => field === 'body_format'
+          ? 'COALESCE(body_format, native_posts.body_format)' : field).join(', ')} FROM editor_working_copies WHERE post_id = ?1),
         revision = ?3 + 1, updated_at = ?2${legacy ? '' : `,
         global_sequence = COALESCE(global_sequence, (SELECT global_sequence FROM native_sequence_claims WHERE post_id = ?1)),
         status = 'published', published_at = COALESCE(published_at, ?2)`}
@@ -313,12 +320,13 @@ export class NativePostStore {
   async addMedia(media: NativeMedia): Promise<NativeMedia> {
     const post = await this.getForAdmin(media.postId);
     if (!post || post.status === 'tombstone') throw new Error('NATIVE_E_MEDIA_POST');
-    const table = post.bodyFormat === 'html' ? 'legacy_media' : 'native_media';
-    const parent = post.bodyFormat === 'html' ? 'legacy_posts' : 'native_posts';
+    const legacy = post.sourceKind === 'legacy';
+    const table = legacy ? 'legacy_media' : 'native_media';
+    const parent = legacy ? 'legacy_posts' : 'native_posts';
     const row = await this.database.prepare(`INSERT INTO ${table} (
       id, post_id, public_path, object_key, sha256, bytes, mime, alt, created_at
     ) SELECT ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9
-      WHERE EXISTS (SELECT 1 FROM ${parent} WHERE id = ?2${post.bodyFormat === 'html' ? ' AND import_complete = 1' : ''})
+      WHERE EXISTS (SELECT 1 FROM ${parent} WHERE id = ?2${legacy ? ' AND import_complete = 1' : ''})
       RETURNING id, post_id, public_path, object_key, sha256, bytes, mime, alt, created_at`).bind(
       media.id, media.postId, media.publicPath, media.objectKey, media.sha256,
       media.bytes, media.mime, media.alt, media.createdAt,
@@ -343,12 +351,11 @@ export class NativePostStore {
 
   async getPublicMedia(publicPath: string): Promise<(NativeMedia & { bodyMarkdown: string; coverMediaId: string | null }) | null> {
     let row = await this.database.prepare(`SELECT m.id, m.post_id, m.public_path, m.object_key,
-      m.sha256, m.bytes, m.mime, m.alt, m.created_at, p.body_markdown, p.cover_media_id
+      m.sha256, m.bytes, m.mime, m.alt, m.created_at, p.body_html AS body_markdown, p.cover_media_id
       FROM native_media m JOIN native_posts p ON p.id = m.post_id
       WHERE m.public_path = ?1 AND p.status = 'published'`).bind(publicPath).first<NativeMediaRow & {
         body_markdown: string; cover_media_id: string | null;
       }>();
-    let html = false;
     if (!row) {
       row = await this.database.prepare(`SELECT m.id, m.post_id, m.public_path, m.object_key,
         m.sha256, m.bytes, m.mime, m.alt, m.created_at, p.body_html AS body_markdown, p.cover_media_id
@@ -356,9 +363,8 @@ export class NativePostStore {
         WHERE m.public_path = ?1 AND p.import_complete = 1`).bind(publicPath).first<NativeMediaRow & {
           body_markdown: string; cover_media_id: string | null;
         }>();
-      html = true;
     }
-    const references = html ? nativeImagePathsInHtml(row?.body_markdown ?? '') : nativeImagePaths(row?.body_markdown ?? '');
+    const references = nativeImagePathsInHtml(row?.body_markdown ?? '');
     if (!row || (row.cover_media_id !== row.id && !references.includes(row.public_path))) return null;
     return { ...mediaFromRow(row), bodyMarkdown: row.body_markdown, coverMediaId: row.cover_media_id };
   }

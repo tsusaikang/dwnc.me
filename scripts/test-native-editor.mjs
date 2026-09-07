@@ -47,6 +47,7 @@ function createDatabase() {
   database.sqlite.exec(legacyMigration);
   database.sqlite.exec(legacyImportStateMigration);
   database.sqlite.exec(workingCopyMigration);
+  database.sqlite.exec(bodyFormatMigration);
   return database;
 }
 
@@ -54,6 +55,7 @@ const awaitableMigration = await readFile(new URL('../migrations/0001_native_edi
 const legacyMigration = await readFile(new URL('../migrations/0002_legacy_editor.sql', import.meta.url), 'utf8');
 const legacyImportStateMigration = await readFile(new URL('../migrations/0003_legacy_import_state.sql', import.meta.url), 'utf8');
 const workingCopyMigration = await readFile(new URL('../migrations/0004_editor_working_copies.sql', import.meta.url), 'utf8');
+const bodyFormatMigration = await readFile(new URL('../migrations/0005_editor_body_format.sql', import.meta.url), 'utf8');
 const defaultInput = {
   title: '웹에서 쓴 첫 글', description: '새 편집기 설명', bodyMarkdown: '# 본문\n\n안전한 **내용**',
   categoryId: 'daily', tags: ['웹 기록'], coverMediaId: null,
@@ -217,7 +219,9 @@ ok(uiScript.includes('window.innerWidth-tool.width-margin'));
 ok(uiScript.includes("window.addEventListener('scroll',positionMediaSelection,true)"));
 ok(uiScript.includes("selectedMedia.kind==='markdown-image'"));
 ok(uiScript.includes("$('body').setRangeText('',start,end,'end')"));
-ok(uiScript.includes('renderMarkdownMedia();dirty=true'));
+equal(uiDocument('#formatToolbar[role="toolbar"]').length, 1);
+equal(uiDocument('#formatToolbar [data-format-command="bold"]').length, 1);
+equal(uiDocument('#formatToolbar #fontSize').length, 1);
 ok(uiScript.includes("figure.className='imageblock alignCenter'"));
 equal(uiScript.includes('data-editor-selected'), false);
 
