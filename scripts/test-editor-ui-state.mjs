@@ -12,10 +12,13 @@ class Element {
   append(...children) { this.children.push(...children); }
   replaceChildren(...children) { this.children = children; }
   setAttribute(name, value) { this[name] = value; }
+  removeAttribute(name) { delete this[name]; }
   addEventListener(name, handler) { (this.listeners[name] ??= []).push(handler); }
-  querySelectorAll(selector) { return this.children.flatMap((child) => [...(child.tag === selector ? [child] : []), ...child.querySelectorAll(selector)]); }
+  querySelectorAll(selector) { const attribute = selector.match(/^\[([^=]+)="([^"]*)"\]$/); return this.children.flatMap((child) => [...((attribute ? child[attribute[1]] === attribute[2] : child.tag === selector) ? [child] : []), ...child.querySelectorAll(selector)]); }
+  querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
   contains(node) { return this.children.includes(node); }
-  focus() {}
+  focus(options) { this.focused = true; this.focusOptions = options; }
+  scrollIntoView(options) { this.scrollCalls = (this.scrollCalls ?? 0) + 1; this.scrollOptions = options; }
   getBoundingClientRect() { return { height: 40, width: 500, top: 0, left: 0, bottom: 40, right: 500 }; }
   setRangeText(text, start = 0, end = 0) { this.value = this.value.slice(0, start) + text + this.value.slice(end); }
   emit(name) { for (const handler of this.listeners[name] ?? []) handler({ target: this, preventDefault() {} }); }
@@ -58,8 +61,18 @@ const context = createContext({ document, Element, window: { addEventListener() 
 runInContext(html('script').text(), context);
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 await tick();
-runInContext(`fill(${JSON.stringify(published)})`, context);
 const field = (id) => elements.get(id);
+const postButton = field('posts').querySelectorAll('button')[0];
+await postButton.onclick();
+assert.equal(field('heading').scrollCalls, 1);
+assert.equal(field('title').focused, true);
+assert.equal(postButton['aria-current'], 'true');
+const requestsBeforeListReturn = requests.length;
+await field('showPosts').onclick();
+assert.equal(field('postsPanel').scrollCalls, 1);
+assert.equal(postButton.focused, true);
+assert.equal(postButton.scrollOptions.block, 'nearest');
+assert.equal(requests.length, requestsBeforeListReturn);
 assert.equal(field('bodyHtml').innerHTML, published.bodyHtml);
 assert.equal(field('body').hidden, true);
 assert.equal(requests.some((request) => request.method === 'PUT'), false);
@@ -75,8 +88,11 @@ assert.equal((await store.getPublishedBySequence(597)).title, '원래 제목');
 assert.match(field('saveStatus').textContent, /공개 반영을 기다리는/u);
 assert.match(field('lastSaved').textContent, /마지막 저장 성공/u);
 
-failure = 500; edit('저장 실패에도 남는 입력'); await flush();
+failure = 500; edit('저장 실패에도 남는 입력');
+const editorScrollsBeforeFailure = field('heading').scrollCalls;
+await postButton.onclick();
 assert.equal(field('title').value, '저장 실패에도 남는 입력');
+assert.equal(field('heading').scrollCalls, editorScrollsBeforeFailure);
 assert.equal(field('saveIssue').hidden, false);
 await field('retrySave').onclick();
 assert.equal((await store.getForAdmin(draft.id)).title, '저장 실패에도 남는 입력');

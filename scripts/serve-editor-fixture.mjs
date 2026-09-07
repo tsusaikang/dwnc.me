@@ -8,6 +8,15 @@ import { createEditorDatabase, seedLegacy } from './fixtures/editor-database.mjs
 const database = await createEditorDatabase();
 const legacyImage = seedLegacy(database);
 const store = new NativePostStore(database);
+// A long synthetic list exposes small-screen navigation without real posts.
+for (let index = 1; index <= 40; index += 1) {
+  const draft = await store.createDraft({ id: 'daily', slug: '일상', label: '일상' });
+  await store.update(draft.id, draft.revision, {
+    title: `목록 시험 ${String(index).padStart(2, '0')}`,
+    description: '합성 목록 화면 시험', bodyMarkdown: '합성 목록 시험용 본문입니다.',
+    categoryId: 'daily', tags: [], coverMediaId: null,
+  });
+}
 const imageBytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aMnoAAAAASUVORK5CYII=', 'base64');
 const objects = new Map();
 const bucket = {
