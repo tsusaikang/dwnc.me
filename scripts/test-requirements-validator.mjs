@@ -122,13 +122,14 @@ withFixture(
   (result) => assertRejected(result, /invalid current status invalid-status/),
 );
 
-const firstRequirement = sourceCurrent.match(
-  /### `DWNC-S3-005`[\s\S]*?(?=\n### |\n## |$)/,
-)?.[0];
-assert.ok(firstRequirement, 'test fixture could not find DWNC-S3-005');
+const firstDoneRequirement = sourceCurrent.match(
+  /### `([A-Z0-9-]+)` — [^\n]+\n- \*\*Status:\*\* `done`[\s\S]*?(?=\n### |\n## |$)/,
+);
+assert.ok(firstDoneRequirement, 'test fixture could not find a current done requirement');
+const [firstRequirement, firstRequirementId] = firstDoneRequirement;
 withFixture(
   { archive: `${sourceArchive}\n\n${firstRequirement}\n` },
-  (result) => assertRejected(result, /duplicate requirement ID DWNC-S3-005/),
+  (result) => assertRejected(result, new RegExp(`duplicate requirement ID ${firstRequirementId}`)),
 );
 
 withFixture(
