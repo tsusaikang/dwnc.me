@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { Script } from 'node:vm';
+import { pathToFileURL } from 'node:url';
 import { load } from 'cheerio';
 import { createSatteriMarkdownProcessor } from '@astrojs/markdown-satteri';
 import corrections from '../src/data/imported-formatting-corrections.json' with { type: 'json' };
@@ -90,6 +91,8 @@ new Script(ENGINE_DIAGRAM_BOOTSTRAP);
 // The committed renderer contains only the one reviewed, local drawing component.
 const client = await readFile(new URL('../src/lib/engine-diagram-client.js', import.meta.url), 'utf8');
 assert(!/\b(?:fetch|XMLHttpRequest|WebSocket|eval|localStorage|sessionStorage)\s*\(/u.test(client));
+const browserFunctionSource=client.slice(client.indexOf('export function mountEngineDiagram')).replace('export function','function').trim();
+assert.equal(ENGINE_DIAGRAM_BOOTSTRAP,`(${browserFunctionSource})(document.querySelector('[data-engine-diagram]'));`);
 
 // Execute the actual component's mode/view/play/speed and lifecycle actions.
 // Canvas pixels and responsive layout are checked in the browser.
@@ -165,8 +168,10 @@ class PublicRewriter {
 const oldRewriter=globalThis.HTMLRewriter;
 try {
   globalThis.HTMLRewriter=PublicRewriter;
-  const worker=createNativePublicWorker(async request=>new URL(request.url).pathname==='/search-index.json'?Response.json([]):new Response('<html><head><title>합성</title></head><body><main id="main"></main></body></html>',{headers:{'content-type':'text/html'}}));
-  const response=await worker(new Request('https://dwnc.me/posts/588'),{NATIVE_DB:database},{});
+  const assets=async request=>new URL(request.url).pathname==='/search-index.json'?Response.json([]):new Response('<html><head><title>합성</title></head><body><main id="main"></main></body></html>',{headers:{'content-type':'text/html'}});
+  const bundleFlag=process.argv.indexOf('--worker-bundle');
+  const worker=bundleFlag>=0?(await import(pathToFileURL(process.argv[bundleFlag+1]).href)).default.fetch:createNativePublicWorker(assets);
+  const response=await worker(new Request('https://dwnc.me/posts/588'),{NATIVE_DB:database,ASSETS:{fetch:assets}},{});
   const page=load(await response.text());
   assert.equal(response.status,200);
   assert.equal(page('[data-engine-diagram]').length,1);
@@ -175,6 +180,29 @@ try {
   assert(page('script').toArray().some(node=>page(node).text().includes('v6x-playBtn')));
   assert.equal(page('[data-engine-diagram]').nextAll('h3').first().text(),'정리');
   assert(page('.prose').text().includes('알고 나니 엔진 소리가 조금 다르게 들리는 것 같다.'));
+  // Execute the inline script actually emitted by the Worker. A fresh browser
+  // context has no bundler helpers; the former function.toString() fails here
+  // after Wrangler keepNames adds references to its Worker-local __name helper.
+  const inline=page('script').toArray().map(node=>page(node).text()).find(script=>script.includes('v6x-playBtn'));
+  dom.root().html(page('.prose').html());frames.clear();draws=0;
+  const browserContext={
+    AbortController,
+    window:{devicePixelRatio:1,addEventListener(){},matchMedia:()=>({matches:false})},
+    document:{querySelector:selector=>wrap(dom(selector)[0]),createElement:tag=>wrap(dom(`<${tag}></${tag}>`)[0]),createElementNS:(_,tag)=>wrap(dom(`<${tag}></${tag}>`)[0])},
+    requestAnimationFrame:callback=>{frames.set(++nextFrame,callback);return nextFrame;},
+    cancelAnimationFrame:id=>frames.delete(id),
+  };
+  new Script(inline).runInNewContext(browserContext);
+  const runBrowserFrame=time=>{const [id,callback]=frames.entries().next().value;frames.delete(id);callback(time);};
+  runBrowserFrame(0);assert(draws>0);
+  const browserRoot=wrap(dom('[data-engine-diagram]')[0]);
+  browserRoot.querySelector('[data-mode="split"]').emit('click');assert.equal(dom('.v6x-tl-row').length,3);
+  browserRoot.querySelector('[data-view="end"]').emit('click');assert(dom('[data-view="end"]').hasClass('active'));
+  runBrowserFrame(100);const visibleAngle=dom('#v6x-angleReadout').text();assert(Number.parseInt(visibleAngle)>0);
+  browserRoot.querySelector('#v6x-playBtn').emit('click');runBrowserFrame(200);assert.equal(dom('#v6x-angleReadout').text(),visibleAngle);
+  browserRoot.isConnected=false;runBrowserFrame(300);assert.equal(frames.size,0);
+  if(bundleFlag>=0)console.log('Compiled Worker emitted diagram script: VM drawing, mode, view, time and pause PASS');
+
 } finally {
   if(oldRewriter===undefined)delete globalThis.HTMLRewriter;else globalThis.HTMLRewriter=oldRewriter;
 }

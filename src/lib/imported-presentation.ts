@@ -1,7 +1,7 @@
 import { load } from 'cheerio';
 import { sanitizeLegacyHtml } from './native-content.ts';
 import corrections from '../data/imported-formatting-corrections.json' with { type: 'json' };
-import { mountEngineDiagram } from './engine-diagram-client.js';
+import engineDiagramBootstrapSource from './engine-diagram-bootstrap-source.json' with { type: 'json' };
 import {
   ENGINE_DIAGRAM_BASELINE, ENGINE_DIAGRAM_HTML,
   ENGINE_STATIC_BASELINE, ENGINE_STATIC_HTML,
@@ -54,7 +54,9 @@ export function prepareImportedPresentation(html: string, identity?: ImportedIde
 
 // This is application code, never script supplied by a post. It scopes every lookup
 // to the reviewed component and makes no network, storage or evaluation calls.
-export const ENGINE_DIAGRAM_BOOTSTRAP = `(${mountEngineDiagram.toString()})(document.querySelector('[data-engine-diagram]'));`;
+// Keep the reviewed browser source as text: serializing a compiled function can
+// capture Worker-only bundler helpers such as esbuild's __name.
+export const ENGINE_DIAGRAM_BOOTSTRAP = engineDiagramBootstrapSource;
 
 // Shared by static articles, dynamic articles, and the administrator's preview.
 // Inline author choices remain more specific than these defaults.
