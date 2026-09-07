@@ -356,6 +356,12 @@ const editedLegacyResponse = await publicWorker(new Request('https://dwnc.me/pos
 const editedLegacyHtml = await editedLegacyResponse.text();
 equal(editedLegacyResponse.status, 200); ok(editedLegacyHtml.includes('고친 본문'));
 ok(editedLegacyHtml.includes('/media/tistory/1/original.jpg')); ok(editedLegacyHtml.includes('id="legacy-post-script"'));
+for (const [documentHtml, post] of [[nativePostHtml, publicPost], [editedLegacyHtml, legacyPublished]]) {
+  const document = load(documentHtml);
+  equal(document('.post-header__meta time').length, 1);
+  equal(document('.post-header__meta').text().includes('읽는 데'), false);
+  equal(document('.prose').html(), load(post.bodyHtml, null, false).html());
+}
 
 const nativeOnlyTag = await (await publicWorker(new Request('https://dwnc.me/tag/native-only'), publicEnv, {})).text();
 ok(nativeOnlyTag.includes('Tag · 1편')); ok(nativeOnlyTag.includes(defaultInput.title));

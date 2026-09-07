@@ -35,7 +35,6 @@ const isShortVisualPost = imageCount >= 1 && imageCount <= 3 && textLength < 120
 const isPhotoEssay = imageCount >= 8
   || (imageCount >= 4 && textLength / imageCount < 400)
   || isShortVisualPost;
-const readingMinutes = Math.max(1, Math.ceil(textLength / 500));
 const showCover = Boolean(data.cover && !sourceBody.includes(data.cover));
 ---
 
@@ -58,7 +57,6 @@ const showCover = Boolean(data.cover && !sourceBody.includes(data.cover));
         <p class="post-header__meta">
           <a href={`/category/${category.slug}`}>{category.label}</a>
           <time datetime={data.publishedAt.toISOString()}>{formatDate(data.publishedAt)}</time>
-          <span>읽는 데 {readingMinutes}분</span>
         </p>
         <h1>{data.title}</h1>
       </div>

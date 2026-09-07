@@ -1788,6 +1788,11 @@
     color: var(--accent);
   }
 
+  /* A single reading surface preserves imported white blocks and highlights. */
+  .article-page {
+    background: #fff;
+  }
+
   .post-header {
     padding: clamp(70px, 9vw, 126px) 0 clamp(38px, 5vw, 66px);
   }
@@ -1858,11 +1863,15 @@
   .prose {
     width: min(calc(100% - 96px), var(--reading));
     padding-bottom: clamp(78px, 11vw, 152px);
-    font-family: var(--serif);
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Apple SD Gothic Neo", Arial, sans-serif;
     font-size: clamp(1.02rem, 1.35vw, 1.1rem);
     line-height: 1.98;
     word-break: keep-all;
     overflow-wrap: break-word;
+  }
+
+  .prose :is(strong, b) {
+    font-family: inherit;
   }
 
   .article-page--photo .prose {
