@@ -2,6 +2,9 @@ import {
   nativeImagePathsInHtml, normalizeEditorPostInput, normalizeNativePostInput,
   type NormalizedNativePostInput,
 } from './native-content.ts';
+import { CmsConfigurationStore } from './cms-configuration.ts';
+import { load } from 'cheerio';
+import mediaManifest from '../data/public-media-r2-v1.json' with { type: 'json' };
 import { slugifyLabel } from './taxonomy.ts';
 
 export type NativePostStatus = 'draft' | 'published' | 'tombstone';
@@ -20,6 +23,10 @@ export interface NativePost {
   categoryLabel: string;
   tags: string[];
   coverMediaId: string | null;
+  coverPath: string | null;
+  coverAlt: string;
+  source?: 'naver' | 'tistory';
+  sourceId?: string;
   revision: number;
   publishedRevision: number | null;
   createdAt: string;
@@ -30,6 +37,8 @@ export interface NativePost {
 }
 
 export interface AdminPostSummary {
+  categoryId: string; categoryLabel: string; tags: string[]; publishedAt: string | null;
+  hasUnpublishedChanges: boolean; coverPath: string | null;
   id: string;
   globalSequence: number | null;
   status: NativePostStatus;
@@ -65,6 +74,7 @@ interface NativePostRow {
   category_label: string;
   tags_json: string;
   cover_media_id: string | null;
+  cover_path?: string | null; cover_alt?: string | null; source?: 'naver' | 'tistory'; source_id?: string;
   revision: number;
   published_revision?: number | null;
   created_at: string;
@@ -87,21 +97,21 @@ interface NativeMediaRow {
 }
 
 const POST_COLUMNS = `id, global_sequence, status, title, description, body_markdown, body_html,
-  body_text, category_id, category_slug, category_label, tags_json, cover_media_id,
+  body_text, category_id, category_slug, category_label, tags_json, cover_media_id, cover_path, cover_alt, NULL AS source, NULL AS source_id,
   revision, created_at, updated_at, published_at, body_format, 'native' AS source_kind`;
 const LEGACY_POST_COLUMNS = `id, global_sequence, status, title, description,
   body_html AS body_markdown, body_html, body_text, category_id, category_slug, category_label,
-  tags_json, cover_media_id, revision, created_at, updated_at, published_at,
+  tags_json, cover_media_id, cover_path, cover_alt, source, source_id, revision, created_at, updated_at, published_at,
   'html' AS body_format, 'legacy' AS source_kind`;
 
 const WORKING_FIELDS = ['title', 'description', 'body_markdown', 'body_html', 'body_text',
-  'category_id', 'category_slug', 'category_label', 'tags_json', 'cover_media_id'] as const;
+  'category_id', 'category_slug', 'category_label', 'tags_json', 'cover_media_id', 'cover_path', 'cover_alt'] as const;
 const ADMIN_POST_SOURCE = `(SELECT ${POST_COLUMNS} FROM native_posts
   UNION ALL SELECT ${LEGACY_POST_COLUMNS} FROM legacy_posts WHERE import_complete = 1)`;
 const ADMIN_POST_COLUMNS = `p.id, p.global_sequence, p.status,
-  ${WORKING_FIELDS.map((field) => `CASE WHEN w.post_id IS NULL THEN p.${field} ELSE w.${field} END AS ${field}`).join(', ')},
+  ${WORKING_FIELDS.map((field) => `CASE WHEN w.post_id IS NULL${field === 'cover_path' || field === 'cover_alt' ? ' OR w.cover_selection_set IS NULL' : ''} THEN p.${field} ELSE w.${field} END AS ${field}`).join(', ')},
   COALESCE(w.revision, p.revision) AS revision, p.created_at,
-  COALESCE(w.updated_at, p.updated_at) AS updated_at, p.published_at,
+  COALESCE(w.updated_at, p.updated_at) AS updated_at, p.published_at, p.source, p.source_id,
   COALESCE(w.body_format, p.body_format) AS body_format, p.source_kind,
   CASE WHEN w.post_id IS NULL THEN CASE WHEN p.status = 'published' THEN p.revision ELSE NULL END
     ELSE w.published_revision END AS published_revision`;
@@ -134,7 +144,8 @@ function postFromRow(row: NativePostRow): NativePost {
     categorySlug: row.category_slug,
     categoryLabel: row.category_label,
     tags: parseTags(row.tags_json),
-    coverMediaId: row.cover_media_id,
+    coverMediaId: row.cover_media_id, coverPath: row.cover_path ?? null, coverAlt: row.cover_alt ?? '',
+    ...(row.source ? { source: row.source, sourceId: row.source_id } : {}),
     revision: row.revision,
     publishedRevision: row.published_revision === undefined
       ? (row.status === 'published' ? row.revision : null) : row.published_revision,
@@ -179,7 +190,8 @@ export class NativePostStore {
     const row = await this.database.prepare(`INSERT INTO native_posts (
       id, status, title, description, body_markdown, body_html, body_text,
       category_id, category_slug, category_label, tags_json, revision, created_at, updated_at
-    ) VALUES (?1, 'draft', '', '', '', '', '', ?2, ?3, ?4, '[]', 0, ?5, ?5)
+    ) SELECT ?1, 'draft', '', '', '', '', '', ?2, ?3, ?4, '[]', 0, ?5, ?5
+      WHERE NOT EXISTS (SELECT 1 FROM cms_configuration WHERE key='categories') OR EXISTS (SELECT 1 FROM cms_configuration, json_each(value_json) c WHERE cms_configuration.key='categories' AND json_extract(c.value,'$.id') = ?2)
     RETURNING ${POST_COLUMNS}`).bind(id, category.id, category.slug, category.label, now).first<NativePostRow>();
     if (!row) throw new Error('NATIVE_E_CREATE');
     return postFromRow(row);
@@ -207,28 +219,63 @@ export class NativePostStore {
   async listForAdmin(): Promise<AdminPostSummary[]> {
     const posts = await this.database.prepare(`SELECT p.id, p.global_sequence, p.status,
       COALESCE(w.title, p.title) AS title, COALESCE(w.updated_at, p.updated_at) AS updated_at,
-      COALESCE(w.body_format, p.body_format) AS body_format, p.source_kind FROM (
-        SELECT id, global_sequence, status, title, updated_at, body_format, 'native' AS source_kind
-          FROM native_posts WHERE status != 'tombstone'
-        UNION ALL SELECT id, global_sequence, status, title, updated_at, 'html' AS body_format, 'legacy' AS source_kind
-          FROM legacy_posts WHERE import_complete = 1
-      ) p LEFT JOIN editor_working_copies w ON w.post_id = p.id`).all<Pick<NativePostRow,
-        'id' | 'global_sequence' | 'status' | 'title' | 'updated_at' | 'body_format' | 'source_kind'>>();
-    return (posts.results ?? [])
-      .sort((left, right) => right.updated_at.localeCompare(left.updated_at)
-        || (right.global_sequence ?? 0) - (left.global_sequence ?? 0) || left.id.localeCompare(right.id))
-      .map((row) => ({
-        id: row.id, globalSequence: row.global_sequence, status: row.status, title: row.title,
-        updatedAt: row.updated_at, bodyFormat: row.body_format ?? 'markdown',
-        sourceKind: row.source_kind,
-      }));
+      COALESCE(w.body_format, p.body_format) AS body_format, p.source_kind,
+      COALESCE(w.category_id,p.category_id) AS category_id, COALESCE(w.category_label,p.category_label) AS category_label,
+      COALESCE(w.tags_json,p.tags_json) AS tags_json, p.published_at,
+      COALESCE(w.revision,p.revision) AS revision,
+      CASE WHEN w.post_id IS NULL THEN CASE WHEN p.status='published' THEN p.revision END ELSE w.published_revision END AS published_revision,
+      CASE WHEN w.cover_selection_set IS NULL THEN p.cover_path ELSE w.cover_path END AS cover_path
+      FROM ${ADMIN_POST_SOURCE} p LEFT JOIN editor_working_copies w ON w.post_id = p.id
+      WHERE p.status != 'tombstone' ORDER BY updated_at DESC, global_sequence DESC, p.id`).all<NativePostRow>();
+    const categories = (await new CmsConfigurationStore(this.database).categories()).value;
+    return (posts.results ?? []).map((row) => ({
+      id: row.id, globalSequence: row.global_sequence, status: row.status, title: row.title,
+      updatedAt: row.updated_at, bodyFormat: row.body_format ?? 'markdown', sourceKind: row.source_kind,
+      categoryId: row.category_id, categoryLabel: categories.find((node) => node.id === row.category_id)?.label ?? row.category_label,
+      tags: parseTags(row.tags_json), publishedAt: row.published_at, coverPath: row.cover_path ?? null,
+      hasUnpublishedChanges: row.published_revision == null || row.revision !== row.published_revision,
+    }));
+  }
+
+  async searchAdminBodyIds(query: string) {
+    const result = await this.database.prepare(`SELECT p.id FROM (
+      SELECT id, body_text FROM native_posts WHERE status != 'tombstone'
+      UNION ALL SELECT id, body_text FROM legacy_posts WHERE import_complete = 1
+    ) p LEFT JOIN editor_working_copies w ON w.post_id = p.id
+      WHERE instr(lower(COALESCE(w.body_text,p.body_text)), ?1) > 0`).bind(query).all<{id:string}>();
+    return new Set((result.results ?? []).map((row)=>row.id));
+  }
+
+  async mediaForPost(id: string) {
+    const post = await this.getForAdmin(id); if (!post) throw new Error('NATIVE_E_MEDIA_POST');
+    const media = await this.database.prepare(`SELECT id, public_path, alt FROM ${post.sourceKind === 'legacy' ? 'legacy_media' : 'native_media'} WHERE post_id = ?1 ORDER BY created_at`).bind(id).all<{id:string;public_path:string;alt:string}>();
+    const images = new Map<string, {id: string | null; path: string; alt: string; kind: 'native' | 'legacy'}>();
+    for (const item of media.results ?? []) images.set(item.public_path, {id:item.id,path:item.public_path,alt:item.alt,kind:'native'});
+    const allowed = new Set(mediaManifest.entries.filter((entry) => entry.contentType.startsWith('image/')).map((entry) => entry.publicPath));
+    const $ = load(post.bodyHtml);
+    $('img[src]').each((_i, image) => { const path = $(image).attr('src') ?? ''; if (allowed.has(path)) images.set(path, {id:null,path,alt:$(image).attr('alt') ?? '',kind:'legacy'}); });
+    if (post.coverPath && allowed.has(post.coverPath)) images.set(post.coverPath,{id:null,path:post.coverPath,alt:post.coverAlt,kind:'legacy'});
+    return [...images.values()];
+  }
+
+  async normalizeInput(value: unknown, current: NativePost, requirePublishable = false) {
+    const categories = (await new CmsConfigurationStore(this.database).categories()).value;
+    return normalizeEditorPostInput(value, current, { requirePublishable, categories });
   }
 
   async update(id: string, revision: number, value: unknown): Promise<NativePost> {
     if (!Number.isSafeInteger(revision) || revision < 0) throw new Error('NATIVE_E_REVISION');
     const current = await this.getForAdmin(id);
     if (!current || current.revision !== revision || current.status === 'tombstone') throw new Error('NATIVE_E_REVISION');
-    const input = normalizeEditorPostInput(value, current, { requirePublishable: false });
+    const input = await this.normalizeInput(value, current);
+    const raw = value as Record<string, unknown>;
+    let coverPath = raw.coverPath === undefined ? current.coverPath : (raw.coverPath ? String(raw.coverPath) : null);
+    const coverAlt = raw.coverAlt === undefined ? current.coverAlt : String(raw.coverAlt).slice(0, 300);
+    const media = await this.mediaForPost(id);
+    if (raw.coverPath === undefined && input.coverMediaId) coverPath = media.find((item) => item.id === input.coverMediaId)?.path ?? coverPath;
+    const cover = coverPath ? media.find((item) => item.path === coverPath) : null;
+    if (coverPath && coverPath !== current.coverPath && !cover) throw new Error('NATIVE_E_COVER');
+    input.coverMediaId = cover?.id ?? (coverPath === current.coverPath ? current.coverMediaId : null);
     const now = nowIso(this.now);
     // The result is read inside the write transaction so a later writer's
     // revision can never be acknowledged as this client's successful save.
@@ -237,13 +284,14 @@ export class NativePostStore {
       this.database.prepare(`UPDATE editor_working_copies SET
         title = ?1, description = ?2, body_markdown = ?3, body_html = ?4, body_text = ?5,
         category_id = ?6, category_slug = ?7, category_label = ?8, tags_json = ?9,
-        cover_media_id = ?10, revision = revision + 1, updated_at = ?11, body_format = ?14
+        cover_media_id = ?10, revision = revision + 1, updated_at = ?11, body_format = ?14, cover_path = ?15, cover_alt = ?16, cover_selection_set = 1
         WHERE post_id = ?12 AND revision = ?13
+          AND (NOT EXISTS (SELECT 1 FROM cms_configuration WHERE key='categories') OR EXISTS (SELECT 1 FROM cms_configuration, json_each(value_json) c WHERE cms_configuration.key='categories' AND json_extract(c.value,'$.id') = ?6))
           AND EXISTS (SELECT 1 FROM ${ADMIN_POST_SOURCE} WHERE id = ?12 AND status != 'tombstone')
         RETURNING revision`).bind(
         input.title, input.description, input.bodyMarkdown, input.bodyHtml, input.bodyText,
         input.categoryId, input.categorySlug, input.categoryLabel, JSON.stringify(input.tags),
-        input.coverMediaId, now, id, revision, input.bodyFormat,
+        input.coverMediaId, now, id, revision, input.bodyFormat, coverPath, coverAlt,
       ),
       this.adminPostStatement(id),
     ]);
@@ -255,7 +303,7 @@ export class NativePostStore {
     if (!Number.isSafeInteger(revision) || revision < 0) throw new Error('NATIVE_E_REVISION');
     const current = await this.getForAdmin(id);
     if (!current || current.revision !== revision || current.status === 'tombstone') throw new Error('NATIVE_E_REVISION');
-    normalizeEditorPostInput(current, current, { requirePublishable: true });
+    await this.normalizeInput(current, current, true);
     const now = nowIso(this.now);
     const legacy = current.sourceKind === 'legacy';
     const fields = legacy ? WORKING_FIELDS.filter((field) => field !== 'body_markdown')
@@ -278,7 +326,7 @@ export class NativePostStore {
         RETURNING revision`).bind(now, id, revision),
       this.database.prepare(`UPDATE ${legacy ? 'legacy_posts' : 'native_posts'} SET
         (${fields.join(', ')}) = (SELECT ${fields.map((field) => field === 'body_format'
-          ? 'COALESCE(body_format, native_posts.body_format)' : field).join(', ')} FROM editor_working_copies WHERE post_id = ?1),
+          ? 'COALESCE(body_format, native_posts.body_format)' : (field === 'cover_path' || field === 'cover_alt') ? `CASE WHEN cover_selection_set IS NULL THEN ${legacy ? 'legacy_posts' : 'native_posts'}.${field} ELSE ${field} END` : field).join(', ')} FROM editor_working_copies WHERE post_id = ?1),
         revision = ?3 + 1, updated_at = ?2${legacy ? '' : `,
         global_sequence = COALESCE(global_sequence, (SELECT global_sequence FROM native_sequence_claims WHERE post_id = ?1)),
         status = 'published', published_at = COALESCE(published_at, ?2)`}
@@ -302,10 +350,11 @@ export class NativePostStore {
     return legacy ? postFromRow(legacy) : null;
   }
 
-  async listPublished(): Promise<NativePost[]> {
-    const native = await this.database.prepare(`SELECT ${POST_COLUMNS} FROM native_posts
+  async listPublished(includeSearchText: boolean | 'full' = 'full'): Promise<NativePost[]> {
+    const lite = (columns: string) => includeSearchText === 'full' ? columns : columns.replace('body_html AS body_markdown, body_html, body_text', `'' AS body_markdown, '' AS body_html, ${includeSearchText ? 'body_text' : 'substr(body_text,1,160) AS body_text'}`).replace('body_markdown, body_html,\n  body_text', `'' AS body_markdown, '' AS body_html, ${includeSearchText ? 'body_text' : 'substr(body_text,1,160) AS body_text'}`);
+    const native = await this.database.prepare(`SELECT ${lite(POST_COLUMNS)} FROM native_posts
       WHERE status = 'published' ORDER BY global_sequence DESC`).all<NativePostRow>();
-    const legacy = await this.database.prepare(`SELECT ${LEGACY_POST_COLUMNS} FROM legacy_posts
+    const legacy = await this.database.prepare(`SELECT ${lite(LEGACY_POST_COLUMNS)} FROM legacy_posts
       WHERE import_complete = 1 ORDER BY global_sequence DESC`).all<NativePostRow>();
     return [...(native.results ?? []), ...(legacy.results ?? [])].map(postFromRow)
       .sort((left, right) => (right.globalSequence ?? 0) - (left.globalSequence ?? 0));

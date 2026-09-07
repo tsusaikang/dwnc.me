@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { createContext, runInContext } from 'node:vm';
 import { load } from 'cheerio';
 import { adminHtml } from '../src/lib/admin-ui.ts';
+import { CmsConfigurationStore } from '../src/lib/cms-configuration.ts';
+import { webcrypto } from 'node:crypto';
 import { NativePostStore } from '../src/lib/native-post-store.ts';
 import { normalizeEditorPostInput } from '../src/lib/native-content.ts';
 import { createEditorDatabase } from './fixtures/editor-database.mjs';
@@ -15,7 +17,7 @@ class Element {
   setAttribute(name, value) { this[name] = value; }
   removeAttribute(name) { delete this[name]; }
   addEventListener(name, handler) { (this.listeners[name] ??= []).push(handler); }
-  querySelectorAll(selector) { const attribute = selector.match(/^\[([^=]+)="([^"]*)"\]$/); return this.children.flatMap((child) => [...((attribute ? child[attribute[1]] === attribute[2] : child.tag === selector) ? [child] : []), ...child.querySelectorAll(selector)]); }
+  querySelectorAll(selector) { const attribute = selector.match(/^\[([^=]+)="([^"]*)"\]$/); return this.children.filter(child => child instanceof Element).flatMap((child) => [...((attribute ? child[attribute[1]] === attribute[2] : child.tag === selector) ? [child] : []), ...child.querySelectorAll(selector)]); }
   querySelector(selector) { return this.querySelectorAll(selector)[0] ?? null; }
   contains(node) { return this.children.includes(node); }
   focus(options) { this.focused = true; this.focusOptions = options; }
@@ -28,6 +30,7 @@ class Element {
 }
 const database = await createEditorDatabase();
 const store = new NativePostStore(database);
+const configuration = new CmsConfigurationStore(database);
 const draft = await store.createDraft({ id: 'daily', slug: '일상', label: '일상' });
 const input = { title: '원래 제목', description: '설명', bodyMarkdown: '본문', categoryId: 'daily', tags: [], coverMediaId: null };
 const saved = await store.update(draft.id, 0, input);
@@ -42,7 +45,7 @@ let saveStarted;
 const requests = [];
 const document = { body: new Element(), documentElement: new Element(), getElementById: (id) => elements.get(id), createElement: (tag) => Object.assign(new Element(), { tag }), addEventListener() {}, querySelector: () => new Element() };
 const window = { addEventListener() {}, innerHeight: 800, innerWidth: 1200, scrollY: 0, scrollTo({ top }) { this.scrollY = top; }, getSelection: () => ({ rangeCount: 0 }) };
-const context = createContext({ document, Element, window, Date, Error, console, Response, AbortController, setTimeout: () => 1, clearTimeout() {}, fetch: async (path, options = {}) => {
+const context = createContext({ document, Element, window, Date, Error, console, Response, AbortController, URLSearchParams, URL, structuredClone, crypto:webcrypto, setTimeout: () => 1, clearTimeout() {}, fetch: async (path, options = {}) => {
   requests.push({ path, method: options.method ?? 'GET', body: options.body ? JSON.parse(options.body) : null });
   if (failure) {
     const status = failure; failure = null;
@@ -51,8 +54,13 @@ const context = createContext({ document, Element, window, Date, Error, console,
     if (status === 'html') return new Response('<html>Login</html>', { headers: { 'content-type': 'text/html' } });
     return Response.json({ error: '합성 오류', code: status === 401 ? 'authentication_required' : 'request_failed' }, { status });
   }
-  const id = path.split('/')[3];
+  const requestPath=new URL(path,'http://fixture.invalid').pathname;
+  const id = requestPath.split('/')[3];
   try {
+    if(requestPath==='/api/categories'){const result=options.method==='PUT'?await configuration.saveCategories(JSON.parse(options.body).expectedRevision,JSON.parse(options.body).categories):await configuration.categories();return Response.json({categories:result.value,revision:result.revision});}
+    if(requestPath==='/api/settings'){const result=options.method==='PUT'?await configuration.saveSettings(JSON.parse(options.body).expectedRevision,JSON.parse(options.body).settings):await configuration.settings();return Response.json({settings:result.value,revision:result.revision});}
+    if(requestPath==='/api/tags')return Response.json({tags:[]});
+    if(requestPath.endsWith('/media'))return Response.json({media:await store.mediaForPost(id)});
     if (options.method === 'PUT') {
       const { expectedRevision, input } = JSON.parse(options.body);
       if (holdSave) { saveStarted?.(); await holdSave; holdSave = null; }
@@ -61,7 +69,7 @@ const context = createContext({ document, Element, window, Date, Error, console,
     if (path.endsWith('/publish')) { if (holdPublish) await holdPublish; return Response.json({ post: await store.publish(id, JSON.parse(options.body).expectedRevision) }); }
     if (path.endsWith('/preview')) return Response.json({ html: normalizeEditorPostInput(JSON.parse(options.body).input, await store.getForAdmin(id), { requirePublishable: false }).bodyHtml });
     if (path === '/api/posts' && options.method === 'POST') return Response.json({ post: await store.createDraft({ id: 'daily', slug: '일상', label: '일상' }) });
-    if (path === '/api/posts') return Response.json({ posts: await store.listForAdmin() });
+    if (requestPath === '/api/posts') return Response.json({ posts: await store.listForAdmin() });
     return Response.json({ post: await store.getForAdmin(id) });
   } catch (error) { return Response.json({ error: error.message, code: 'revision_conflict' }, { status: 409 }); }
 } });
@@ -255,5 +263,75 @@ assert.equal(field('postsPanel').hidden, true);
 assert.equal(field('title').value, '');
 assert.equal((await store.listForAdmin()).length, 3);
 assert.equal((await store.listPublished()).length, 1);
+
+// Management forms keep their input on failure and require explicit resolution
+// of a competing settings save, independently of the post working copy.
+await field('showPosts').onclick();
+await field('manageSettings').onclick();
+assert.equal(field('managementDialog').open, true);
+let settingsTitle = field('managementContent').querySelectorAll('input')[0];
+settingsTitle.value = '합성 블로그 이름'; settingsTitle.oninput();
+await field('closeManagement').onclick();await field('manageCategories').onclick();
+await field('closeManagement').onclick();await field('manageSettings').onclick();
+assert.equal(field('managementContent').querySelectorAll('input')[0].value,settingsTitle.value);
+assert.equal(runInContext('hasManagementChanges()',context),true);
+failure = 500;
+await field('saveManagement').onclick();
+assert.match(field('managementError').textContent, /합성 오류/u);
+assert.equal(field('managementContent').querySelectorAll('input')[0].value, '합성 블로그 이름');
+assert.notEqual((await configuration.settings()).value.title, '합성 블로그 이름');
+await field('saveManagement').onclick();
+assert.equal((await configuration.settings()).value.title, '합성 블로그 이름');
+settingsTitle = field('managementContent').querySelectorAll('input')[0];
+settingsTitle.value = '이 화면의 설정'; settingsTitle.oninput();
+const remoteSettings = await configuration.settings();
+await configuration.saveSettings(remoteSettings.revision, { ...remoteSettings.value, title: '다른 화면의 설정' });
+await field('saveManagement').onclick();
+assert.match(field('managementError').textContent, /다른 곳/u);
+assert.equal(field('managementContent').querySelectorAll('input')[0].value, '이 화면의 설정');
+await field('keepManagement').onclick();
+assert.equal((await configuration.settings()).value.title, '다른 화면의 설정');
+assert.equal(field('saveManagement').textContent, '현재 입력으로 저장');
+await field('saveManagement').onclick();
+assert.equal((await configuration.settings()).value.title, '이 화면의 설정');
+await field('closeManagement').onclick();
+await field('manageCategories').onclick();
+const categoryAdd = field('managementContent').querySelectorAll('button').find(button => button.textContent === '카테고리 추가');
+categoryAdd.onclick();
+const names = field('managementContent').querySelectorAll('input');
+names.at(-1).value = '새 합성 갈래'; names.at(-1).oninput();
+await field('saveManagement').onclick();
+assert.ok((await configuration.categories()).value.some(category => category.label === '새 합성 갈래'));
+assert.ok(field('category').children.some(option => option.textContent === '새 합성 갈래'));
+await field('closeManagement').onclick();
+await field('resumeEditing').onclick();
+const activePost = await runInContext('current', context);
+await store.addMedia({ id:'123e4567-e89b-42d3-a456-426614174012',postId:activePost.id,publicPath:'/media/native/123e4567-e89b-42d3-a456-426614174012.png',objectKey:'media/native/123e4567-e89b-42d3-a456-426614174012.png',sha256:'a'.repeat(64),bytes:1,mime:'image/png',alt:'합성 대표사진',createdAt:new Date().toISOString() });
+await field('chooseCover').onclick();
+assert.equal(field('coverDialog').open, true);
+field('coverGrid').querySelectorAll('button')[0].onclick();
+field('coverAlt').value = '직접 쓴 사진 설명';
+await field('applyCover').onclick();
+await flush();
+assert.equal((await store.getForAdmin(activePost.id)).coverPath, '/media/native/123e4567-e89b-42d3-a456-426614174012.png');
+assert.equal((await store.getForAdmin(activePost.id)).coverAlt, '직접 쓴 사진 설명');
+assert.equal((await store.listPublished()).length, 1);
+await field('chooseCover').onclick();
+field('coverAlt').value = 'local cover description';
+await field('applyCover').onclick();
+const coverRemote = await store.getForAdmin(activePost.id);
+await store.update(activePost.id, coverRemote.revision, { ...coverRemote, coverPath: null, coverAlt: 'remote cover description' });
+await flush();
+assert.equal(field('keepLocal').hidden, false);
+await field('keepLocal').onclick();
+assert.equal(runInContext('current.coverPath', context), '/media/native/123e4567-e89b-42d3-a456-426614174012.png');
+assert.equal(runInContext('current.coverAlt', context), 'local cover description');
+assert.equal((await store.getForAdmin(activePost.id)).coverPath, null);
+await field('retrySave').onclick();
+assert.equal((await store.getForAdmin(activePost.id)).coverAlt, 'local cover description');
+assert.equal((await store.getForAdmin(activePost.id)).coverPath, '/media/native/123e4567-e89b-42d3-a456-426614174012.png');
+field('postSearch').value='찾을 글';field('postCategory').value='daily';field('postStatus').value='changed';
+await field('showPosts').onclick();await field('postStatus').onchange();await tick();
+assert.ok(requests.some(request=>request.path.includes('q=%EC%B0%BE%EC%9D%84+%EA%B8%80')&&request.path.includes('categoryId=daily')&&request.path.includes('status=changed')));
 
 console.log(JSON.stringify({ suite: 'editor-ui-state', status: 'PASS', behavior: 'actual emitted UI, preserved list/editor navigation, preview dialog and focus, autosave isolation, failure retry, login continuation, conflict choices, in-flight edit, flush-before-publish, edit lock and new post' }));

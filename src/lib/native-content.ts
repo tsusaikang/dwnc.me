@@ -1,4 +1,5 @@
 import { taxonomyNodeById } from './taxonomy.ts';
+import type { CmsCategory } from './cms-configuration.ts';
 import sanitizeHtml from 'sanitize-html';
 
 export const NATIVE_POST_ID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
@@ -17,6 +18,8 @@ export interface NativePostInput {
   categoryId: string;
   tags: string[];
   coverMediaId: string | null;
+  coverPath?: string | null;
+  coverAlt?: string;
   bodyFormat?: 'markdown' | 'html';
 }
 
@@ -158,7 +161,7 @@ export function nativeImagePaths(markdown: string) {
 const LEGACY_TAGS = [
   'a', 'aside', 'b', 'blockquote', 'br', 'caption', 'code', 'col', 'colgroup', 'del', 'div', 'em', 'figcaption', 'figure', 'font',
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'iframe', 'img', 'li', 'ol', 'p',
-  'pre', 's', 'span', 'strong', 'sub', 'sup', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'u', 'ul', 'video',
+  'pre', 'details', 'summary', 's', 'span', 'strong', 'sub', 'sup', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'u', 'ul', 'video',
 ];
 const LEGACY_ATTRIBUTES = [
   'alt', 'aria-hidden', 'aria-label', 'aria-labelledby', 'class', 'data-*', 'height', 'id',
@@ -200,23 +203,25 @@ export function sanitizeNativeHtml(value: string) {
     allowedTags: LEGACY_TAGS.filter((tag) => !['aside', 'iframe', 'video'].includes(tag)),
     allowedAttributes: {
       ...TABLE_LIST_ATTRIBUTES,
-      '*': ['style', 'align', 'title', 'lang', 'dir'],
+      '*': ['style', 'align', 'title', 'lang', 'dir', 'class'],
       a: ['href', 'rel', 'target'],
-      img: ['src', 'alt', 'width', 'height', 'loading', 'decoding'],
-      figure: ['class'],
+      img: ['src', 'alt', 'width', 'height', 'loading', 'decoding', 'style'],
+      figure: ['class', 'data-ke-type', 'style'],
     },
-    allowedClasses: { figure: ['imageblock'] },
+    allowedClasses: { figure: ['imageblock', 'alignLeft', 'alignCenter', 'alignRight'], a: ['og-image'], div: ['og-image', 'og-text'], p: ['og-title', 'og-desc', 'og-host'], span: ['og-image', 'og-text', 'og-title', 'og-desc', 'og-host'] },
     allowedStyles: {
       '*': {
         color: [COLOR_STYLE], 'background-color': [COLOR_STYLE],
         'font-size': [SIZE_STYLE],
+        'font-family': [/^(?:system-ui|sans-serif|serif|monospace|Arial|Georgia|['"]?나눔고딕['"]?|['"]?나눔명조['"]?)(?:\s*,\s*(?:sans-serif|serif|monospace))?(?:\s*!important)?$/iu],
         'font-weight': [/^(?:normal|bold|bolder|lighter|[1-9]00)(?:\s*!important)?$/iu],
         'font-style': [/^(?:normal|italic|oblique)(?:\s*!important)?$/iu],
         'text-decoration': [/^(?:none|underline|line-through|overline)(?:\s+(?:underline|line-through|overline))*(?:\s*!important)?$/iu],
         'text-decoration-line': [/^(?:none|underline|line-through|overline)(?:\s+(?:underline|line-through|overline))*(?:\s*!important)?$/iu],
         'text-align': [/^(?:left|center|right|justify|start|end)(?:\s*!important)?$/iu],
         'vertical-align': [/^(?:top|middle|bottom|baseline|sub|super)$/iu],
-        width: [SIZE_STYLE], height: [SIZE_STYLE],
+        width: [SIZE_STYLE], height: [SIZE_STYLE], 'max-width': [SIZE_STYLE],
+        'margin-left': [/^(?:auto|0(?:px)?)(?:\s*!important)?$/iu], 'margin-right': [/^(?:auto|0(?:px)?)(?:\s*!important)?$/iu],
       },
     },
     allowedSchemes: ['http', 'https', 'mailto'],
@@ -251,14 +256,14 @@ function normalizeTags(value: unknown) {
   return [...new Set(tags)];
 }
 
-export function normalizeNativePostInput(value: unknown, { requirePublishable = true } = {}): NormalizedNativePostInput {
+export function normalizeNativePostInput(value: unknown, { requirePublishable = true, categories }: { requirePublishable?: boolean; categories?: CmsCategory[] } = {}): NormalizedNativePostInput {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('NATIVE_E_INPUT');
   const input = value as Record<string, unknown>;
   const title = compact(String(input.title ?? ''));
   const description = compact(String(input.description ?? ''));
   const bodyMarkdown = String(input.bodyMarkdown ?? '').replace(/\r\n?/gu, '\n').normalize('NFC');
   const categoryId = compact(String(input.categoryId ?? ''));
-  const category = taxonomyNodeById(categoryId);
+  const category = categories ? categories.find((node) => node.id === categoryId) : taxonomyNodeById(categoryId);
   const coverMediaId = input.coverMediaId === null || input.coverMediaId === undefined || input.coverMediaId === ''
     ? null : compact(String(input.coverMediaId));
   if ((requirePublishable && (!title || !bodyMarkdown.trim()))
@@ -282,7 +287,7 @@ export function normalizeNativePostInput(value: unknown, { requirePublishable = 
   };
 }
 
-function normalizeHtmlPostInput(value: unknown, { requirePublishable = true, legacy = false } = {}): NormalizedLegacyPostInput {
+function normalizeHtmlPostInput(value: unknown, { requirePublishable = true, legacy = false, categories }: { requirePublishable?: boolean; legacy?: boolean; categories?: CmsCategory[] } = {}): NormalizedLegacyPostInput {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('NATIVE_E_INPUT');
   const input = value as Record<string, unknown>;
   const title = compact(String(input.title ?? ''));
@@ -291,7 +296,7 @@ function normalizeHtmlPostInput(value: unknown, { requirePublishable = true, leg
   if (rawHtml.length > BODY_LIMIT) throw new Error('NATIVE_E_INPUT');
   const bodyHtml = legacy ? sanitizeLegacyHtml(rawHtml) : sanitizeNativeHtml(rawHtml);
   const categoryId = compact(String(input.categoryId ?? ''));
-  const category = taxonomyNodeById(categoryId);
+  const category = categories ? categories.find((node) => node.id === categoryId) : taxonomyNodeById(categoryId);
   const coverMediaId = input.coverMediaId === null || input.coverMediaId === undefined || input.coverMediaId === ''
     ? null : compact(String(input.coverMediaId));
   const bodyText = compact(sanitizeHtml(bodyHtml, { allowedTags: [], allowedAttributes: {} }));
@@ -318,13 +323,13 @@ function normalizeHtmlPostInput(value: unknown, { requirePublishable = true, leg
   };
 }
 
-export function normalizeLegacyPostInput(value: unknown, options: { requirePublishable?: boolean } = {}) {
+export function normalizeLegacyPostInput(value: unknown, options: { requirePublishable?: boolean; categories?: CmsCategory[] } = {}) {
   return normalizeHtmlPostInput(value, { ...options, legacy: true });
 }
 
 export function normalizeEditorPostInput(value: unknown,
   current: { bodyFormat: 'markdown' | 'html'; sourceKind: 'native' | 'legacy' },
-  options: { requirePublishable?: boolean } = {}) {
+  options: { requirePublishable?: boolean; categories?: CmsCategory[] } = {}) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('NATIVE_E_INPUT');
   const format = (value as Record<string, unknown>).bodyFormat ?? current.bodyFormat;
   if ((format !== 'markdown' && format !== 'html') || (current.sourceKind === 'legacy' && format !== 'html')) {

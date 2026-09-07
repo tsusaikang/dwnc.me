@@ -48,6 +48,7 @@ function createDatabase() {
   database.sqlite.exec(legacyImportStateMigration);
   database.sqlite.exec(workingCopyMigration);
   database.sqlite.exec(bodyFormatMigration);
+  database.sqlite.exec(managementMigration);
   return database;
 }
 
@@ -56,6 +57,7 @@ const legacyMigration = await readFile(new URL('../migrations/0002_legacy_editor
 const legacyImportStateMigration = await readFile(new URL('../migrations/0003_legacy_import_state.sql', import.meta.url), 'utf8');
 const workingCopyMigration = await readFile(new URL('../migrations/0004_editor_working_copies.sql', import.meta.url), 'utf8');
 const bodyFormatMigration = await readFile(new URL('../migrations/0005_editor_body_format.sql', import.meta.url), 'utf8');
+const managementMigration = await readFile(new URL('../migrations/0006_cms_management.sql', import.meta.url), 'utf8');
 const defaultInput = {
   title: '웹에서 쓴 첫 글', description: '새 편집기 설명', bodyMarkdown: '# 본문\n\n안전한 **내용**',
   categoryId: 'daily', tags: ['웹 기록'], coverMediaId: null,
@@ -281,6 +283,8 @@ class TestHtmlRewriter {
       $(selector).each((_index, node) => handler.element({
         setInnerContent(value, options = {}) { options.html ? $(node).html(value) : $(node).text(value); },
         setAttribute(name, value) { $(node).attr(name, value); },
+        append(value, options = {}) { $(node).append(options.html ? value : $('<span></span>').text(value).html()); },
+        remove() { $(node).remove(); },
       }));
     }
     headers.delete('content-length');
@@ -326,7 +330,7 @@ equal((await publicWorker(new Request('https://dwnc.me/posts/9999'), publicEnv, 
 const home = await (await publicWorker(new Request('https://dwnc.me/'), publicEnv, {})).text();
 ok(home.includes(defaultInput.title));
 equal((home.match(/<li><a href="\/posts\//gu) ?? []).length, 7);
-ok(home.includes('/media/legacy-feature.webp')); ok(home.includes('기존 대표 이미지')); ok(home.includes('id="home-page-script"'));
+ok(home.includes('/media/tistory/1/cover.jpg')); ok(home.includes('대표')); ok(home.includes('id="home-page-script"'));
 const archive = await (await publicWorker(new Request('https://dwnc.me/archive'), publicEnv, {})).text();
 ok(archive.includes('<h2>2026</h2>')); ok(archive.includes('<h2>2025</h2>'));
 

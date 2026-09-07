@@ -100,13 +100,14 @@ old.sqlite.prepare(`INSERT INTO native_posts (id, global_sequence, status, title
 old.sqlite.exec(`INSERT INTO editor_working_copies (post_id,title,description,body_markdown,body_html,body_text,category_id,category_slug,category_label,tags_json,cover_media_id,revision,published_revision,updated_at) SELECT id,title,description,body_markdown,body_html,body_text,category_id,category_slug,category_label,tags_json,cover_media_id,revision+1,revision,updated_at FROM native_posts`);
 const oldPublic = { ...old.sqlite.prepare('SELECT * FROM native_posts').get() };
 old.sqlite.exec(await readFile(new URL('../migrations/0005_editor_body_format.sql', import.meta.url), 'utf8'));
+old.sqlite.exec(await readFile(new URL('../migrations/0006_cms_management.sql', import.meta.url), 'utf8'));
 const upgradedStore = new NativePostStore(old);
 const upgraded = await upgradedStore.getForAdmin(oldId);
 assert.equal(upgraded.bodyFormat, 'markdown');
 assert.equal(upgraded.sourceKind, 'native');
 assert.equal(upgraded.bodyMarkdown, markdown);
-const { body_format, ...upgradedPublicRow } = old.sqlite.prepare('SELECT * FROM native_posts').get();
-assert.equal(body_format, 'markdown');
+const { body_format, cover_path, cover_alt, ...upgradedPublicRow } = old.sqlite.prepare('SELECT * FROM native_posts').get();
+assert.equal(body_format, 'markdown'); assert.equal(cover_path,null); assert.equal(cover_alt,'');
 assert.deepEqual(upgradedPublicRow, oldPublic);
 const converted = await upgradedStore.update(oldId, upgraded.revision, { ...base, bodyFormat: 'html', bodyMarkdown: upgraded.bodyHtml });
 assert.equal(converted.bodyFormat, 'html');

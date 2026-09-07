@@ -772,13 +772,13 @@
 
   .naver-content :is(span, p, div) {
     max-width: 100%;
-    font-family: inherit !important;
+    font-family: inherit;
     line-height: inherit;
     overflow-wrap: anywhere;
   }
 
   .naver-content span {
-    font-size: inherit !important;
+    font-size: inherit;
   }
 
   .naver-content :is(.se-component, .se_component_wrap) {
@@ -817,7 +817,7 @@
   .naver-content :is(.se-caption, .se_mediaCaption) {
     margin-top: 9px;
     color: var(--ink-soft);
-    font-size: 0.78rem !important;
+    font-size: 0.78rem;
     text-align: center;
   }
 
@@ -1927,14 +1927,14 @@
     margin-top: 10px;
     color: var(--ink-soft);
     font-family: var(--sans);
-    font-size: 0.73rem !important;
-    line-height: 1.55 !important;
+    font-size: 0.73rem;
+    line-height: 1.55;
     text-align: left;
   }
 
   .naver-content :is(span, p, div) {
-    font-family: inherit !important;
-    line-height: inherit !important;
+    font-family: inherit;
+    line-height: inherit;
   }
 
   .naver-content :is(img, video, iframe) {

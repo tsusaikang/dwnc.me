@@ -1,4 +1,5 @@
 // Local-only synthetic editor scenario server. No external data or credentials.
+import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import adminWorker from '../src/admin-worker.ts';
@@ -29,6 +30,9 @@ const bucket = {
   async get(key) { const object = objects.get(key); return object ? { ...object, body: object.bytes } : null; },
   async head(key) { return objects.get(key) ?? null; },
 };
+const legacyImageSha = createHash('sha256').update(imageBytes).digest('hex');
+await bucket.put(legacyImage.slice(1),imageBytes,{sha256:legacyImageSha,httpMetadata:{contentType:'image/png'},customMetadata:{sha256:legacyImageSha,contract:'dwnc-native-media-v1'}});
+await store.addMedia({id:'123e4567-e89b-42d3-a456-426614174000',postId:'legacy-1',publicPath:legacyImage,objectKey:legacyImage.slice(1),sha256:legacyImageSha,bytes:imageBytes.length,mime:'image/png',alt:'합성 시험 이미지',createdAt:'2026-09-01T00:00:00Z'});
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const jwk = Object.assign(publicKey.export({ format: 'jwk' }), { kid: 'fixture', alg: 'RS256', use: 'sig' });
 const env = { ACCESS_TEAM_DOMAIN: 'https://fixture.cloudflareaccess.com', ACCESS_AUD: 'synthetic-editor-fixture-audience', ACCESS_ALLOWED_EMAIL: 'owner@example.test', NATIVE_DB: database, NATIVE_MEDIA_BUCKET: bucket, MEDIA_BUCKET: bucket };
@@ -42,11 +46,13 @@ globalThis.fetch = async (url) => {
 let mode = 'normal';
 const counts = { saves: 0, publishes: 0 };
 const controls = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>합성 CMS 시험</title><style>body{font:18px sans-serif;max-width:900px;margin:40px auto}a{display:block;margin:18px}</style><h1>로컬 합성 CMS 시험</h1><a href="/" target="editor">관리자 열기</a><a href="/__fixture/public" target="public">방문자 사본 확인</a>${[['fail','다음 저장 실패'],['auth','로그인 만료'],['conflict','다른 세션에서 수정'],['slow','다음 저장 3초 지연'],['slow-publish','다음 공개 반영 3초 지연'],['normal','정상으로 전환']].map(([key,label])=>`<a href="/__fixture/action/${key}">${label}</a>`).join('')}<a href="/__fixture/state">현재 합성 데이터</a></html>`;
+const fontFiles = new Set(['NanumGothic.woff','NanumGothicBold.ttf','NanumMyeongjo.woff','NanumMyeongjoBold.woff','NanumBarunGothic.woff','NanumBarunGothicBold.woff'].map(name=>'/fonts/nanum/'+name));
 const server = createServer(async (incoming, outgoing) => {
   try {
     const url = new URL(incoming.url, 'http://127.0.0.1:4322');
     let response;
-    if (url.pathname === '/__fixture') response = new Response(controls, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    if (fontFiles.has(url.pathname)) response = new Response(await readFile(new URL('../public'+url.pathname,import.meta.url)),{headers:{'content-type':url.pathname.endsWith('.ttf')?'font/ttf':'font/woff'}});
+    else if (url.pathname === '/__fixture') response = new Response(controls, { headers: { 'content-type': 'text/html; charset=utf-8' } });
     else if (url.pathname === '/__fixture/state') response = Response.json({ mode, counts, admin: await store.listForAdmin(), published: (await store.listPublished()).map(({ id, title, revision, bodyMarkdown }) => ({ id, title, revision, bodyMarkdown })) });
     else if (url.pathname === '/__fixture/public') {
       const posts = await store.listPublished();

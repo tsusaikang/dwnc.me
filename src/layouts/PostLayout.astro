@@ -6,6 +6,7 @@ import type { TagNode } from '../lib/taxonomy';
 import { resolvePostCategory, taxonomyLineage } from '../lib/taxonomy';
 import BaseLayout from './BaseLayout.astro';
 import Breadcrumbs from '../components/Breadcrumbs.astro';
+import { prepareImportedPresentation, IMPORTED_PRESENTATION_CSS, ENGINE_DIAGRAM_CSS, ENGINE_DIAGRAM_BOOTSTRAP } from '../lib/imported-presentation';
 
 interface Props {
   post: PostEntry;
@@ -36,6 +37,10 @@ const isPhotoEssay = imageCount >= 8
   || (imageCount >= 4 && textLength / imageCount < 400)
   || isShortVisualPost;
 const showCover = Boolean(data.cover && !sourceBody.includes(data.cover));
+const presentationHtml = prepareImportedPresentation(await Astro.slots.render('default'), data.source === 'native' ? undefined : {
+  source: data.source, sourceId: data.sourceId,
+});
+const hasEngineDiagram = presentationHtml.includes('data-engine-diagram');
 ---
 
 <BaseLayout
@@ -65,8 +70,11 @@ const showCover = Boolean(data.cover && !sourceBody.includes(data.cover));
     {showCover && <img class="post-cover" src={data.cover} alt={data.coverAlt} decoding="async" />}
 
     <div class="prose">
-      <slot />
+      <Fragment set:html={presentationHtml} />
     </div>
+    <style is:inline set:html={IMPORTED_PRESENTATION_CSS} />
+    {hasEngineDiagram && <style is:inline set:html={ENGINE_DIAGRAM_CSS} />}
+    {hasEngineDiagram && <script is:inline set:html={ENGINE_DIAGRAM_BOOTSTRAP} />}
 
     <footer class="post-footer">
       <div class="post-footer__inner">
