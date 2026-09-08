@@ -1,3 +1,4 @@
+import { eligiblePostView, PostViewStatistics } from './post-view-statistics.ts';
 import { ContentOperations, boundedBody } from './content-operations.ts';
 import edgeRedirects from '../../docs/EDGE_REDIRECTS_V1.json' with { type: 'json' };
 import { SITE_MEDIA_PATH_PATTERN } from './cms-configuration.ts';
@@ -270,8 +271,18 @@ function protectedPrompt(path: string, failed = false) {
  return new Response(`<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="robots" content="noindex,nofollow"><title>보호 글</title><main><h1>보호 글</h1><p>비밀번호를 입력하면 이 글과 사진을 1시간 동안 볼 수 있습니다.</p>${failed?'<p role="alert">비밀번호를 확인하거나 잠시 후 다시 시도해 주세요.</p>':''}<form method="post" action="${escapeHtml(path)}"><label>비밀번호 <input name="password" type="password" maxlength="128" required autocomplete="current-password"></label><button type="submit">글 보기</button></form></main></html>`,{status:failed?403:200,headers:{'content-type':'text/html; charset=utf-8','cache-control':'no-store','x-robots-tag':'noindex, nofollow','content-security-policy':"default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",'x-content-type-options':'nosniff'}});
 }
 
+async function countedPostResponse(request: Request, post: Pick<NativePost,'id'|'status'|'visibility'|'scheduledAt'>,
+  response: Response, env: NativePublicEnvironment, context: ExecutionContext, timezone: string, countViews: boolean) {
+  if (countViews && env.DWNC_DEPLOYMENT_ENVIRONMENT !== 'staging' && eligiblePostView(request,post,response)) {
+    const recording = new PostViewStatistics(env.NATIVE_DB).increment(post.id,timezone)
+      .catch(() => { console.error(JSON.stringify({event:'dwnc_statistics_error',code:'STATS_W_WRITE'})); });
+    if (typeof context.waitUntil === 'function') context.waitUntil(recording); else await recording;
+  }
+  return response;
+}
+
 export function createNativePublicWorker(staticHandler: StaticHandler) {
-  const handle = async (request: Request, env: NativePublicEnvironment, context: ExecutionContext): Promise<Response> => {
+  const handle = async (request: Request, env: NativePublicEnvironment, context: ExecutionContext, countViews = true): Promise<Response> => {
     const originalRequest = request;
     const url = new URL(request.url); const store = new NativePostStore(env.NATIVE_DB);
     let normalized: string;try{normalized=decodeURIComponent(url.pathname).replace(/\/index\.html$/u,'').replace(/\/$/u,'')||'/';}catch{return unavailable(request.method);}
@@ -292,7 +303,7 @@ export function createNativePublicWorker(staticHandler: StaticHandler) {
       || url.pathname === '/tags' || url.pathname === '/search-index.json' || url.pathname === '/rss.xml'
       || url.pathname === '/sitemap-0.xml' || /^\/(?:category|tag)\/[^/]+(?:\/page\/[1-9]\d*)?$/u.test(url.pathname);
     if (request.method === 'HEAD' && (aggregate || postMatch || pageMatch)) {
-      const response = await handle(new Request(originalRequest, { method: 'GET' }), env, context);
+      const response = await handle(new Request(originalRequest, { method: 'GET' }), env, context, false);
       try { await response.body?.cancel(); } catch {}
       return headOf(response);
     }
@@ -317,15 +328,23 @@ export function createNativePublicWorker(staticHandler: StaticHandler) {
       if (request.method !== 'GET') return withVersion(new Response('Method not allowed.\n', { status: 405, headers: { allow: 'GET, HEAD' } }), env);
       const post = raw;
       if (!post && alias && !(await store.managedSequences()).has(Number(postMatch![1])))return new Response(null,{status:308,headers:{location:alias.to,'cache-control':'no-store'}});
-      if (!post) return pageMatch || Number(postMatch![1]) >= 597 || (await store.managedSequences()).has(Number(postMatch![1]))
-        ? withVersion(unavailable(), env) : staticHandler(request, env, context);
+      if (!post) {
+        const sequence=Number(postMatch?.[1]);
+        if(pageMatch || sequence>=597 || (await store.managedSequences()).has(sequence))return withVersion(unavailable(),env);
+        const fallback=await staticHandler(request,env,context);
+        return publicSequence.some(entry=>entry.globalSequence===sequence)
+          ? countedPostResponse(originalRequest,{id:`legacy-${sequence}`,status:'published',visibility:'public'},fallback,env,context,settings.timezone,countViews)
+          : fallback;
+      }
       if(post.kind==='page' && !pageMatch)return new Response(null,{status:308,headers:{location:post.publicPath!,'cache-control':'no-store'}});
       if(alias || originalPath!==url.pathname)return new Response(null,{status:308,headers:{location:url.pathname,'cache-control':'no-store'}});
       const base = await pageShell(staticHandler, request, env, context);
+      if (!base.ok || !base.headers.get('content-type')?.toLowerCase().startsWith('text/html')) return withVersion(base,env);
       const posts = await combinedPosts(staticHandler, request, env, context, store,categories);
       const response = await postDocument(base, post, `https://dwnc.me${post.publicPath}`, posts,settings,categories);
       const headers = new Headers(response.headers); headers.set('cache-control', 'no-store'); headers.delete('content-length');
-      return withVersion(new Response(response.body, { status: 200, headers }), env);
+      const delivered = withVersion(new Response(response.body, { status: 200, headers }), env);
+      return countedPostResponse(originalRequest,post,delivered,env,context,settings.timezone,countViews);
     }
     if (!aggregate || request.method !== 'GET') return staticHandler(request, env, context);
     let posts: DiscoveryPost[];

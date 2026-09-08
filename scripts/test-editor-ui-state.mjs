@@ -38,6 +38,8 @@ const published = await store.publish(draft.id, saved.revision);
 const otherDraft = await store.createDraft({ id: 'daily', slug: '일상', label: '일상' });
 const html = load(adminHtml('owner@example.test'));
 const elements = new Map(html('[id]').toArray().map((node) => [node.attribs.id, Object.assign(new Element(), { hidden: 'hidden' in node.attribs, disabled: 'disabled' in node.attribs })]));
+const statisticsFixture={timezone:'Asia/Seoul',startDate:'2026-08-11',endDate:'2026-09-09',todayViews:3,totalViews:10,periodViews:7,daily:Array.from({length:30},(_,i)=>({date:new Date(Date.UTC(2026,7,11+i)).toISOString().slice(0,10),views:i===29?3:i===10?4:0})),posts:[{id:'stats-zero',title:'가나다 조회수 없는 합성 글',path:'/posts/900',views:0,totalViews:0},{id:'stats-active',title:'조회된 합성 글',path:'/posts/901',views:7,totalViews:10},...Array.from({length:23},(_,i)=>({id:'stats-'+i,title:'합성 글 '+String(i).padStart(2,'0'),path:i===0?null:'/posts/'+(902+i),views:0,totalViews:0}))]};
+let statisticsResponse=statisticsFixture;
 let failure = null;
 let holdSave = null;
 let holdPublish = null;
@@ -57,6 +59,7 @@ const context = createContext({ document, Element, window, Date, Error, console,
   const requestPath=new URL(path,'http://fixture.invalid').pathname;
   const id = requestPath.split('/')[3];
   try {
+    if(requestPath==='/api/statistics')return Response.json(statisticsResponse);
     if(requestPath==='/api/categories'){const result=options.method==='PUT'?await configuration.saveCategories(JSON.parse(options.body).expectedRevision,JSON.parse(options.body).categories):await configuration.categories();return Response.json({categories:result.value,revision:result.revision});}
     if(requestPath==='/api/settings'){const result=options.method==='PUT'?await configuration.saveSettings(JSON.parse(options.body).expectedRevision,JSON.parse(options.body).settings):await configuration.settings();return Response.json({settings:result.value,revision:result.revision});}
     if(requestPath==='/api/templates'){const result=options.method==='PUT'?await configuration.saveTemplates(JSON.parse(options.body).expectedRevision,JSON.parse(options.body).templates):await configuration.templates();return Response.json({templates:result.value,revision:result.revision});}
@@ -369,5 +372,27 @@ await field('publish').onclick();assert.equal(runInContext('current.visibility',
 await field('publicationOptions').onclick();field('publicationVisibility').value='protected';field('publicationVisibility').onchange();field('protectionPassword').value='synthetic-only-password';await field('applyPublication').onclick();
 assert.equal(runInContext('current.visibility',context),'protected');assert.equal(field('protectionPassword').value,'');
 await field('publicationOptions').onclick();assert.equal(field('protectionPassword').value,'');await field('applyPublication').onclick();assert.equal(runInContext('current.visibility',context),'protected');
+
+// Statistics are read-only: opening or failing must not flush/block the editor.
+edit('통계를 여는 동안 유지할 미저장 제목');
+const beforeStatistics=requests.length;
+await field('manageStatistics').onclick();
+assert.deepEqual(requests.slice(beforeStatistics).map(request=>request.method),['GET']);
+assert.equal(field('title').value,'통계를 여는 동안 유지할 미저장 제목');
+assert.equal(runInContext('dirty',context),true);assert.equal(runInContext('blocked',context),null);
+assert.equal(field('statisticsDialog').open,true);assert.equal(field('statisticsReport').hidden,false);
+assert.equal(field('statisticsToday').textContent,'3');assert.equal(field('statisticsRecent').textContent,'7');assert.equal(field('statisticsTotal').textContent,'10');
+assert.match(field('statisticsPeriod').textContent,/2026-08-11 ~ 2026-09-09/u);assert.match(field('statisticsPeriod').textContent,/Asia\/Seoul/u);
+assert.equal(field('statisticsChart').children.length,30);assert.equal(field('statisticsDailyRows').children.length,30);
+assert.equal(field('statisticsPostRows').children.length,20);assert.equal(field('statisticsPage').textContent,'1 / 2');
+await field('statisticsNext').onclick();assert.equal(field('statisticsPostRows').children.length,5);assert.equal(field('statisticsNext').disabled,true);
+field('statisticsSearch').value='조회수 없는';field('statisticsSearch').oninput();assert.equal(field('statisticsPostRows').children.length,1);assert.equal(field('statisticsPostRows').children[0].children[1].textContent,'0');assert.equal(field('statisticsPostRows').children[0].children[2].textContent,'0');
+field('statisticsSearch').value='';field('statisticsSearch').oninput();field('statisticsSort').value='title';field('statisticsSort').onchange();assert.equal(field('statisticsPostRows').children[0].children[0].textContent,'가나다 조회수 없는 합성 글');
+failure=401;await field('refreshStatistics').onclick();assert.equal(field('statisticsLogin').hidden,false);assert.equal(field('statisticsTotal').textContent,'10');assert.match(field('statisticsState').textContent,/가져온 결과/u);assert.equal(runInContext('blocked',context),null);assert.equal(field('title').value,'통계를 여는 동안 유지할 미저장 제목');
+await field('refreshStatistics').onclick();assert.equal(field('statisticsLogin').hidden,true);assert.equal(field('statisticsError').textContent,'');
+statisticsResponse={...statisticsFixture,timezone:'invalid-zone'};await field('refreshStatistics').onclick();assert.match(field('statisticsError').textContent,/시간대/u);assert.equal(field('statisticsTotal').textContent,'10');statisticsResponse=statisticsFixture;
+statisticsResponse={...statisticsFixture,todayViews:0,totalViews:0,periodViews:0,daily:statisticsFixture.daily.map(row=>({...row,views:0})),posts:statisticsFixture.posts.map(row=>({...row,views:0,totalViews:0}))};await field('refreshStatistics').onclick();assert.equal(field('statisticsToday').textContent,'0');assert.equal(field('statisticsTotal').textContent,'0');assert.equal(field('statisticsRecent').textContent,'0');assert.ok(field('statisticsChart').children.every(bar=>bar.dataset.zero==='true'));statisticsResponse=statisticsFixture;
+await field('closeStatistics').onclick();assert.equal(field('statisticsDialog').open,false);assert.equal(field('manageStatistics').focused,true);
+assert.equal(runInContext('dirty',context),true);
 
 console.log(JSON.stringify({ suite: 'editor-ui-state', status: 'PASS', behavior: 'actual emitted UI, preserved list/editor navigation, preview dialog and focus, autosave isolation, failure retry, login continuation, conflict choices, in-flight edit, flush-before-publish, edit lock and new post' }));

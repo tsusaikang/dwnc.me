@@ -1,3 +1,4 @@
+import { PostViewStatistics } from './lib/post-view-statistics.ts';
 import { boundedBody } from './lib/content-operations.ts';
 import { SITE_MEDIA_PATH_PATTERN } from './lib/cms-configuration.ts';
 import { serveSiteMedia } from './lib/native-public-worker.ts';
@@ -64,7 +65,7 @@ function sameOrigin(request: Request) {
 
 async function route(request: Request, env: AdminEnvironment, identityEmail: string, context: ExecutionContext) {
   const url = new URL(request.url);
-  if (url.hash || (url.search && !(request.method === 'GET' && url.pathname === '/api/posts')) || !sameOrigin(request)) return json({ error: '요청을 처리할 수 없습니다.' }, 403);
+  if (url.hash || (url.search && !(request.method === 'GET' && ['/api/posts','/api/statistics'].includes(url.pathname))) || !sameOrigin(request)) return json({ error: '요청을 처리할 수 없습니다.' }, 403);
   const store = new NativePostStore(env.NATIVE_DB);
   if (request.method === 'GET' && url.pathname === '/') {
     return new Response(adminHtml(identityEmail), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
@@ -81,6 +82,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
   if (NATIVE_MEDIA_PATH_PATTERN.test(url.pathname)) return serveAdminNativeMedia(request, env);
   if (url.pathname.startsWith('/media/')) return serveLegacyMedia(request, env, context);
   const config = new CmsConfigurationStore(env.NATIVE_DB);
+  if (request.method === 'GET' && url.pathname === '/api/statistics') return json(await new PostViewStatistics(env.NATIVE_DB).summary(url.searchParams));
   if (url.pathname === '/api/categories') {
     if (request.method === 'GET') {
       const result = await config.categories(); const posts = await store.listForAdmin();
@@ -186,6 +188,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
 
 function errorResponse(error: unknown) {
   const code = error instanceof Error ? error.message : '';
+  if (code === 'ADMIN_E_STATISTICS_RANGE') return json({error:'날짜는 시작일 순서대로, 오늘까지 최대 366일 범위로 지정해 주세요.'},400);
   if (code === 'NATIVE_E_REVISION') return json({ error: '다른 변경이 먼저 저장되었습니다. 현재 작성 내용은 유지됩니다.', code: 'revision_conflict' }, 409);
   if (code === 'NATIVE_E_CATEGORY_IN_USE') return json({error:'글에서 사용 중인 카테고리는 삭제할 수 없습니다. 해당 글의 카테고리를 먼저 변경해 주세요.',code:'category_in_use'},400);
   if (code === 'NATIVE_E_NOT_EMPTY') return json({error:'내용이나 사진이 있는 글은 여기서 삭제할 수 없습니다. 비어 있는 새 초안만 삭제할 수 있습니다.'},400);

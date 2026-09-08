@@ -1,3 +1,4 @@
+import { statisticsCss, statisticsDialogHtml, statisticsScript } from './admin-statistics.ts';
 import { extrasCss, extrasHtml, extrasScript } from './admin-extras.ts';
 import { IMPORTED_PRESENTATION_CSS, ENGINE_DIAGRAM_CSS } from './imported-presentation.ts';
 import { mountEngineDiagram } from './engine-diagram-client.js';
@@ -44,6 +45,7 @@ main{padding:calc(var(--editor-header-height) + 44px) 24px calc(var(--editor-foo
 .image-tools{z-index:40}.image-tools button{color:#fff}.image-tools__label{font-size:13px}.markdown-media[hidden]{display:none}
 ${formattingCss}
 ${managementCss}
+${statisticsCss}
 ${extrasCss}
 
 .preview-dialog{width:100vw;height:100dvh;max-width:none;max-height:none;margin:0;padding:0;inset:0;border:0;background:#f3f4f6;color:#222}.preview-dialog[open]{display:flex;flex-direction:column}.preview-dialog::backdrop{background:#fff}.preview-toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;padding:16px 28px;border-bottom:1px solid #e0e2e5;background:#fff;flex-shrink:0}.preview-toolbar h2{font-size:16px;font-weight:550;margin:0}.preview-toolbar p{font-size:12px;color:#888;margin:5px 0 0}.preview-toolbar button{font-size:13px;padding:8px 14px}.preview-toolbar button[aria-pressed="true"]{background:#222;color:#fff;border-color:#222}.preview-scroll{flex:1;overflow:auto;padding:44px 24px 70px;min-height:0}.preview-viewport{width:min(100%,960px);margin:0 auto;padding:54px;background:#fff;min-height:70vh;box-shadow:0 2px 18px #00000008;overflow-wrap:anywhere}.preview-viewport[data-size="mobile"]{width:min(100%,390px);padding:26px 20px}.preview-title{font-size:32px;line-height:1.45;margin:0 0 36px;letter-spacing:-.6px;overflow-wrap:anywhere}.preview-viewport[data-size="mobile"] .preview-title{font-size:25px}.preview{font-size:16px;line-height:1.8;overflow-wrap:anywhere}.preview img,.preview video,.preview iframe{max-width:100%;height:auto}.preview table{border-collapse:collapse;max-width:100%}.preview :is(td,th){border:1px solid #ccc;padding:8px}.preview blockquote{padding:.3em 1em;border-left:3px solid #aaa;margin:1em 0}.preview pre{overflow:auto}.preview a{color:#175da3}
@@ -62,6 +64,7 @@ ${ENGINE_DIAGRAM_CSS}
 <div id="saveIssue" class="save-issue" role="alert" hidden><p id="issueMessage"></p><div class="row"><button id="retrySave" type="button">다시 시도</button><a id="loginLink" href="/" target="_blank" rel="noopener">새 탭에서 로그인</a><button id="resumeLogin" type="button">로그인 완료 · 이어서 저장</button><button id="loadLatest" type="button" hidden>현재 입력 대신 최신 작업본 불러오기</button><button id="keepLocal" type="button" hidden>현재 작성본 유지</button></div></div><p id="status" class="status" aria-live="polite"></p>
 <dialog id="previewDialog" class="preview-dialog" aria-labelledby="previewHeading"><div class="preview-toolbar"><div><h2 id="previewHeading">미리보기</h2><p>현재 작업본입니다. 공개 반영 전에는 방문자에게 보이지 않습니다.</p></div><div class="row"><button id="previewDesktop" type="button" aria-pressed="true">PC</button><button id="previewMobile" type="button" aria-pressed="false">모바일</button><button id="previewClose" type="button" aria-label="미리보기 닫기">닫기 ✕</button></div></div><div class="preview-scroll"><article id="previewViewport" class="preview-viewport" data-size="desktop"><h1 id="previewTitle" class="preview-title"></h1><div id="previewBox" class="preview prose" hidden></div></article></div></dialog>
 ${managementDialogsHtml}
+${statisticsDialogHtml}
 ${publishingDialogsHtml}
 ${extrasHtml}
 <script>
@@ -90,7 +93,7 @@ function renderSaveState(){
   else if(!dirty&&!saving&&current.status==='published')message+=current.revision===current.publishedRevision?' · 공개 내용과 같습니다.':' · 공개 반영을 기다리는 변경이 있습니다.';
   updatePublicationSummary();$('saveStatus').textContent=message;$('lastSaved').textContent=(lastSavedAt?'마지막 저장 성공: '+new Date(lastSavedAt).toLocaleString('ko-KR',{timeZone:siteTimezone}):'아직 저장 성공을 확인하지 못했습니다.')+' · '+publicState;
 }
-function setBusy(value){busy=value;for(const id of ['new','preview','publish','upload','retrySave','resumeLogin','loadLatest','keepLocal','showPosts','resumeEditing','attachPhoto','manageCategories','manageSettings','manageTemplates','chooseCover','insertTemplate','publicationOptions','deleteEmptyDraft'])$(id).disabled=value||(['preview','publish','upload'].includes(id)&&!current);for(const node of $('posts').querySelectorAll('button'))node.disabled=value;for(const id of ['postSearch','postCategory','postStatus','postKind'])$(id).disabled=value;$('postPrevious').disabled=value||postPage<=1;$('postNext').disabled=value||postPage>=postPages;for(const id of ['title','description','category','tags','body','image'])$(id).disabled=value;$('bodyHtml').contentEditable=value?'false':'true';$('deleteImage').disabled=value;$('editSelectedMedia').disabled=value;setFormattingBusy(value);updatePublicationSummary()}
+function setBusy(value){busy=value;for(const id of ['new','preview','publish','upload','retrySave','resumeLogin','loadLatest','keepLocal','showPosts','resumeEditing','attachPhoto','manageCategories','manageSettings','manageStatistics','manageTemplates','chooseCover','insertTemplate','publicationOptions','deleteEmptyDraft'])$(id).disabled=value||(['preview','publish','upload'].includes(id)&&!current);for(const node of $('posts').querySelectorAll('button'))node.disabled=value;for(const id of ['postSearch','postCategory','postStatus','postKind'])$(id).disabled=value;$('postPrevious').disabled=value||postPage<=1;$('postNext').disabled=value||postPage>=postPages;for(const id of ['title','description','category','tags','body','image'])$(id).disabled=value;$('bodyHtml').contentEditable=value?'false':'true';$('deleteImage').disabled=value;$('editSelectedMedia').disabled=value;setFormattingBusy(value);updatePublicationSummary()}
 function clearIssue(){blocked=null;retryAction=null;$('saveIssue').hidden=true;renderSaveState()}
 function showIssue(error,retry){
   clearTimeout(timer);blocked=error.code==='revision_conflict'?'conflict':error.code||'request_failed';retryAction=retry;$('saveIssue').hidden=false;
@@ -183,6 +186,7 @@ $('keepLocal').onclick=()=>action(async()=>{
 window.addEventListener('beforeunload',event=>{if(dirty||saving||busy||hasManagementChanges()){event.preventDefault();event.returnValue=''}});
 ${formattingScript}
 ${managementScript}
+${statisticsScript}
 ${publishingScript}
 ${extrasScript}
 const mountEngineDiagram=${mountEngineDiagram.toString()};

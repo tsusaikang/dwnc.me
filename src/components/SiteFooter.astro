@@ -1,5 +1,5 @@
 ---
-import { SITE_COPYRIGHT_YEAR } from '../lib/site-meta';
+import { SITE_CONTACT_EMAIL, SITE_COPYRIGHT_YEAR } from '../lib/site-meta';
 ---
 
 <footer class="site-footer">
@@ -7,6 +7,10 @@ import { SITE_COPYRIGHT_YEAR } from '../lib/site-meta';
     <p>
       <a href="/">dwnc.me</a>
       <span>자동차, 수영, 일상과 생각.</span>
+      <small class="site-footer__contact">
+        글에 관한 이야기나 전하고 싶은 말은 이메일로 보내주세요.<br />
+        <a href={`mailto:${SITE_CONTACT_EMAIL}`}>{SITE_CONTACT_EMAIL}</a>
+      </small>
     </p>
     <div class="site-footer__links">
       <a href="/category">갈래</a>
@@ -17,3 +21,19 @@ import { SITE_COPYRIGHT_YEAR } from '../lib/site-meta';
     </div>
   </div>
 </footer>
+
+<style>
+  .site-footer__contact {
+    display: block;
+    margin-top: 12px;
+    max-width: 28rem;
+    color: var(--ink-soft);
+    font-size: 0.75rem;
+    line-height: 1.8;
+  }
+  .site-footer__contact a {
+    color: var(--accent);
+    overflow-wrap: anywhere;
+    text-underline-offset: 3px;
+  }
+</style>
