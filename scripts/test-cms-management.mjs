@@ -45,6 +45,15 @@ const b64=v=>Buffer.from(JSON.stringify(v)).toString('base64url');const head=b64
 clearAccessKeyCacheForTests();const headers={'cf-access-jwt-assertion':jwt,origin:'https://admin.example.test','content-type':'application/json'};
 await verifyAccessIdentity(new Request('https://admin.example.test',{headers}),env,{fetcher:async()=>Response.json({keys:[jwk]})});
 const api=async(path,method='GET',body)=>adminWorker.fetch(new Request(`https://admin.example.test${path}`,{method,headers,...(body?{body:JSON.stringify(body)}:{})}),env,{});
+const browserHeaders={...headers,accept:'text/html,application/xhtml+xml'};
+const missingPage=await adminWorker.fetch(new Request('https://admin.example.test/archive',{headers:browserHeaders}),env,{});
+assert.equal(missingPage.status,404);assert.equal(missingPage.headers.get('location'),null);assert.match(missingPage.headers.get('content-type'),/^text\/html/u);assert.equal(missingPage.headers.get('cache-control'),'no-store');
+const missingHtml=load(await missingPage.text());assert.equal(missingHtml('html').attr('lang'),'ko');assert.equal(missingHtml('h1').text(),'페이지를 찾을 수 없습니다');assert.equal(missingHtml('a').eq(0).attr('href'),'/');assert.equal(missingHtml('a').eq(1).attr('href'),'https://dwnc.me/archive');
+const missingHead=await adminWorker.fetch(new Request('https://admin.example.test/archive',{method:'HEAD',headers:browserHeaders}),env,{});assert.equal(missingHead.status,404);assert.match(missingHead.headers.get('content-type'),/^text\/html/u);assert.equal(await missingHead.text(),'');
+for(const path of ['/api','/api/missing','/api/posts/not-a-post']){const response=await adminWorker.fetch(new Request(`https://admin.example.test${path}`,{headers:browserHeaders}),env,{});assert.equal(response.status,404);assert.match(response.headers.get('content-type'),/^application\/json/u);assert.deepEqual(await response.json(),{error:'찾을 수 없습니다.'});}
+assert.deepEqual(await (await api('/archive')).json(),{error:'찾을 수 없습니다.'});
+const anonymousPage=await adminWorker.fetch(new Request('https://admin.example.test/archive',{headers:{accept:'text/html'}}),env,{});assert.equal(anonymousPage.status,401);assert.equal((await anonymousPage.json()).code,'authentication_required');
+const crossOriginWrite=await adminWorker.fetch(new Request('https://admin.example.test/archive',{method:'POST',headers:{...browserHeaders,origin:'https://other.example.test'}}),env,{});assert.equal(crossOriginWrite.status,403);
 const originalFetch=globalThis.fetch;const fontRequests=[];globalThis.fetch=async(url,options)=>{fontRequests.push({url,options});return new Response('synthetic-font',{headers:{'content-type':'font/woff'}});};
 try { assert.equal((await api('/fonts/nanum/NanumGothic.woff')).status,200);assert.equal(fontRequests[0].url,'https://dwnc.me/fonts/nanum/NanumGothic.woff');assert.equal(fontRequests[0].options.headers,undefined);assert.equal((await api('/fonts/nanum/not-allowed.woff')).status,404);assert.equal(fontRequests.length,1); } finally {globalThis.fetch=originalFetch;}
 assert.equal((await api('/api/categories')).status,200);assert.equal((await api('/api/settings')).status,200);

@@ -11,6 +11,7 @@ import { adminHtml } from '../src/lib/admin-ui.ts';
 import { nativeImagePaths, renderNativeMarkdown } from '../src/lib/native-content.ts';
 import { NativePostStore } from '../src/lib/native-post-store.ts';
 import { createNativePublicWorker } from '../src/lib/native-public-worker.ts';
+import { DEFAULT_CATEGORIES } from '../src/lib/cms-configuration.ts';
 
 let assertions = 0;
 const equal = (actual, expected) => { assert.equal(actual, expected); assertions += 1; };
@@ -304,7 +305,7 @@ const legacyPosts = Array.from({ length: 16 }, (_unused, index) => ({
   leafCategory: { label: '일상', path: '/category/일상' }, searchText: `예전 글 ${index + 1} 일상`.toLocaleLowerCase('ko-KR'),
 }));
 Object.assign(legacyPosts[0], { featured: true, cover: '/media/legacy-feature.webp', coverAlt: '기존 대표 이미지' });
-const shellHtml = '<!doctype html><html><head><title>기존</title><meta name="description" content="기존"><link rel="canonical" href="https://dwnc.me/about"><meta property="og:title" content="기존"><meta property="og:description" content="기존"><meta property="og:url" content="https://dwnc.me/about"><meta property="og:type" content="website"></head><body><main id="main">기존</main></body></html>';
+const shellHtml = '<!doctype html><html><head><title>기존</title><meta name="description" content="기존"><link rel="canonical" href="https://dwnc.me/about"><meta property="og:title" content="기존"><meta property="og:description" content="기존"><meta property="og:url" content="https://dwnc.me/about"><meta property="og:type" content="website"></head><body><header><nav class="site-nav"></nav></header><dialog id="category-drawer"><nav></nav></dialog><main id="main">기존</main></body></html>';
 const routeHtml = (name, script = '') => shellHtml.replace('기존</main>', `<p data-static-page="${name}">기존</p></main>${script}`);
 const staticRequests = [];
 const staticHandler = async (request) => {
@@ -337,6 +338,30 @@ equal((home.match(/<li><a href="\/posts\//gu) ?? []).length, 7);
 ok(home.includes('/media/tistory/1/cover.jpg')); ok(home.includes('대표')); ok(home.includes('id="home-page-script"'));
 const archive = await (await publicWorker(new Request('https://dwnc.me/archive'), publicEnv, {})).text();
 ok(archive.includes('<h2>2026</h2>')); ok(archive.includes('<h2>2025</h2>'));
+
+// Dynamic category output must use the same responsive hierarchy and navigation
+// contract as the static page, rather than putting labels in a 28px number cell.
+const categoryIndex = load(await (await publicWorker(new Request('https://dwnc.me/category'), publicEnv, {})).text());
+const roots = DEFAULT_CATEGORIES.filter((node) => !node.parentId);
+equal(categoryIndex('.category-tree-index__root').length, roots.length);
+equal(categoryIndex('#main .home-category-list').length, 0);
+for (const [index, root] of roots.entries()) {
+  const section = categoryIndex('.category-tree-index__root').eq(index);
+  const rootLink = section.find('.category-tree-index__root-link');
+  equal(rootLink.children().map((_i, node) => node.tagName).get().join(','), 'span,strong,small');
+  equal(rootLink.children('span').text(), String(index + 1).padStart(2, '0'));
+  equal(rootLink.children('strong').text(), root.label);
+  const children = DEFAULT_CATEGORIES.filter((node) => node.parentId === root.id);
+  equal(section.find('.category-tree-index__children > li').length, children.length);
+  equal(section.find('.category-tree-index__children strong').map((_i, node) => categoryIndex(node).text()).get().join('|'), children.map((node) => node.label).join('|'));
+}
+equal(categoryIndex('.site-nav a[href="/category"]').length, 1);
+equal(categoryIndex('.site-nav__category.is-active > a').attr('aria-current'), 'page');
+equal(categoryIndex('.site-nav__category > button[data-category-open]').length, 1);
+equal(categoryIndex('.site-nav > button[data-category-open]').length, 0);
+equal(categoryIndex('[data-category-open]').attr('aria-controls'), 'category-drawer');
+equal(categoryIndex('.search-trigger > span').text(), '찾기');
+equal(categoryIndex('#category-drawer .category-tree > li').length, roots.length);
 
 const categoryOne = await (await publicWorker(new Request('https://dwnc.me/category/%EC%9D%BC%EC%83%81'), publicEnv, {})).text();
 equal((categoryOne.match(/class="post-card"/gu) ?? []).length, 15); ok(categoryOne.includes('Category · 17편'));

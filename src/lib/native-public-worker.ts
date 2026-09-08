@@ -128,7 +128,26 @@ function tagsMain(tags: TagNode[]) {
   return `<header class="page-header tag-index-header"><div class="shell"><p class="eyebrow">Index · ${tags.length}</p><h1>태그</h1></div></header><section class="section tag-index-section"><div class="shell tag-index"><label for="tag-filter">태그 찾기</label><input id="tag-filter" type="search" placeholder="태그 이름을 입력하세요" autocomplete="off" data-tag-filter><p class="tag-index__status" data-tag-status aria-live="polite">전체 ${tags.length}개</p><ol data-tag-list>${tags.map((tag) => `<li data-tag-item data-tag-label="${escapeHtml(tag.label.toLocaleLowerCase('ko-KR'))}"><a href="/tag/${encodeURIComponent(tag.slug)}"><strong>#${escapeHtml(tag.label)}</strong><small>${tag.count}편</small></a></li>`).join('')}</ol></div></section>`;
 }
 function categoryIndexMain(posts: DiscoveryPost[], categories: CmsCategory[]) {
-  return `<header class="page-header"><div class="shell"><p class="eyebrow">Categories</p><h1>갈래</h1></div></header><section class="section"><div class="shell home-category-list">${categories.filter((node)=>!node.parentId).flatMap((node)=>[node,...categoryDescendants(node.id,categories)]).map((category) => { const accepted = new Set([category.id, ...categoryDescendants(category.id, categories).map((item) => item.id)]); return `<a href="/category/${encodeURIComponent(category.slug)}"><strong>${escapeHtml(category.label)}</strong><small>${posts.filter((post) => accepted.has(post.categoryId)).length}편</small></a>`; }).join('')}</div></section>`;
+  const roots = categories.filter((node) => !node.parentId);
+  const count = (category: CmsCategory) => {
+    const accepted = new Set([category.id, ...categoryDescendants(category.id, categories).map((node) => node.id)]);
+    return posts.filter((post) => accepted.has(post.categoryId)).length;
+  };
+  // Match the static category index: the narrow first grid column is the number,
+  // while labels and child links occupy their existing responsive layout.
+  return `<header class="page-header category-index-header"><div class="shell"><p class="eyebrow">Subjects · ${roots.length}</p><h1>갈래</h1><p>큰 주제에서 세부 기록으로 이어지는 ${posts.length}편의 글입니다.</p></div></header><section class="section category-index-section"><div class="shell category-tree-index">${roots.map((root, index) => {
+    const children = categoryDescendants(root.id, categories);
+    const directCount = posts.filter((post) => post.categoryId === root.id).length;
+    const totalCount = count(root);
+    return `<section class="category-tree-index__root"><a class="category-tree-index__root-link" href="/category/${encodeURIComponent(root.slug)}"><span>${String(index + 1).padStart(2, '0')}</span><strong>${escapeHtml(root.label)}</strong><small>${directCount === totalCount ? `${totalCount}편` : `직접 ${directCount} · 전체 ${totalCount}편`}</small></a>${children.length ? `<ol class="category-tree-index__children">${children.map((child) => `<li><a href="/category/${encodeURIComponent(child.slug)}"><strong>${escapeHtml(child.label)}</strong><small>${count(child)}편</small></a></li>`).join('')}</ol>` : ''}</section>`;
+  }).join('')}</div></section>`;
+}
+function siteNavigation(settings: CmsSettings, canonical: string) {
+  const pathname = new URL(canonical).pathname;
+  const categoryActive = pathname === '/category' || pathname.startsWith('/category/');
+  const categoryMenu = (label: string) => `<span class="site-nav__category${categoryActive ? ' is-active' : ''}"><a href="/category"${pathname === '/category' ? ' aria-current="page"' : ''}>${escapeHtml(label)}</a><button type="button" data-category-open aria-controls="category-drawer" aria-expanded="false" aria-haspopup="dialog" aria-label="전체 갈래 열기"><span aria-hidden="true">+</span></button></span>`;
+  const menu = settings.menu.map((item) => item.path === '/category' ? categoryMenu(item.label) : `<a href="${escapeHtml(item.path)}"${new URL(item.path, canonical).pathname === pathname ? ' aria-current="page"' : ''}>${escapeHtml(item.label)}</a>`).join('');
+  return menu + (settings.menu.some((item) => item.path === '/category') ? '' : categoryMenu('갈래')) + '<button class="search-trigger" type="button" data-search-open aria-label="글 검색 열기"><span>찾기</span></button>';
 }
 function categoryTree(categories: CmsCategory[], current?: string) {
   const branch = (node: CmsCategory): string => {
@@ -155,7 +174,7 @@ async function rewriteDocument(response: Response, main: string | null, title: s
     .on('.site-footer__inner > p > a', {element(element){element.setInnerContent(settings.title);}})
     .on('.site-footer__inner > p > span', {element(element){element.setInnerContent(settings.description);}})
     .on('.brand', { element(element) { element.setInnerContent(settings.title); element.setAttribute('aria-label',`${settings.title} 홈`); } })
-    .on('.site-nav', { element(element) { element.setInnerContent(settings.menu.map((item)=>`<a href="${escapeHtml(item.path)}"${new URL(item.path,canonical).pathname===new URL(canonical).pathname?' aria-current="page"':''}>${escapeHtml(item.label)}</a>`).join('') + '<button type="button" data-category-open aria-controls="category-drawer" aria-expanded="false" aria-haspopup="dialog" aria-label="전체 갈래 열기">갈래 +</button><button class="search-trigger" type="button" data-search-open aria-label="글 검색 열기">찾기</button>',{html:true}); } })
+    .on('.site-nav', { element(element) { element.setInnerContent(siteNavigation(settings, canonical), { html: true }); } })
     .on('#category-drawer nav', { element(element) { element.setInnerContent(categoryTree(categories,post?.categoryId),{html:true}); } })
     .on('link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]', {element(element){if(settings.iconPath)element.setAttribute('href',settings.iconPath);}})
     .on('head', { element(element) {

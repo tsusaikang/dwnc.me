@@ -48,6 +48,21 @@ function json(value: unknown, status = 200) {
   return Response.json(value, { status, headers: { 'cache-control': 'no-store', 'x-content-type-options': 'nosniff' } });
 }
 
+function notFound(request: Request) {
+  const pathname = new URL(request.url).pathname;
+  const browserPage = ['GET', 'HEAD'].includes(request.method)
+    && request.headers.get('accept')?.toLowerCase().includes('text/html')
+    && pathname !== '/api' && !pathname.startsWith('/api/');
+  if (!browserPage) return json({ error: '찾을 수 없습니다.' }, 404);
+  return new Response(request.method === 'HEAD' ? null : `<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>페이지를 찾을 수 없습니다 — 블로그 관리</title>
+<style>*{box-sizing:border-box}body{margin:0;background:#f6f7f8;color:#25292e;font:16px/1.7 system-ui,sans-serif}main{max-width:640px;margin:12vh auto;padding:32px 24px}h1{font-size:clamp(24px,5vw,32px);line-height:1.4}p{color:#58616b}nav{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}a{padding:10px 18px;border:1px solid #cdd3d9;border-radius:8px;background:#fff;color:#244b76;text-decoration:none}a:first-child{background:#244b76;border-color:#244b76;color:#fff}a:hover{text-decoration:underline}a:focus-visible{outline:3px solid #e19a23;outline-offset:3px}</style>
+</head><body><main><h1>페이지를 찾을 수 없습니다</h1><p>이 주소는 블로그 관리 화면입니다.<br>글을 관리하려면 관리자 홈으로, 공개된 글을 보려면 공개 글 목록으로 이동해 주세요.</p><nav aria-label="이동할 곳"><a href="/">관리자 홈으로</a><a href="https://dwnc.me/archive">공개 글 목록 보기</a></nav></main></body></html>`, {
+    status: 404,
+    headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'vary': 'Accept', 'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; frame-ancestors 'none'" },
+  });
+}
+
 async function requestJson(request: Request) {
   if (!request.headers.get('content-type')?.toLowerCase().startsWith('application/json')) throw new Error('ADMIN_E_JSON');
   const declared = Number(request.headers.get('content-length') ?? '0');
@@ -143,7 +158,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
     return json({ post: await store.createDraft(category, body.kind ?? 'post') }, 201);
   }
   const match = url.pathname.match(/^\/api\/posts\/([^/]+)(?:\/(preview|publish|media))?$/u);
-  if (!match || !validAdminPostId(match[1])) return json({ error: '찾을 수 없습니다.' }, 404);
+  if (!match || !validAdminPostId(match[1])) return notFound(request);
   const [, id, action] = match;
   if (request.method === 'GET' && !action) {
     const post = await store.getForAdmin(id);
