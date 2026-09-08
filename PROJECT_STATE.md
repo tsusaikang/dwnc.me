@@ -1,16 +1,20 @@
 # dwnc.me 프로젝트 공식 상태
 
-최종 갱신: 2026-09-08 KST — DWNC-CORE-008 공개 관리자 도구·글 편집 연결 운영 확인 완료
+최종 갱신: 2026-09-08 KST — DWNC-CORE-009 본문 사진 선택 대표이미지 지정 운영 확인 완료
 
-### 현재 작업 — 선택한 본문 사진을 대표이미지로 지정 (DWNC-CORE-009)
+### 최신 완료 — 선택한 본문 사진을 대표이미지로 지정 (DWNC-CORE-009)
 
 - 사용자 요청: 기존 대표이미지 메뉴 외에도 편집기 속 실제 사진을 클릭/선택했을 때 `이 사진을 대표이미지로 지정` 기능을 제공한다.
 - 범위/완료조건: 기존 이미지 선택 도구에 해당 버튼을 추가하고 현재 글 소유 사진만 지정한다. 링크 카드와 외부/다른 글 사진은 배제한다. 원본 본문/사진을 변경하지 않으며 선택 결과는 작업본 자동저장 후 명시적 공개 반영을 따른다. 기존 대표이미지 메뉴는 유지한다. 로컬 합성 실행시험/브라우저 확인, 최종 새 빌드 운영 반영과 실제 읽기 확인까지 완료한다.
 - management_ui 구현/시험, backend 저장계약 검토, integration_review 통합시험/빌드, 메인 브라우저/통합/공식 상태. 실제 글 수정/저장/발행/삭제, R2 덮어쓰기/삭제, Git push, raw deploy, DNS/route 변경은 금지한다. UI 시험의 대표 변경은 합성 자료에만 수행한다.
 - 로컬 구현 완료: `setSelectedCover` 버튼은 실제 본문 이미지 선택 도구에만 표시된다. 클릭 시 현재 글의 소유 사진과 설명을 기존 계약으로 지정하고 본문 HTML은 변경하지 않는다. 링크 카드/외부/타글 경로는 배제한다. UI action의 busy 상태에서 자동저장이 누락되던 문제를 explicit schedule(true)로 수정했고 로그인 재시도에도 저장됨을 실행시험으로 확인했다. backend/API 변경은 없다.
 - backend 독립 계약시험은 native media id 재계산/imported null/설명·HTML 보존/공개본 불변/잘못된 소유 거부를 통과했다. 메인 내장 브라우저의 새 합성 편집 탭에서 사진선택→버튼표시→지정→`작업본 저장됨 · 공개 반영을 기다리는 변경`→다른 새 탭에서 동일 대표 경로 복원을 확인했다. 실제 글과 기존 사용자 탭은 건드리지 않았다. 합성 서버83277(4322/4324), 시험 탭은 종료했다. 통합 editor:test(신규 selected-cover-contract 포함)와 source-only 전체 빌드 PASS, Astro 오류/경고0, surface1417 불변, dist/media0·private leak0. 로그 `/private/tmp/dwnc-core009-editor-test.log`, `/private/tmp/dwnc-core009-source-build.log`. 최종 커밋 뒤 새 공개/관리 번들 생성과 운영 반영이 남는다.
+- **운영 완료:** source `a85a028ea0176c0943478662d0342f693dd01b7d`를 로컬 커밋한 뒤 새 공개/관리 번들을 각각 생성했다. public `/var/folders/ps/kbhx2vz12m76shzc_s9wn30w0000gn/T/dwnc-core009-public-bundle-2Gj99m/bundle/worker.js` (2432755bytes, SHA256 `96c7f049c5662237652e0528991cc00aff6c92c01689ca3ba20574a90611347a`), admin `/var/folders/ps/kbhx2vz12m76shzc_s9wn30w0000gn/T/dwnc-core009-admin-bundle-DWS66A/bundle/admin-worker.js` (2553401bytes, SHA256 `cd1058c0c9792088adc57bdac6a552f708cb145bcdbeb3924458762ea0d36771`). public hash가 앞선 것과 같은 것은 UI만 변경됐기 때문이며 이전 번들을 재사용하지 않았다. dist1420files/38677462bytes/tree `ca2cad092356a62bd30d8e65334c79b74e356c32d49746c18be67cd5c13a7c24`. compiled public VM/localPrecheck PASS, 로그 `/private/tmp/dwnc-core009-build-bundles-a85a028.log`.
+- 운영 public `8db10e2e-1bc6-4a99-bdfc-b65d8ed80550`, admin `f3bec05c-4ca3-441c-a2d6-936e87f0855a` 각각100%, 실제 모듈 일치와 기존 설정 보존 확인. 업로드 직후 admin annotation 불일치와 public activation 확인 불일치가 각각1회 있었으나 동일세션/동일업로드 버전을 다시 확인해 해소됐고 최종 양쪽 활성 확인에 성공했다. 원인을 단정하지 않으며 control-plane 읽기 지연과 부합한다. 도우미 수정이나 버전 재업로드는 없었다. 인증7691 정상 종료.
+- 메인 내장 브라우저의 새 운영 관리자 #596 탭에서 로딩 후 본문 사진을 좌클릭하자 `이 사진을 대표이미지로 지정` 버튼이 활성 상태로 표시됨을 확인했다. 해당 버튼을 실제 운영 글에서는 누르지 않았으며 대표이미지/본문 저장·공개/삭제·R2 변경·Access/DNS/route·Git push는 없다. 기존 사용자 탭은 보존하고 새 선택 화면을 전달용으로 유지했다.
+- DWNC-CORE-009 done. 사용자는 사진 클릭→대표이미지 지정→작업본 자동저장→명시적 공개 반영 순서로 이용할 수 있다. 기존 글 정보의 대표이미지 선택/해제 메뉴도 유지한다. 이전 항목의 진행 표현은 이 최종 완료 기록으로 해소됐다.
 
-### 최신 완료 — 공개 사이트 관리자 도구 (DWNC-CORE-008)
+### 이전 완료 — 공개 사이트 관리자 도구 (DWNC-CORE-008)
 
 - 사용자 요청: admin.dwnc.me에 로그인한 관리자가 dwnc.me에서도 관리자로 바로 이동하고, 글 목록·본문에서 편집하기를 사용하도록 한다. 최소 편의 범위는 관리자/새 글/통계/설정 연결과 현재 글 직접 선택이다.
 - 완료 조건: 인증된 관리자에게만 공개 관리 도구 표시, 정확한 글·페이지 편집 진입과 로그인 후 연결 유지, 미저장 기존 작성 탭 보호, 일반 방문자 화면·기존 글/사진/주소 유지, 시험/브라우저 확인과 최종 새 빌드 운영 반영.

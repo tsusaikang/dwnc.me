@@ -171,3 +171,15 @@
   - 이번 full audit에 쓴 짧은 수명 validator token은 Cloudflare 화면에서 삭제·목록 부재를 확인했다. 대응하는 고정 Keychain 항목 하나도 비밀값 read 0·exact delete 1 뒤 부재를 확인했다. v3/v3b metadata·dashboard evidence와 모든 capture·receipt는 보존했다.
   - tracked staging account 확인값이 일치한 R2 Account API token 표에서 `dwnc-me-staging-r2-validator`와 `dwnc-me-staging-r2-uploader`의 이름·exact staging bucket 권한·2026-08-25 생성·Active 상태를 보존 생성 증거와 정확히 결속했다. 사용자 승인 후 validator와 uploader를 이 순서로 각각 한 번 삭제했고 각 행 0과 최종 목록 부재를 확인했다. 이전 관측 User API token 다섯 개 이름은 그대로이며 다른 Cloudflare 변경은 0회다.
   - 새 validator는 대표 객체를 HEAD 1·full GET 1·PUT 0·DELETE 0으로 검증했고 receipt SHA-256은 `fa72b1849496a9b6e4697721cfef9d4fcd17b8f463b41dcacd714c5f9bb2352a`다.
+
+### `DWNC-S3-013` — Cloudflare 계정 번호를 열쇠와 분리해 안전하게 보관
+- **Status:** `done`
+- **Updated-at:** `2026-09-04`
+- **Plans:** `PLAN-05`, `PLAN-06`, `PLAN-07`
+- **Priority:** `P0`
+- **Acceptance:**
+  - 올바른 Cloudflare 계정을 한 번 확인하고 계정 번호를 업로드·검사용 열쇠와 분리해 macOS 보관함에 둔다.
+  - 원문을 프로젝트·로그·일반 출력에 남기지 않고 기존 항목이나 파일을 덮어쓰거나 삭제하지 않는다.
+- **Evidence:**
+  - 초기 localhost·virtual clipboard·Terminal 전달 실패는 accepted connection·local paste·초기화를 0회로 유지한 채 중단했으며, 이후 승인된 안전 전달로 account target 초기화와 비표시 일치 확인을 완료했다.
+  - 원문은 프로젝트 파일·argv·환경변수·일반 출력에 남기지 않았고, 계정 대상 전용 시험 698개와 secure stdin 시험 112개를 통과했다.
