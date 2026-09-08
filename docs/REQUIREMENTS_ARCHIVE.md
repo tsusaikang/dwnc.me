@@ -183,3 +183,21 @@
 - **Evidence:**
   - 초기 localhost·virtual clipboard·Terminal 전달 실패는 accepted connection·local paste·초기화를 0회로 유지한 채 중단했으며, 이후 승인된 안전 전달로 account target 초기화와 비표시 일치 확인을 완료했다.
   - 원문은 프로젝트 파일·argv·환경변수·일반 출력에 남기지 않았고, 계정 대상 전용 시험 698개와 secure stdin 시험 112개를 통과했다.
+
+### `DWNC-S3-010` — staging version-only upload·activation·synthetic smoke
+- **Status:** `done`
+- **Updated-at:** `2026-09-05`
+- **Plans:** `PLAN-06`
+- **Priority:** `P0`
+- **Acceptance:**
+  - 확정된 Git 기록을 기준으로 관련 빌드와 검사를 한 묶음만 실행하고, staging version만 version-only로 업로드한다.
+  - 해당 version ID를 staging에 100% 적용하고 모호한 결과는 자동 재시도하지 않는다.
+  - 일반 페이지 GET·HEAD, 예전 주소 349개의 GET·HEAD 총 698건, `/404.html`의 404, media GET·HEAD·304·206·416·ETag·Range를 `workers.dev`에서 검증한다.
+  - 통과한 정확한 Git SHA와 Cloudflare version ID를 기록하고 실제 `dwnc.me` 도메인·DNS는 변경하지 않는다.
+- **Evidence:**
+  - runtime source commit `05962c4c0872b5234d3a45298ab0e44d123d03da`의 artifact SHA-256은 `81cf14fcaab0245c380d6e4e8d274df14dee41dde7bacfa19d510449a180d501`다. version `bb59f4ee-55f5-4626-858b-0653d7e79900`을 version-only로 올려 staging에 100% 적용했다.
+  - live 종합 점검에서 이전 주소 GET 349·HEAD 349는 모두 308·빈 body·query 제거, media GET 200·HEAD 200·304·206·416·MIME·ETag·Range, `/404.html` GET·HEAD와 cache를 통과했고 모든 live 응답의 version이 정확히 일치했다.
+  - `/` GET·HEAD는 200 `text/html`, HEAD는 빈 body였고 `/about` GET body는 artifact와 byte-exact였다. `/about` GET·HEAD 200·MIME·version·header parity와 HEAD 빈 body도 확인했다.
+  - 앞선 `debfe664…`는 path normalization 결함으로 `/`가 404였고 `4bd84ef8…`는 이를 고친 뒤 full collector의 과도한 고정 Content-Length 비교에서 멈췄다. 실제 live 응답은 의도한 streaming 계약을 충족했으며 smoke collector fix commit `ab5489a91c5f6b159a344e49f9d0e066cfb5eaa4`에서 이 false-negative를 교정했다. staging smoke unit 181개와 media-worker 5,796개가 PASS했다.
+  - 최종 `workers.dev`·preview는 off이고 custom domain·route는 0이며 ASSETS와 staging R2 binding은 유지됐다. 2026-08-27 account token은 `DWNC-S3-012` 대상이 아니므로 보존했다. production DNS·route·traffic, R2 overwrite·delete, Git push는 모두 0회다.
+  - [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 version-only와 staging smoke 계약.

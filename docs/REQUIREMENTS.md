@@ -68,7 +68,7 @@
 
 ### 바로 다음 작업
 
-클립보드 사진과 HTML 소스 붙여넣기를 구현·시험해 운영에 반영한다.
+클립보드 사진과 HTML 소스 붙여넣기도 운영 반영했다. 붙여넣은 결과는 작업본에 자동저장되며 공개 반영은 별도로 유지한다.
 
 본문 사진을 클릭해 대표이미지로 지정하는 기능도 운영 반영했다. 사진 선택 후 지정하면 작업본에 저장되며 공개 반영 때 방문자에게 적용된다.
 
@@ -129,20 +129,6 @@
 - 별도 도구에 접근할 수 없는 브라우저·로그인 화면·클립보드 동작만 메인 세션이 최소한으로 직접 처리할 수 있게 한 운영 규칙은 commit `2f821cbbff3b3ddd4e48ea2457319bc5569bd986`에 기록했다. 이 예외는 삭제·구매·공개 전환·권한 변경·외부 전송의 승인 범위를 넓히지 않는다.
 
 ## 요구사항 원장
-
-### `DWNC-CORE-010` — 클립보드 사진과 HTML 소스 붙여넣기
-- **Status:** `in-progress`
-- **Updated-at:** `2026-09-08`
-- **Plans:** `PLAN-09`
-- **Priority:** `P1`
-- **Acceptance:**
-  - 클립보드 이미지 붙여넣기를 기존 사진 첨부처럼 업로드·커서 위치 삽입하고 실패/재로그인에서 현재 입력과 재시도 대상을 유지한다.
-  - 일반 텍스트 HTML 소스를 인식해 지원하는 서식을 즉시 적용한다. 지원하지 않는 태그는 제거하되 글자는 남기고 실행 코드/외부 자원은 실행하거나 가져오지 않는다. 일반 문장·비교기호는 텍스트로 유지한다.
-  - 기존 웹페이지 서식 붙여넣기, 사진 소유, 작업본 자동저장·명시적 공개 반영·기존 본문/사진/주소를 유지한다.
-  - 실제 사용자 클립보드나 운영 글을 시험에 쓰지 않는다. 통상 시험·합성 브라우저 확인 뒤 최종 소스로 새 빌드해 운영 반영한다.
-- **Evidence:**
-  - 사용자 요청으로 붙여넣기 기능과 기존 sanitizer 재사용 변환 경로를 개발 중이다.
-
 
 
 ### `DWNC-OPS-001` — 공유·스크랩 추정 10개 처리 결정
@@ -240,23 +226,6 @@
 
 
 
-### `DWNC-S3-010` — staging version-only upload·activation·synthetic smoke
-- **Status:** `done`
-- **Updated-at:** `2026-09-05`
-- **Plans:** `PLAN-06`
-- **Priority:** `P0`
-- **Acceptance:**
-  - 확정된 Git 기록을 기준으로 관련 빌드와 검사를 한 묶음만 실행하고, staging version만 version-only로 업로드한다.
-  - 해당 version ID를 staging에 100% 적용하고 모호한 결과는 자동 재시도하지 않는다.
-  - 일반 페이지 GET·HEAD, 예전 주소 349개의 GET·HEAD 총 698건, `/404.html`의 404, media GET·HEAD·304·206·416·ETag·Range를 `workers.dev`에서 검증한다.
-  - 통과한 정확한 Git SHA와 Cloudflare version ID를 기록하고 실제 `dwnc.me` 도메인·DNS는 변경하지 않는다.
-- **Evidence:**
-  - runtime source commit `05962c4c0872b5234d3a45298ab0e44d123d03da`의 artifact SHA-256은 `81cf14fcaab0245c380d6e4e8d274df14dee41dde7bacfa19d510449a180d501`다. version `bb59f4ee-55f5-4626-858b-0653d7e79900`을 version-only로 올려 staging에 100% 적용했다.
-  - live 종합 점검에서 이전 주소 GET 349·HEAD 349는 모두 308·빈 body·query 제거, media GET 200·HEAD 200·304·206·416·MIME·ETag·Range, `/404.html` GET·HEAD와 cache를 통과했고 모든 live 응답의 version이 정확히 일치했다.
-  - `/` GET·HEAD는 200 `text/html`, HEAD는 빈 body였고 `/about` GET body는 artifact와 byte-exact였다. `/about` GET·HEAD 200·MIME·version·header parity와 HEAD 빈 body도 확인했다.
-  - 앞선 `debfe664…`는 path normalization 결함으로 `/`가 404였고 `4bd84ef8…`는 이를 고친 뒤 full collector의 과도한 고정 Content-Length 비교에서 멈췄다. 실제 live 응답은 의도한 streaming 계약을 충족했으며 smoke collector fix commit `ab5489a91c5f6b159a344e49f9d0e066cfb5eaa4`에서 이 false-negative를 교정했다. staging smoke unit 181개와 media-worker 5,796개가 PASS했다.
-  - 최종 `workers.dev`·preview는 off이고 custom domain·route는 0이며 ASSETS와 staging R2 binding은 유지됐다. 2026-08-27 account token은 `DWNC-S3-012` 대상이 아니므로 보존했다. production DNS·route·traffic, R2 overwrite·delete, Git push는 모두 0회다.
-  - [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)의 version-only와 staging smoke 계약.
 
 ### `DWNC-S3-011` — production 이름 Cloudflare 자원·버전 준비
 - **Status:** `done`
@@ -419,3 +388,16 @@
   - 합성 자료 시험과 브라우저 확인 후 최종 소스로 새 빌드해 운영 반영한다. 실제 글의 대표이미지나 내용을 시험 목적으로 변경하지 않는다.
 - **Evidence:**
   - 본문 사진 선택 도구에 지정 버튼을 추가했다. 소유사진/설명·본문보존·공개본불변·자동저장·로그인복구 시험과 전체 빌드를 통과했다. 합성 브라우저 지정→작업본 저장→다시 열어 유지 확인 후 최종 새 빌드를 운영 반영했다. 실제 운영 #596의 사진 선택 시 활성 버튼 표시를 확인했으며 실제 대표이미지 변경/저장/공개는 하지 않았다. 상세 결과는 PROJECT_STATE.md 최신 완료 절을 따른다.
+
+### `DWNC-CORE-010` — 클립보드 사진과 HTML 소스 붙여넣기
+- **Status:** `done`
+- **Updated-at:** `2026-09-08`
+- **Plans:** `PLAN-09`
+- **Priority:** `P1`
+- **Acceptance:**
+  - 클립보드 이미지 붙여넣기를 기존 사진 첨부처럼 업로드·커서 위치 삽입하고 실패/재로그인에서 현재 입력과 재시도 대상을 유지한다.
+  - 일반 텍스트 HTML 소스를 인식해 지원하는 서식을 즉시 적용한다. 지원하지 않는 태그는 제거하되 글자는 남기고 실행 코드/외부 자원은 실행하거나 가져오지 않는다. 일반 문장·비교기호는 텍스트로 유지한다.
+  - 기존 웹페이지 서식 붙여넣기, 사진 소유, 작업본 자동저장·명시적 공개 반영·기존 본문/사진/주소를 유지한다.
+  - 실제 사용자 클립보드나 운영 글을 시험에 쓰지 않는다. 통상 시험·합성 브라우저 확인 뒤 최종 소스로 새 빌드해 운영 반영한다.
+- **Evidence:**
+  - 이미지 순서/커서/중복방지/실패·로그인재시도, HTML소스·코드편집기 강조서식 우선처리/변환실패 원문보존/기존rich서식유지 시험을 통과했다. 합성브라우저에서 사진삽입·HTML제목/굵기/목록변환·자동저장·다시열어보존을 확인하고 최종새빌드를 운영 반영했다. 운영 편집기에 새handler가 전달되고 기존글이오류없이 열리는 것을 읽기확인했다. 실제 글/클립보드 변경은 없으며 상세근거와 시험범위는 PROJECT_STATE.md 최신완료 절을 따른다.

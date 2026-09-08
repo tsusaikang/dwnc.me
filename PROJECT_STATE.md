@@ -1,8 +1,8 @@
 # dwnc.me 프로젝트 공식 상태
 
-최종 갱신: 2026-09-08 KST — DWNC-CORE-009 본문 사진 선택 대표이미지 지정 운영 확인 완료
+최종 갱신: 2026-09-08 KST — DWNC-CORE-010 이미지·HTML 소스 붙여넣기 운영 반영 완료
 
-### 현재 작업 — 클립보드 이미지와 HTML 소스 붙여넣기 (DWNC-CORE-010)
+### 최신 완료 — 클립보드 이미지와 HTML 소스 붙여넣기 (DWNC-CORE-010)
 
 - 사용자 확정: 클립보드 이미지를 붙여넣으면 첨부사진처럼 업로드·본문 삽입한다. 일반 텍스트로 복사한 HTML 소스도 붙여넣는 즉시 지원서식을 적용하며 미지원태그는 걷어내고 글자는 남긴다. 기존 웹페이지 글/표/서식 복사 동작은 유지한다.
 - 완료조건: 기존 이미지 업로드·소유·자동저장/명시공개 계약 재사용, 커서위치·실패/재로그인/재시도에서 입력보존, 일반문장의 비교기호를 HTML로오인하지않음, 지원서식은 기존 sanitizer와일치, 스크립트/외부리소스 실행이나자동다운로드없음, 합성시험·브라우저 확인과 최종새빌드 운영반영.
@@ -12,8 +12,12 @@
 - `POST /api/html-paste`는 기존 Access/origin/body제한과 native sanitizer를 재사용하는 읽기전용 변환이다. 미지원wrapper의텍스트보존, script/style/head등실행내용제외, 소스속img제외/외부fetch0을따른다. 일반비교식/코드예시는plain유지한다. DB/R2쓰기없다.
 - 독립검토·전체 editor:test(신규 html-source-paste/editor-paste 포함), 다중사진 실패재시도, source-only 전체빌드 PASS. Astro오류/경고0, surface1417불변/dist media0/privateleak0. 로그 `/private/tmp/dwnc-core010-editor-test.log`, `/private/tmp/dwnc-core010-source-build.log`.
 - 메인내장브라우저: 새합성관리자 #1에서 실제 DataTransfer+ClipboardEvent를 전달하는 fixture버튼으로 사진1→2/업로드·작업본저장, HTML소스→h2/strong/em/list 변환, 작업본저장 후다른새탭에서사진2·제목/굵기유지를 확인했다. OS클립보드 API는호출하지않았고 실제운영 글에도붙여넣지않았다. 합성서버47307(4322/4324). 최종커밋→새번들생성→운영반영이남는다.
+- **최종 운영 완료:** source `dbbde1f6e31d25d24b4cbee39551fc160708ebf6`에서 새 정적 빌드와 두 번들을 생성했다. public `/var/folders/ps/kbhx2vz12m76shzc_s9wn30w0000gn/T/dwnc-core010-public-bundle-kaWDul/bundle/worker.js` (2432755bytes, SHA256 `96c7f049c5662237652e0528991cc00aff6c92c01689ca3ba20574a90611347a`), admin `/var/folders/ps/kbhx2vz12m76shzc_s9wn30w0000gn/T/dwnc-core010-admin-bundle-Q6BWDA/bundle/admin-worker.js` (2558758bytes, SHA256 `9f4267ad7d9598f6909d4e86781c1927a439bdb609844973970d4b96e9701550`). dist1420files/38677462bytes/tree `ca2cad092356a62bd30d8e65334c79b74e356c32d49746c18be67cd5c13a7c24`. 실제fresh생성으로이전번들재사용없음. compiled public VM/localPrecheck PASS. 로그 `/private/tmp/dwnc-core010-build-bundles-dbbde1f.log`.
+- 운영 public `b3cb4599-0b73-43be-a826-f10ae9a677a2`, admin `be1af7ee-d933-4908-89a8-dddbef32c83e` 각각100% 활성화, 최종모듈일치/기존설정보존확인. admin 업로드후 확인에서404/code100146이1회났으나 동일세션apply재개로확인·활성화를완료했다. 인증72112는종료했고토큰파일없음. 신규schema없음, 기존schema조회만. Gitpush/rawdeploy/DNSroute/Access설정/R2덮어쓰기삭제/실제글내용쓰기0.
+- 운영내장브라우저 새 #596 편집탭에서 이미지paste/HTMLpaste handler가새실행코드에포함되고 fixture시험버튼은없는것, 기존글이오류없이열리는것을읽기확인했다. 실제글에는paste나업로드/저장/발행을하지않았다. 합성fixture ClipboardEvent+File 실제handler시험과 운영모듈일치가 동작근거이며 OS클립보드직접검사는수행하지않았다. 사용자기존탭/클립보드보존, 임시시험/인증탭닫음, 새운영편집탭전달용유지.
+- DWNC-CORE-010 done. 사진파일형식클립보드는붙여넣기→업로드/커서삽입→자동저장; HTML소스는인식→지원서식변환/미지원wrapper텍스트보존→자동저장. 공개반영은별도유지한다. HTML소스의외부이미지자동수집이나 HTML파일자체가져오기는포함하지않는다. 위앞선진행표현은이완료기록으로해소됐다.
 
-### 최신 완료 — 선택한 본문 사진을 대표이미지로 지정 (DWNC-CORE-009)
+### 이전 완료 — 선택한 본문 사진을 대표이미지로 지정 (DWNC-CORE-009)
 
 - 사용자 요청: 기존 대표이미지 메뉴 외에도 편집기 속 실제 사진을 클릭/선택했을 때 `이 사진을 대표이미지로 지정` 기능을 제공한다.
 - 범위/완료조건: 기존 이미지 선택 도구에 해당 버튼을 추가하고 현재 글 소유 사진만 지정한다. 링크 카드와 외부/다른 글 사진은 배제한다. 원본 본문/사진을 변경하지 않으며 선택 결과는 작업본 자동저장 후 명시적 공개 반영을 따른다. 기존 대표이미지 메뉴는 유지한다. 로컬 합성 실행시험/브라우저 확인, 최종 새 빌드 운영 반영과 실제 읽기 확인까지 완료한다.
