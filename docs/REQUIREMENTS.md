@@ -44,7 +44,7 @@
 
 **현재 진행 중인 계획은 `PLAN-09` 하나다.** 공개 블로그와 이메일 OTP 관리자, 기존 글 편집·신규 발행·이미지와 링크 카드 선택/삭제는 운영 중이다. 최우선인 작업본 자동저장·명시적 공개 반영과 저장 실패·재로그인·충돌 처리는 로컬 시험 후 실제 관리자에 적용했다. 운영 화면에서 기존 글과 저장 상태·이미지·삭제 도구막대를 확인했고 공개 글도 정상이다. 합의된 공개 화면·기본 관리 보완도 운영에 반영했고 독립 사본 등 후속 항목은 남는다.
 
-사용자에게 이는 기존 입력 보존을 유지하면서 기본 관리 기능을 실제 사이트에서 사용할 수 있다는 뜻이다. 작업본 자동저장과 명시적 공개 반영을 유지하면서, 원본 표시·편집 도구·검색/분류/대표사진과 페이지·공지·재사용 서식, 예약·비공개·보호 글·빈 초안 삭제, 아이콘·시간대·CCL의 합의된 보완을 모두 운영에 반영했다. 읽는 시간 제거·흰 읽기면·본문 글꼴 정리와 원본 사진 배치·엔진 도해도 실제 공개 화면에서 확인했다. 최종 소스로 정적 파일과 공개/관리 프로그램을 새로 빌드했으며 기존 글 내용·사진·공개 주소는 유지했다. 실제 글 저장·발행·삭제 시험은 하지 않았다. 후속 결정으로 댓글·방명록·구독은 제외하고 연락 이메일을 공개한다. 통계는 기존 글도 0부터 새로 집계하도록 개발 중이며 광고는 후순위, 팀블로그는 현재 제외다.
+사용자에게 이는 기존 입력 보존을 유지하면서 기본 관리 기능을 실제 사이트에서 사용할 수 있다는 뜻이다. 작업본 자동저장과 명시적 공개 반영을 유지하면서, 원본 표시·편집 도구·검색/분류/대표사진과 페이지·공지·재사용 서식, 예약·비공개·보호 글·빈 초안 삭제, 아이콘·시간대·CCL의 합의된 보완을 모두 운영에 반영했다. 읽는 시간 제거·흰 읽기면·본문 글꼴 정리와 원본 사진 배치·엔진 도해도 실제 공개 화면에서 확인했다. 최종 소스로 정적 파일과 공개/관리 프로그램을 새로 빌드했으며 기존 글 내용·사진·공개 주소는 유지했다. 실제 글 저장·발행·삭제 시험은 하지 않았다. 후속 결정으로 댓글·방명록·구독은 제외하고 연락 이메일을 공개한다. 통계는 기존 글도 0부터 새로 집계하도록 운영 반영했으며 광고는 후순위, 팀블로그는 현재 제외다.
 
 ### 미디어 정리 결과
 
@@ -61,13 +61,13 @@
 
 ### 아직 결정할 일과 진행을 막는 조건
 
-1. 합의된 기본 관리·표시 보완은 운영 반영과 실제 화면 확인까지 완료했으며 적용 장애물은 없다. 후속 연락 이메일 공개와 조회 통계 개발을 진행한다. 댓글·방명록·구독은 제외하고 광고는 후순위, 팀블로그는 현재 제외한다.
+1. 합의된 기본 관리·표시 보완은 운영 반영과 실제 화면 확인까지 완료했으며 적용 장애물은 없다. 후속 연락 이메일 공개와 조회 통계도 운영 반영과 실제 집계 확인을 완료했다. 댓글·방명록·구독은 제외하고 광고는 후순위, 팀블로그는 현재 제외한다.
 2. 새 글·사진의 독립 사본 위치와 비공개 백업 정책, 공유·스크랩 글 10개의 처리는 별도 선택으로 남는다. 댓글 기능은 제외로 결정했다.
 
 ### 바로 다음 작업
 
 1. 운영 관리자에서 새 기능을 사용할 수 있다. 이전 탭에 미저장 입력이 있으면 내용을 먼저 처리한 뒤 새 화면을 연다.
-2. 다음에는 연락 이메일 공개와 기존 글도 0부터 집계하는 조회 통계를 완성해 운영 반영한다. PLAN-09의 신규 이미지 최적화와 독립 사본은 별도 후속으로 남아 있으며 이번 기본 관리 보완의 완료와 구분한다.
+2. 다음에는 운영 관리자 `조회 통계`에서 오늘·누적·최근30일·글별 조회수를 확인할 수 있다. PLAN-09의 신규 이미지 최적화와 독립 사본은 별도 후속으로 남아 있으며 이번 기본 관리 보완의 완료와 구분한다.
 3. Git push, 실제 글 수정/삭제, 사진 저장소 덮어쓰기/삭제, 주소 연결 설정 변경 금지를 유지한다.
 
 현재 `PLAN-05`부터 `PLAN-08`까지와 `DWNC-CORE-005/006`의 합의된 기본 보완은 완료됐다. `PLAN-09` 전체는 후속 항목이 남아 진행 중이다.
@@ -121,21 +121,6 @@
 - 별도 도구에 접근할 수 없는 브라우저·로그인 화면·클립보드 동작만 메인 세션이 최소한으로 직접 처리할 수 있게 한 운영 규칙은 commit `2f821cbbff3b3ddd4e48ea2457319bc5569bd986`에 기록했다. 이 예외는 삭제·구매·공개 전환·권한 변경·외부 전송의 승인 범위를 넓히지 않는다.
 
 ## 요구사항 원장
-
-### `DWNC-CORE-007` — 연락 이메일 공개와 조회 통계
-- **Status:** `in-progress`
-- **Updated-at:** `2026-09-08`
-- **Plans:** `PLAN-09`
-- **Priority:** `P1`
-- **Acceptance:**
-  - 댓글·방명록 대신 `tsusai@msn.com` 이메일 안내와 메일 링크를 공개한다. 실제 메일은 보내지 않는다.
-  - 기존 글도 조회수 0부터 새로 집계하고 관리자에서 일별·글별 조회수를 확인한다. 방문자 수와 혼동하지 않으며 IP 등 개인 식별 정보는 저장하지 않는다.
-  - 댓글·방명록·구독은 구현하지 않고 광고 자리와 삽입 설계는 후순위, 팀블로그는 현재 제외한다.
-  - 기존 글 내용·작업본·사진·주소를 유지하고 통상 시험 후 최종 소스로 새 빌드해 승인된 운영 반영과 실제 확인까지 마친다.
-- **Evidence:**
-  - 사용자가 포함 범위를 결정했다. 연락 안내·조회 집계·관리자 통계를 나누어 로컬 구현 중이며 운영에는 아직 반영하지 않았다.
-
-
 
 
 ### `DWNC-OPS-001` — 공유·스크랩 추정 10개 처리 결정
@@ -230,35 +215,6 @@
 
 
 
-### `DWNC-S3-009` — deny-only staging Worker 최초 생성과 신뢰 정책
-- **Status:** `done`
-- **Updated-at:** `2026-09-04`
-- **Plans:** `PLAN-06`
-- **Priority:** `P0`
-- **Acceptance:**
-  - 올바른 계정에서 `dwnc-me-staging`이 여전히 없을 때만 최소 권한·짧은 수명 열쇠로 외부 요청을 모두 거부하는 서비스를 한 번 최초 생성한다.
-  - 생성 뒤 차단 코드와 설정, 적용된 정확한 version ID가 예상과 같은지 확인한다.
-  - 실제 `dwnc.me` route·custom domain·DNS와 public bucket access는 생성하지 않는다.
-  - 기존 안전장치와 복구 절차는 역사 증거로 보존하되 새 보조 도구·복구 체계·서명·영수증·장애주입·모의훈련·반복 독립감사를 추가하지 않는다.
-- **Evidence:**
-  - smoke origin은 `https://dwnc-me-staging.dwnc.workers.dev`이고 Bearer token 정책 digest는 `d6c554c1d80c68c08605636f12f26a411f7826bc40eddaee9233a30b6551781a`다. token은 32 random bytes를 padding 없는 base64url 43문자로 만들어야 한다.
-  - staging media public fingerprint는 `69cb5866228f1624693b0903e60d52b0c046464040da621b2d144cb8bffb2182`, release public fingerprint는 `2655be4122fb2238d47ba539b8e86aa9d39899631a7d713106ce711ea2de1ac2`로 release policy에 고정했다. private key는 macOS Keychain에만 보관했고 export하지 않았다.
-  - 최초 생성용 설정은 외부 요청을 모두 404로 거부하고 공개 주소·미리보기 주소·route·asset·binding을 만들지 않는다. 장애 확인용 로그는 켜되 자동 요청 상세 기록은 끄고, 정해진 로그 설정이 생성 뒤 실제 Cloudflare 설정과 같은지 원본 응답의 확인값까지 대조한다. Cloudflare가 로그 보존 값을 생략하면 기본값 `켜짐`으로만 해석하며, 명시적으로 `꺼짐`이나 `값 없음`을 돌려주면 성공으로 인정하지 않는다.
-  - Worker를 만들기 전 계정의 `workers.dev` 이름이 정확히 `dwnc`인지 별도로 읽고, 올바른 계정 확인값과 함께 서명된 확인 자료와 1회용 허가에 묶는다. 생성 뒤에도 다시 읽어 값이 달라졌으면 성공으로 기록하지 않는다.
-  - 생성된 차단용 프로그램은 “확인 완료” 표시만 믿지 않는다. Cloudflare에서 실제 프로그램 파일을 다시 내려받아 파일이 정확히 1개인지, 이름과 바이트 수와 SHA-256이 로컬 차단 코드와 완전히 같은지 확인한다. 그 상태를 연속해서 두 번 읽어 적용 중인 deployment ID·version ID·배분, 공개·미리보기 주소, 로그 설정과 프로그램 내용이 모두 같아야 한다.
-  - 각 Cloudflare 응답은 최대 1MiB까지만 읽고, 원본은 계정 번호와 열쇠를 제외한 채 프로젝트 밖의 정해진 보호 폴더에 새 파일로만 보존한다. 첫 파일 쓰기가 중간에 끊긴 경우에만 자동으로 정해진 두 번째 파일 하나를 쓸 수 있으며, 완성됐지만 내용이 다른 첫 파일을 두 번째 파일로 우회할 수 없다. 실행 전에 허가 파일, 준비·시작·결과·상태 기록과 모든 원본·복구·최종 결과 파일 18곳을 전부 확인해 하나라도 이미 있거나 일부만 기록됐거나 상위 폴더가 안전하지 않으면 Cloudflare 조회와 생성 명령을 시작하지 않는다.
-  - 승인 유효기간과 Git 상태는 첫 조회 직전, 1회용 허가를 기록하기 직전, 허가 기록 뒤 Worker 생성 명령을 실행하기 직전까지 세 번 확인한다. 따라서 확인이나 허가 기록에 시간이 걸려 승인이 만료되거나 Git 상태가 바뀌어도 생성 명령은 실행하지 않는다. 현재 Git 기록이 승인된 기록과 정확히 같고 tracked 변경과 일반 untracked 파일이 없어야 한다. `.gitignore`에 명시된 생성 결과·로컬 원본은 Git 상태에서 제외되지만, 최초 생성 payload는 별도 임시 폴더의 고정 차단 코드·설정·빈 환경 파일만 사용해 그 자료가 업로드에 섞이지 않는다.
-  - 현재 전용 로컬 시험에서 상태·원본 검증 3,718개, 중단 복구 1,023개, 실제 runner→복구 자식 139개, 실제 실행 흐름 1,819개를 통과했다. 정상 흐름은 생성 전 Cloudflare 확인 2회, 준비·허가·시작·결과 기록, 봉인된 Wrangler 생성 명령 정확히 1회, 현재 상태 A·B 조회와 최종 상태 기록 순서로 고정한다. 복구 흐름은 생성 명령·Wrangler·whoami 없이 exact account token 확인과 계정 주소 GET 2회, 현재 상태 A·B GET만 호출한다. 부모 확인 직후 다른 실행이 상태 기록을 먼저 완성해도 이번 인증 조회·이번 자식 상태 조회·기록된 과거 요청 수를 분리한다. 각 현재 상태 조회는 Worker 존재, deploy 가능한 version이 정확히 1개인지, deployment 하나가 한 version에 100%인지, 계정 주소, 공개·미리보기 상태, 설정, 실제 차단 코드와 version 설명을 확인한다. 자식 출력 buffer는 성공·오류·크기 초과·비정상 종료와 listener 등록 실패에서도 모두 0으로 덮고 해제한다. 비밀값·압축 응답·크기 초과·여러 version/deployment·분할 적용·결과 version 불일치·두 조회의 변화·기록 충돌·Git 변경·승인 만료·임시 파일 정리 실패 때는 성공으로 넘어가지 않는다. 이 과정의 실제 Cloudflare 조회·Worker 생성·설정 변경·배포·DNS 변경은 0회다.
-  - 정확한 staging 계정에서만 쓸 짧은 수명 관리 열쇠의 로컬 전달 도구는 완성했다. 새 Account API token의 정확한 53자 형식(`cfat_` + 영문·숫자 40자 + 소문자 16진수 8자)만 받고 접두사 없는 예전 token은 거부한다. Cloudflare 화면에서 `계정 > Workers Scripts > Edit`로 고르는 권한은 API permission의 `Workers Scripts Write`와 같은 Worker script 쓰기 권한이며, 이 한 가지만 허용한다. 사용 시작부터 만료까지 48시간 이하·실행 시 남은 시간이 60분 이상이어야 한다. 열쇠는 새 Keychain 항목에만 저장하고 프로젝트 밖의 기본 확인 파일과 고정 예비 파일에는 계정·열쇠·token ID 원문 대신 확인값만 기록한다. 두 경로의 안전성과 현재 상태를 열쇠나 API보다 먼저 확인하고 실제 기록 직전에 다시 확인한다. 현재 고정 payload는 원문 402바이트·Keychain 문자열 536자이며, 공용 Keychain 운반 상한 1,024자 안에서만 허용한다. 실행 때는 성공 응답이면서 오류 목록이 비어 있는 열쇠 상태, 계정의 `workers.dev=dwnc`, Wrangler의 `Account API Token` 및 계정 1개 일치를 먼저 확인한다. 그 뒤 익명 FD 3으로 허용된 자식에만 넘기고, 실제 Wrangler 자식만 token 환경변수를 받는다. Wrangler 4.125의 실제 본체와 필요한 최소 660개 파일의 전체 내용 확인값을 검증해 격리 폴더에 새 읽기 전용 사본을 만든 뒤, 이 사본을 현재 Node 절대경로로 직접 실행한다. 변조·symlink·확인 직후 교체가 있으면 열쇠를 읽거나 자식을 시작하기 전에 중단한다. 빈 HOME·XDG·임시 폴더·빈 환경 파일과 고정 PATH를 사용하고 로그인 정보 자동 대체, 외부 환경 덮어쓰기, 로그와 사용량 전송을 끈다. FD 쓰기·실행 시작·종료 오류가 나면 자식 실행을 종료하고 출력 통로가 닫힌 것을 확인한 뒤 임시 폴더를 정리한다. R2·DNS·Zone·route·삭제·production 명령은 허용 목록에 없다.
-  - 재개용 stdin runner는 shell·TTY·clipboard를 사용하지 않고 **non-TTY FIFO 또는 socket**에서 정확한 53바이트 뒤 EOF만 한 번 받는다. regular file·줄바꿈·짧거나 긴 입력·추가 바이트·시간 초과·입력 오류를 거부하며 성공·실패의 모든 소유 Buffer를 0으로 덮고 출력은 고정 schema와 허용 code만 사용한다. runner 단독으로 anonymous 여부를 주장하지 않는다. 실제 main bridge가 shell 없이 고정 `/usr/local/bin/node`, exact runner script·cwd·args, direct `child.stdin` socketpair와 `HOME`·`USER`·`LOGNAME`·`PATH`·`LANG`·`LC_ALL`·`__CF_USER_TEXT_ENCODING` exact 7-key 환경으로 spawn하는 것이 실제 신뢰 경계다. runner는 module-derived repository root와 cwd exact match, exact 7-key 이름, 모든 환경 값 안의 token/account 패턴 부재, 빈 Node execArgv와 channel kind를 먼저 확인하지만 stdin을 소비하지 않으며 clean Git·full HEAD는 bridge가 전달 직전 별도 read-only gate로 확인한다. 실제 모드는 그 뒤 manager를 dynamic import·호출하고, 기존 initializer가 primary·recovery metadata destination과 Keychain 부재를 먼저 확인한 뒤 lazy source `preflight()`의 channel/state 0-read 검사와 `readOnceAndClear()`의 exact input 1회 수신을 수행한다. `clear()`는 unread input을 소비하지 않고 listener·timer·소유 buffer만 정리한다. npm은 상속 환경과 shell 경계 때문에 실제 전달 경로로 쓰지 않으며 package command를 두지 않는다. manager 호출 전 신호는 manager import/call 0으로, initializer 선검사 뒤 input 읽기 전·중 `SIGTERM`·`SIGHUP`·`SIGINT`·`SIGQUIT`·`SIGUSR1`은 token 검증·Keychain/metadata write 0인 고정 실패로 끝난다. exact input 소유 callback 뒤에는 같은 신호의 기본 종료 동작만 manager terminal cleanup까지 막고 진행 중인 단일 초기화를 중단하거나 성공 결과를 unknown/failure로 뒤집지 않으며 자동 retry는 0이다. manager 자체 오류는 기존 고정 분류를 유지한다. 같은 reader의 고정 비민감 `--probe`만 manager import 없이 직접 1회 읽으며 fetch·Keychain·metadata/file write·native spawn·manager import/call이 각각 정확히 0회다. clean commit `132c1bbf509aa6349fdb48c4ccfe21909bc30004`의 main in-app-browser E2E에서 첫 probe는 sentinel 본문을 `s` 40자로 잘못 넣어 요구된 `P` 40자와 달랐기 때문에 고정 `PROBE` 오류로 거부됐고 child raw 출력·외부 요청·Keychain 접근 0, browser clipboard clear를 유지했다. 정확한 고정 sentinel 재실행은 browser read 53바이트, child exit 0·stdout, `inputKind=socket`·`inputReads=1`·`bufferZeroed=true`·`sideEffects=0`, runner clipboard 접근 0·browser clipboard clear·raw child output 0·overflow 0·stderr 0으로 통과했다. observer aggregate의 `false`는 fixed 성공 schema에 없는 parsed result `code`를 `0`과 중복 비교한 판정식 오류였고 실제 `exit.code=0`과 schema 대조로 E2E GO를 확정했으며 추가 재실행은 0이다. stdin 전용 435개·기존 관리-token 378개·requirements validator·diff 검사가 통과했다. 전체 `cloudflare:test`의 R2 entrypoint 정적 계약 실패는 관련 파일이 HEAD와 동일한 기존 기준선 문제다. 이는 실제 token 생성·전달·초기화 승인이 아니며 `DWNC-S3-009` 완료 상태도 바꾸지 않는다. 다음에 제안하는 단일 승인 범위는 2026-09-05 만료·Workers Scripts Write 한 권한의 새 token 1개 생성, 검증된 direct bridge 초기화 1회, 모든 gate 통과 시 봉인된 deny-only bootstrap 1회, 성공·실패 terminal cleanup의 해당 token 1회 삭제와 목록 부재 확인까지이며 모호한 결과는 재시도하지 않는다.
-  - 기존 21-field `dwnc-cloudflare-bootstrap-authorization-v1` 계약과 consumer·executor·recovery를 바꾸지 않고 staging 전용 운영 creator `cloudflare:staging:bootstrap-authorization:create`를 추가했다. CLI는 서명된 service 부재·account subdomain의 receipt/signature/public-key 절대경로 6개와 저장소 밖 output 절대경로만 받는다. creator는 두 증거를 tracked release key로 검증하고 `exists=false`, exact account fingerprint·environment·Worker·`dwnc` subdomain·request hash·expiry를 요구한다. 현재 clean HEAD·tree를 생성 전과 create-only 저장 전·후에 대조하되 기존 authorization에는 `sourceGitSha`만 기록하고 새 approval·tree field를 추가하지 않는다. 기존 export로 deny source/config SHA와 두 fresh request hash·최대 15초를 계산하고, crypto UUIDv4·32바이트 nonce hash, 현재 시각·정확히 5분 뒤 만료를 만든 뒤 기존 validator를 통과한 canonical 후보만 mode 600으로 새로 쓰고 exact 재읽기한다. account ID·token 원문은 입력·출력·파일·argv·환경변수에 두지 않으며 후보는 기존 signer로 별도 서명한다. creator 53개, 기존 bootstrap 3,718개·실행 흐름 1,819개·signing 107개 검사는 live network·실제 Keychain·clipboard 0으로 통과했다. 실제 증거 수집·후보 생성·서명·Worker 생성은 0회다.
-  - 관리 token의 terminal cleanup에는 새 CLI를 추가하지 않는다. Cloudflare UI에서 exact token 행을 한 번 삭제하고 새로고침 뒤 이름 부재를 확인한 경우에만 기존 PLAN-05 방식으로 고정 service `me.dwnc.cloudflare-staging-worker-control.v1`·account `dwnc:staging:workers-scripts-edit`에 `security delete-generic-password`를 정확히 한 번 실행한다. 이어 같은 identity를 `-w` 없이 presence-only로 조회해 exit 44를 확인한다. primary/recovery metadata와 immutable evidence는 보존하며, 원격 대상이나 삭제·부재 결과가 모호하면 local delete는 0회다.
-  - `dwnc-me-staging-worker-control-20260904` Account API token은 Workers Scripts Write 한 권한과 2026-09-05 만료로 생성됐다. 최초 `npm run cloudflare:staging:control-token:init`은 `CLOUDFLARE_E_ACCOUNT_CLIPBOARD`로 clipboard 단계에서 실패했다. 재시도·복구·후속 외부 요청 0, token 검증·Keychain·metadata 생성 불성립 상태에서 중단했다. 이후 사용자 승인으로 Cloudflare UI에서 해당 token을 정확히 1회 삭제했고, 즉시 목록과 새로고침 후 목록 모두 0건을 확인했다. 내장 브라우저 clipboard는 raw read 0으로 내용을 읽지 않고 빈 문자열로 덮어써 비웠다. 다른 token·Worker·version·deployment·공개 endpoint·DNS·route·traffic·R2 변경은 0이다. 이 요구사항은 아직 미완료이며, 새 token 생성·새 전달·재시도는 새 사용자 승인 전에 하지 않고 `DWNC-S3-010`도 시작하지 않는다.
-  - 위 두 항목의 승인 제안·대기 문장은 첫 실패 직후, 이어진 단일 승인 범위는 두 번째 실행 직전의 당시 상태를 기록한다.
-  - 승인된 재개 실행에서 `dwnc-me-staging-worker-control-20260904-v2`를 Workers Scripts Write 한 권한·2026-09-05 만료로 UI에서 한 번 생성하고 browser copy 1회→direct stdin actual init 1회를 수행했다. runner는 53바이트를 받았지만 기존 account-target Keychain 확인이 `CLOUDFLARE_E_ACCOUNT_STORE_KEYCHAIN`으로 먼저 실패해 `inputReads=0`, `bufferZeroed=true`, `durableState=none`, raw child output 0과 clipboard clear를 유지했다. token verify·subdomain GET·Keychain/metadata write·bootstrap·deploy·Worker/version/deployment/public endpoint·DNS/route/traffic·R2 변경은 모두 0회이며 재시도하지 않았다. terminal cleanup에서 해당 exact UI 행을 한 번 삭제하고 즉시·새로고침 후 부재를 확인했으며 token action 행은 이전 2개로 돌아왔다. primary/recovery control metadata와 고정 control-token Keychain 항목은 부재였고 presence-only 조회만 사용해 비밀 read·write·delete는 0회였다. exact 7-key 환경과 일반 환경의 비밀 없는 비교에서 account-target 항목은 모두 존재, control-token 항목은 모두 exit 44·not-found였으므로 환경 가시성이나 항목 부재가 원인은 아니다. actual secret read 없이 원인은 기존 account-target의 `-w` 비밀 읽기/잠금 해제 또는 읽은 내용 검증 경계까지로만 좁혔다. 이번 승인 묶음은 terminal 상태로 소진됐고, 정확한 원인 보강과 새 사용자 승인 전에는 다시 실행하지 않는다. authorization creator commit `045a314cfac6db8ce977ae072cd1ce8be1d1655e`는 완료됐지만 이번 실행에서 사용하지 않았으며 `DWNC-S3-009`는 미완료·`DWNC-S3-010`은 차단 상태다.
-
-  - 승인된 v3 실행에서는 `dwnc-me-staging-worker-control-20260904-v3`를 Workers Scripts Write·2026-09-05 만료·All IPs로 UI에서 한 번 생성하고 browser copy 1회→direct stdin 초기화 1회를 수행했다. 호출자는 53바이트 전달 뒤 자체 buffer를 0으로 덮고 clipboard를 비웠으며 overflow는 없었다. 직접 관측값은 child exit 1·stderr 296바이트와 메인 observer의 stdout JSON parse 실패이며, stderr 내용은 읽거나 해석하지 않았다. runner 정적 계약상 처리된 exit 1 실패 JSON은 stderr로 나가고 stdout은 비지만, 296바이트가 될 수 있는 허용 오류는 `CLOUDFLARE_E_ACCOUNT_STORE_KEYCHAIN`, `CLOUDFLARE_E_ACCOUNT_STORE_LOCATION`, `CLOUDFLARE_E_ACCOUNT_STORE_METADATA`, `CLOUDFLARE_E_STAGING_CONTROL_EXISTS`, `CLOUDFLARE_E_STAGING_CONTROL_VERIFY` 다섯 가지이므로 이번 오류는 특정할 수 없다. 성공 영수증·재시도·외부 bootstrap은 0회다. exact UI 행을 즉시 한 번 삭제했고 즉시·새로고침 후 모두 0건, 목록은 기존 두 행으로 돌아왔다. 하위 감사에서 `durableLocalState=none`, control-token primary/recovery metadata와 고정 Keychain 항목은 모두 부재였고 Account ID·token 원문 read/output은 0회였다. 감사 자체의 외부 write/delete·파일 수정·retry도 0회이며 authorization creator는 사용하지 않았다. 다음 시도 전 메인 observer는 exit 0이면 stdout, exit 1이면 stderr를 제한된 크기로 해석하고 고정 schema를 확인해야 한다. 나머지 원인과 수정 범위는 그 결과로 판단한다. 이번 승인 묶음은 소진됐고 `DWNC-S3-009`는 미완료·NO-GO, `DWNC-S3-010`은 차단 상태다.
-  - 후속 v5 token은 initializer `ACCOUNT_STORE_KEYCHAIN`, direct-frame `VERIFY`, network tool 경계 실패 뒤 dashboard 방식으로 전환했으며 exact v5 token을 삭제해 기존 두 행만 남겼다. 2026-09-04 dashboard에서 `dwnc-me-staging`을 직접 생성했다. 최초 비활성 HelloWorld version은 `330216b8`, 당시 100% 활성 deny-only version은 `2b543790`이었다. 활성 응답은 정확히 404 `Not found`와 `no-store`·`text/plain; charset=utf-8`·`nosniff` header를 반환했다. 당시 `workers.dev`·preview는 disabled이고 custom domain·route·binding은 없었다. dashboard preview가 initial version에 GET 2회를 보냈지만 production DNS·route·traffic과 R2 영향은 0이다.
 
 ### `DWNC-S3-012` — 사용 불가능한 기존 staging R2 token 정리
 - **Status:** `done`
@@ -427,3 +383,16 @@
   - 메인은 내장 브라우저·통합·공식 상태, 실무는 하위 에이전트에 위임한다. 통상 시험과 화면 확인 후 승인된 운영 반영까지 완료한다. Git push와 기존 금지사항은 유지한다.
 - **Evidence:**
   - 원본 표시·편집/관리 1차 보완과 페이지·공지·서식, 예약·비공개·보호·빈 초안 삭제, 아이콘·시간대·CCL을 통합 시험하고 최종 소스로 새 빌드해 운영 반영했다. 실제 관리자와 공개 글의 사진·글꼴·도해 조작까지 확인했다. 실제 글·사진·주소는 유지했다. 댓글·방명록·통계·광고·구독·팀블로그는 미답변 선택 범위로 남으며 구현 또는 완료로 간주하지 않는다. 세부 소스·빌드·운영 확인과 한계는 PROJECT_STATE.md 최신 완료 절을 따른다.
+
+### `DWNC-CORE-007` — 연락 이메일 공개와 조회 통계
+- **Status:** `done`
+- **Updated-at:** `2026-09-08`
+- **Plans:** `PLAN-09`
+- **Priority:** `P1`
+- **Acceptance:**
+  - 댓글·방명록 대신 `tsusai@msn.com` 이메일 안내와 메일 링크를 공개한다. 실제 메일은 보내지 않는다.
+  - 기존 글도 조회수 0부터 새로 집계하고 관리자에서 일별·글별 조회수를 확인한다. 방문자 수와 혼동하지 않으며 IP 등 개인 식별 정보는 저장하지 않는다.
+  - 댓글·방명록·구독은 구현하지 않고 광고 자리와 삽입 설계는 후순위, 팀블로그는 현재 제외한다.
+  - 기존 글 내용·작업본·사진·주소를 유지하고 통상 시험 후 최종 소스로 새 빌드해 승인된 운영 반영과 실제 확인까지 마친다.
+- **Evidence:**
+  - 이메일 안내와 통계를 최종 소스의 새 빌드로 함께 운영 반영했다. 통합 시험과 합성 브라우저에서 0→1 집계·검색·그래프를 확인했다. 실제 관리자0 표시 후 공개 글1회 열람과 이메일 링크 확인, 통계 새로고침에서 오늘/누적1을 확인했다. 기존 글 내용·사진·주소는 유지했으며 실제 글 변경/삭제와 메일 발송은 하지 않았다. 세부 기록은 PROJECT_STATE.md 최신 완료 절을 따른다.
