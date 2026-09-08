@@ -5,6 +5,7 @@ import { createHash, generateKeyPairSync, sign } from 'node:crypto';
 import adminWorker from '../src/admin-worker.ts';
 import { createNativePublicWorker } from '../src/lib/native-public-worker.ts';
 import { load } from 'cheerio';
+import ts from 'typescript';
 import { NativePostStore } from '../src/lib/native-post-store.ts';
 import { createEditorDatabase, seedLegacy } from './fixtures/editor-database.mjs';
 
@@ -68,6 +69,7 @@ globalThis.fetch = async (url) => {
   throw new Error('Fixture external fetch disabled');
 };
 let mode = 'normal';
+let fixtureAdmin = false;
 const counts = { saves: 0, publishes: 0 };
 const controls = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>합성 CMS 시험</title><style>body{font:18px sans-serif;max-width:900px;margin:40px auto}a{display:block;margin:18px}</style><h1>로컬 합성 CMS 시험</h1><a href="/" target="editor">관리자 열기</a><a href="http://127.0.0.1:4324/" target="public">실제 공개 처리기로 합성 방문자 화면 확인</a><a href="/__fixture/public" target="public-raw">저장된 공개 사본 확인</a>${[['fail','다음 저장 실패'],['auth','로그인 만료'],['conflict','다른 세션에서 수정'],['slow','다음 저장 3초 지연'],['slow-publish','다음 공개 반영 3초 지연'],['normal','정상으로 전환']].map(([key,label])=>`<a href="/__fixture/action/${key}">${label}</a>`).join('')}<a href="/__fixture/state">현재 합성 데이터</a></html>`;
 const fontFiles = new Set(['NanumGothic.woff','NanumGothicBold.ttf','NanumMyeongjo.woff','NanumMyeongjoBold.woff','NanumBarunGothic.woff','NanumBarunGothicBold.woff'].map(name=>'/fonts/nanum/'+name));
@@ -75,7 +77,8 @@ const server = createServer(async (incoming, outgoing) => {
   try {
     const url = new URL(incoming.url, 'http://127.0.0.1:4322');
     let response;
-    if (fontFiles.has(url.pathname)) response = new Response(await readFile(new URL('../public'+url.pathname,import.meta.url)),{headers:{'content-type':url.pathname.endsWith('.ttf')?'font/ttf':'font/woff'}});
+    if (url.pathname === '/api/session' && incoming.headers.origin === 'http://127.0.0.1:4324') response = Response.json({authenticated: fixtureAdmin}, {headers:{'access-control-allow-origin':'http://127.0.0.1:4324','access-control-allow-credentials':'true','cache-control':'no-store','vary':'Origin'}});
+    else if (fontFiles.has(url.pathname)) response = new Response(await readFile(new URL('../public'+url.pathname,import.meta.url)),{headers:{'content-type':url.pathname.endsWith('.ttf')?'font/ttf':'font/woff'}});
     else if (url.pathname === '/__fixture') response = new Response(controls, { headers: { 'content-type': 'text/html; charset=utf-8' } });
     else if (url.pathname === '/__fixture/state') response = Response.json({ mode, counts, admin: await store.listForAdmin(), published: (await store.listPublished()).map(({ id, title, revision, bodyMarkdown }) => ({ id, title, revision, bodyMarkdown })) });
     else if (url.pathname === '/__fixture/public') {
@@ -83,6 +86,7 @@ const server = createServer(async (incoming, outgoing) => {
       response = new Response(`<html lang="ko"><meta charset="utf-8"><title>방문자 합성 화면</title>${posts.map((post)=>`<article><h1>${post.title.replaceAll('<','&lt;')}</h1>${post.bodyHtml}</article>`).join('')}</html>`, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
     } else if (url.pathname.startsWith('/__fixture/action/')) {
       mode = url.pathname.split('/').at(-1);
+      if (mode === 'admin-on' || mode === 'admin-off') { fixtureAdmin = mode === 'admin-on'; mode = 'normal'; }
       if (mode === 'conflict') {
         const post = await store.getForAdmin('legacy-1');
         await store.update(post.id, post.revision, { ...post, title: `다른 세션에서 저장한 제목 ${post.revision + 1}` });
@@ -114,12 +118,19 @@ const server = createServer(async (incoming, outgoing) => {
 server.listen(4322, '127.0.0.1', () => console.log('Synthetic editor fixture: http://127.0.0.1:4322/__fixture'));
 
 const publicCss = await readFile(new URL('../src/styles/global.css', import.meta.url), 'utf8');
+// Only this local scenario rewrites the browser origin and session endpoint.
+// Production accepts no localhost origin and the fixture calls no real admin API.
+const adminComponent = await readFile(new URL('../src/components/AdminQuickLinks.astro', import.meta.url), 'utf8');
+const adminMarkup = adminComponent.split('<script>')[0].replaceAll('https://admin.dwnc.me', 'http://127.0.0.1:4322');
+const adminCss = adminComponent.match(/<style is:global>([\s\S]*?)<\/style>/u)?.[1] ?? '';
+const adminBrowserSource = (await readFile(new URL('../src/lib/public-admin-links.ts', import.meta.url), 'utf8')).replaceAll('https://admin.dwnc.me','http://127.0.0.1:4322').replaceAll('https://dwnc.me','http://127.0.0.1:4324').replace(/^export /gmu,'');
+const adminBrowserScript = ts.transpileModule(adminBrowserSource,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText + '\nmountPublicAdminLinks();';
 const staticArticle = await store.getPublishedBySequence(1);
 const syntheticIndex = [{ title: staticArticle.title, description: staticArticle.description, path: '/posts/1', date: '2026.09.01', publishedAt: staticArticle.publishedAt, updatedAt: staticArticle.updatedAt, featured: true, cover: legacyImage, coverAlt: '합성 시험 이미지', categoryId: 'daily', categories: ['일상'], tags: [], categoryPath: ['일상'], leafCategory: { label: '일상', path: '/category/일상' }, searchText: '합성 기존 공개 글 방문자에게 보이는 원래 본문입니다.' }];
 const syntheticShell = (main = '') => `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>합성 공개 화면</title><meta name="description"><link rel="canonical"><meta property="og:title"><meta property="og:description"><meta property="og:url"><meta property="og:site_name"><meta property="og:type"><meta name="twitter:card"><link rel="stylesheet" href="/__fixture/global.css"></head><body><header class="site-header"><div class="shell"><a class="brand" href="/">합성 블로그</a><span class="site-header__note"></span><nav class="site-nav"></nav></div></header><main id="main">${main}</main><dialog id="category-drawer"><nav></nav></dialog><footer class="site-footer"><div class="site-footer__inner shell"><p><a href="/"></a><span></span></p><div class="site-footer__links"><span></span></div></div></footer></body></html>`;
 const publicHandler = createNativePublicWorker(async (request) => {
   const path = new URL(request.url).pathname;
-  const html = body => new Response(request.method === 'HEAD' ? null : syntheticShell(body), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+  const html = body => new Response(request.method === 'HEAD' ? null : syntheticShell(body).replace('<main id="main">',`${adminMarkup}<main id="main">`).replace('</head>',`<style>${adminCss}</style><script src="/__fixture/admin-links.js" defer></script></head>`), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
   if (path === '/search-index.json') return Response.json(syntheticIndex);
   if (path === '/1') return new Response(null, { status: 308, headers: { location: '/posts/1' } });
   if (['/posts/1', '/posts/1/', '/posts/1/index.html', '/posts/1.html'].includes(path)) return html(`<article class="prose"><h1>${staticArticle.title}</h1>${staticArticle.bodyHtml}</article>`);
@@ -131,6 +142,7 @@ const publicServer = createServer(async (incoming, outgoing) => {
     const url = new URL(incoming.url, 'http://127.0.0.1:4324');
     let response;
     if (url.pathname === '/__fixture/global.css') response = new Response(publicCss, { headers: { 'content-type': 'text/css' } });
+    else if (url.pathname === '/__fixture/admin-links.js') response = new Response(adminBrowserScript, {headers:{'content-type':'text/javascript','cache-control':'no-store'}});
     else if (fontFiles.has(url.pathname)) response = new Response(await readFile(new URL('../public' + url.pathname, import.meta.url)), { headers: { 'content-type': url.pathname.endsWith('.ttf') ? 'font/ttf' : 'font/woff' } });
     else {
       const buffers = []; for await (const chunk of incoming) buffers.push(chunk);

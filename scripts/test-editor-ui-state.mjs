@@ -46,7 +46,7 @@ let holdPublish = null;
 let saveStarted;
 const requests = [];
 const document = { body: new Element(), documentElement: new Element(), getElementById: (id) => elements.get(id), createElement: (tag) => Object.assign(new Element(), { tag }), addEventListener() {}, querySelector: () => new Element() };
-const window = { addEventListener() {}, innerHeight: 800, innerWidth: 1200, scrollY: 0, scrollTo({ top }) { this.scrollY = top; }, getSelection: () => ({ rangeCount: 0 }) };
+const window = { location:{hash:''},listeners:{},addEventListener(name,handler) {this.listeners[name]=handler}, innerHeight: 800, innerWidth: 1200, scrollY: 0, scrollTo({ top }) { this.scrollY = top; }, getSelection: () => ({ rangeCount: 0 }) };
 const context = createContext({ document, Element, window, Date, Error, console, Response, AbortController, URLSearchParams, URL, structuredClone, crypto:webcrypto, setTimeout: () => 1, clearTimeout() {}, fetch: async (path, options = {}) => {
   requests.push({ path, method: options.method ?? 'GET', body: options.body ? JSON.parse(options.body) : null });
   if (failure) {
@@ -59,6 +59,7 @@ const context = createContext({ document, Element, window, Date, Error, console,
   const requestPath=new URL(path,'http://fixture.invalid').pathname;
   const id = requestPath.split('/')[3];
   try {
+    if(requestPath==='/api/posts/resolve'){const wanted=new URL(path,'http://fixture.invalid').searchParams.get('path');const summaries=await store.listForAdmin();for(const summary of summaries){const post=await store.getForAdmin(summary.id);if(post?.publicPath===wanted)return Response.json({post})}return Response.json({error:'해당 글이 없습니다.',code:'post_not_found'},{status:404});}
     if(requestPath==='/api/statistics')return Response.json(statisticsResponse);
     if(requestPath==='/api/categories'){const result=options.method==='PUT'?await configuration.saveCategories(JSON.parse(options.body).expectedRevision,JSON.parse(options.body).categories):await configuration.categories();return Response.json({categories:result.value,revision:result.revision});}
     if(requestPath==='/api/settings'){const result=options.method==='PUT'?await configuration.saveSettings(JSON.parse(options.body).expectedRevision,JSON.parse(options.body).settings):await configuration.settings();return Response.json({settings:result.value,revision:result.revision});}
@@ -394,5 +395,27 @@ statisticsResponse={...statisticsFixture,timezone:'invalid-zone'};await field('r
 statisticsResponse={...statisticsFixture,todayViews:0,totalViews:0,periodViews:0,daily:statisticsFixture.daily.map(row=>({...row,views:0})),posts:statisticsFixture.posts.map(row=>({...row,views:0,totalViews:0}))};await field('refreshStatistics').onclick();assert.equal(field('statisticsToday').textContent,'0');assert.equal(field('statisticsTotal').textContent,'0');assert.equal(field('statisticsRecent').textContent,'0');assert.ok(field('statisticsChart').children.every(bar=>bar.dataset.zero==='true'));statisticsResponse=statisticsFixture;
 await field('closeStatistics').onclick();assert.equal(field('statisticsDialog').open,false);assert.equal(field('manageStatistics').focused,true);
 assert.equal(runInContext('dirty',context),true);
+
+// Public-side deep links select only an exact existing post and never create one.
+runInContext('managementDirty=false;managementDrafts.clear()',context);await flush();
+let navigationStart=requests.length;window.location.hash='#view=new';await runInContext('followAdminDeepLink()',context);
+assert.equal(field('postsPanel').hidden,false);assert.equal(field('new').focused,true);assert.match(field('adminLinkMessage').textContent,/아직 초안은 만들지/u);assert.equal(requests.length,navigationStart);
+window.location.hash='#edit='+encodeURIComponent('/posts/597');await runInContext('followAdminDeepLink()',context);
+assert.equal(runInContext('current.id',context),draft.id);assert.equal(field('editorView').hidden,false);assert.deepEqual(requests.slice(navigationStart).map(request=>request.method),['GET']);
+edit('직접 연결에도 유지할 내용');navigationStart=requests.length;
+window.location.hash='#edit=/posts/598';await runInContext('followAdminDeepLink()',context);assert.equal(field('title').value,'직접 연결에도 유지할 내용');assert.equal(runInContext('current.id',context),draft.id);assert.equal(requests.length,navigationStart);assert.equal(field('openAdminLinkTab').hidden,false);assert.equal(field('openAdminLinkTab').href,'/#edit=/posts/598');
+window.location.hash='#edit=/posts/597';await runInContext('followAdminDeepLink()',context);assert.equal(field('title').value,'직접 연결에도 유지할 내용');assert.equal(requests.length,navigationStart);assert.equal(field('editorView').hidden,false);
+window.location.hash='#view=statistics';await runInContext('followAdminDeepLink()',context);assert.equal(field('statisticsDialog').open,true);assert.equal(field('title').value,'직접 연결에도 유지할 내용');assert.deepEqual(requests.slice(navigationStart).map(request=>request.method),['GET']);await field('closeStatistics').onclick();
+window.location.hash='#view=settings';navigationStart=requests.length;await runInContext('followAdminDeepLink()',context);assert.equal(field('managementDialog').open,true);assert.equal(field('title').value,'직접 연결에도 유지할 내용');assert.ok(requests.slice(navigationStart).every(request=>request.method==='GET'));await field('closeManagement').onclick();
+// Clear only synthetic unsaved management input, then explicitly save the synthetic post.
+runInContext('managementDirty=false;managementDrafts.clear()',context);await flush();
+window.location.hash='#edit=/posts/999999';navigationStart=requests.length;await runInContext('followAdminDeepLink()',context);assert.match(field('adminLinkMessage').textContent,/찾지 못했습니다/u);assert.equal(runInContext('current.id',context),draft.id);assert.deepEqual(requests.slice(navigationStart).map(request=>request.method),['GET']);
+window.location.hash='#edit=https://other.invalid/post';navigationStart=requests.length;await runInContext('followAdminDeepLink()',context);assert.match(field('adminLinkMessage').textContent,/올바르지/u);assert.equal(requests.length,navigationStart);
+window.location.hash='#edit=/posts/597&view=new';await runInContext('followAdminDeepLink()',context);assert.equal(requests.length,navigationStart);
+// Authentication failure keeps the hash and currently open editor; retry resolves it.
+const pageDraft=await store.createDraft({id:'daily',slug:'일상',label:'일상'},'page');const pageWorking=await store.update(pageDraft.id,0,{...input,title:'합성 직접 연결 페이지'});const pagePublic=await store.publish(pageDraft.id,pageWorking.revision);
+window.location.hash='#edit='+encodeURIComponent(pagePublic.publicPath);failure=401;await runInContext('followAdminDeepLink()',context);assert.equal(field('openAdminLinkTab').hidden,false);assert.equal(field('retryAdminLink').hidden,false);assert.equal(runInContext('current.id',context),draft.id);navigationStart=requests.length;
+await field('retryAdminLink').onclick();assert.equal(runInContext('current.id',context),pageDraft.id);assert.equal(field('adminLinkNotice').hidden,true);assert.deepEqual(requests.slice(navigationStart).map(request=>request.method),['GET']);
+assert.equal(window.location.hash,'#edit='+encodeURIComponent(pagePublic.publicPath));
 
 console.log(JSON.stringify({ suite: 'editor-ui-state', status: 'PASS', behavior: 'actual emitted UI, preserved list/editor navigation, preview dialog and focus, autosave isolation, failure retry, login continuation, conflict choices, in-flight edit, flush-before-publish, edit lock and new post' }));

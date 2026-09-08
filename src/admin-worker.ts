@@ -65,7 +65,7 @@ function sameOrigin(request: Request) {
 
 async function route(request: Request, env: AdminEnvironment, identityEmail: string, context: ExecutionContext) {
   const url = new URL(request.url);
-  if (url.hash || (url.search && !(request.method === 'GET' && ['/api/posts','/api/statistics'].includes(url.pathname))) || !sameOrigin(request)) return json({ error: '요청을 처리할 수 없습니다.' }, 403);
+  if (url.hash || (url.search && !(request.method === 'GET' && ['/api/posts','/api/statistics','/api/posts/resolve'].includes(url.pathname))) || !sameOrigin(request)) return json({ error: '요청을 처리할 수 없습니다.' }, 403);
   const store = new NativePostStore(env.NATIVE_DB);
   if (request.method === 'GET' && url.pathname === '/') {
     return new Response(adminHtml(identityEmail), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
@@ -82,6 +82,14 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
   if (NATIVE_MEDIA_PATH_PATTERN.test(url.pathname)) return serveAdminNativeMedia(request, env);
   if (url.pathname.startsWith('/media/')) return serveLegacyMedia(request, env, context);
   const config = new CmsConfigurationStore(env.NATIVE_DB);
+  if (request.method === 'GET' && url.pathname === '/api/posts/resolve') {
+    const paths = url.searchParams.getAll('path');
+    if (paths.length !== 1 || [...url.searchParams.keys()].some(key => key !== 'path')
+      || !(/^\/posts\/[1-9]\d*$/u.test(paths[0]) || paths[0].startsWith('/pages/') && NATIVE_POST_ID_PATTERN.test(paths[0].slice(7)))) throw new Error('ADMIN_E_QUERY');
+    const entry = (await store.listForAdmin()).find(post => post.publicPath === paths[0]);
+    const post = entry ? await store.getForAdmin(entry.id) : null;
+    return post ? json({ post }) : json({ error: '찾을 수 없습니다.', code: 'post_not_found' }, 404);
+  }
   if (request.method === 'GET' && url.pathname === '/api/statistics') return json(await new PostViewStatistics(env.NATIVE_DB).summary(url.searchParams));
   if (url.pathname === '/api/categories') {
     if (request.method === 'GET') {
@@ -203,6 +211,27 @@ function errorResponse(error: unknown) {
 
 export default {
   async fetch(request: Request, env: AdminEnvironment, context: ExecutionContext): Promise<Response> {
+    // A simple credentialed GET uses the existing admin-origin Access cookie.
+    // Only this boolean response is readable by the public site; no identity or token crosses origins.
+    const url = new URL(request.url);
+    if (url.pathname === '/api/session') {
+      const origin = request.headers.get('origin');
+      const allowedOrigin = origin === 'https://dwnc.me';
+      const reply = (authenticated: boolean, status: number) => {
+        const response = json({ authenticated }, status);
+        response.headers.set('vary', 'Origin');
+        if (allowedOrigin) {
+          response.headers.set('access-control-allow-origin', 'https://dwnc.me');
+          response.headers.set('access-control-allow-credentials', 'true');
+        }
+        return response;
+      };
+      if (request.method !== 'GET') return reply(false, 405);
+      if (url.search || url.hash || origin && !allowedOrigin && origin !== url.origin) return reply(false, 403);
+      try { await verifyAccessIdentity(request, env, { strictExpiry: true }); }
+      catch { return reply(false, 401); }
+      return reply(true, 200);
+    }
     let identity;
     try { identity = await verifyAccessIdentity(request, env); }
     catch { return json({ error: '로그인이 필요합니다.', code: 'authentication_required' }, 401); }

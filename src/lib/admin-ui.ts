@@ -1,3 +1,4 @@
+import { adminNavigationHtml, adminNavigationScript } from './admin-navigation.ts';
 import { statisticsCss, statisticsDialogHtml, statisticsScript } from './admin-statistics.ts';
 import { extrasCss, extrasHtml, extrasScript } from './admin-extras.ts';
 import { IMPORTED_PRESENTATION_CSS, ENGINE_DIAGRAM_CSS } from './imported-presentation.ts';
@@ -56,7 +57,7 @@ ${ENGINE_DIAGRAM_CSS}
 #previewBox.prose{width:100%;margin:0;padding:0}
 </style></head><body>
 <header id="editorHeader" class="editor-header"><div class="brand-strip"><strong class="brand">dwnc<span>.me</span></strong><button id="showPosts" type="button" hidden>글 목록</button><button id="attachPhoto" type="button" hidden>사진 첨부</button></div><div id="editorTools" hidden>${formattingToolbarHtml}</div><span class="account-label">${identityEmail.replace(/[&<>"']/gu, '')}</span></header>
-<main><section id="postsPanel" class="posts-view" aria-label="글 목록"><div class="posts-heading"><h1>글 목록</h1><div class="row"><button id="resumeEditing" type="button" hidden>작성 중인 글로 돌아가기</button><button id="new" class="publish" type="button">새 글 쓰기</button></div></div><p class="posts-intro">글을 선택해서 이어 쓰거나 새 글을 작성하세요.</p>${managementNavigationHtml}<ul id="posts" class="posts"></ul>${managementPaginationHtml}</section>
+<main>${adminNavigationHtml}<section id="postsPanel" class="posts-view" aria-label="글 목록"><div class="posts-heading"><h1>글 목록</h1><div class="row"><button id="resumeEditing" type="button" hidden>작성 중인 글로 돌아가기</button><button id="new" class="publish" type="button">새 글 쓰기</button></div></div><p class="posts-intro">글을 선택해서 이어 쓰거나 새 글을 작성하세요.</p>${managementNavigationHtml}<ul id="posts" class="posts"></ul>${managementPaginationHtml}</section>
 <section id="editorView" class="editor-view" hidden><h1 id="heading" class="editor-context">글을 선택하세요</h1><form id="editor" hidden><div class="category-field"><label for="category" class="sr-only">카테고리</label><select id="category" aria-label="카테고리"></select></div><label for="title" class="sr-only">제목</label><input id="title" class="title-input" maxlength="180" placeholder="제목을 입력하세요"><div class="body-field"><label id="bodyLabel" for="bodyHtml" class="sr-only">본문</label><textarea id="body" hidden></textarea><div id="markdownMedia" class="markdown-media" aria-label="본문 이미지" hidden></div><div id="bodyHtmlShell" class="html-editor-shell"><div id="bodyHtml" class="html-editor" contenteditable="true" role="textbox" aria-label="본문" aria-multiline="true" data-placeholder="여기에 내용을 입력하세요."></div><div id="mediaSelectionOutline" class="media-selection-outline" hidden></div></div></div><div class="tag-field"><label for="tags" class="sr-only">태그 (쉼표 구분)</label><input id="tags" placeholder="#태그를 입력하세요 (쉼표로 구분)"><div id="tagSuggestions" class="tag-suggestions" aria-label="태그 추천"></div></div><details class="post-details"><summary>글 정보</summary>${managementPostInfoHtml}<label for="description">요약</label><input id="description" maxlength="320" placeholder="목록에 보여 줄 짧은 소개를 입력하세요"></details></form></section></main>
 <div id="uploadPanel" class="upload-panel" hidden><p>사진을 여러 장 선택해 본문의 커서 위치에 순서대로 넣을 수 있습니다.</p><input id="image" type="file" multiple aria-label="첨부할 사진" accept="image/avif,image/gif,image/jpeg,image/png,image/webp"><div class="row"><button id="upload" type="button">사진 올리고 본문에 넣기</button><button id="closeUpload" type="button">닫기</button></div></div>
 <div id="imageTools" class="image-tools" role="toolbar" aria-label="선택한 본문 이미지" hidden><span id="imageSelectionLabel" class="image-tools__label"></span><button id="editSelectedMedia" type="button">편집</button><button id="deleteImage" type="button">선택 항목 삭제</button></div>
@@ -176,8 +177,8 @@ async function uploadImage(){
   uploadRange=null;$('uploadPanel').hidden=true;$('image').value='';status('사진을 본문에 넣고 작업본에 저장했습니다.');
 }
 $('upload').onclick=()=>action(uploadImage);
-$('retrySave').onclick=()=>{const retry=retryAction||flush;return action(async()=>{clearIssue();await retry();if(!blocked&&dirty)await flush()})};
-$('resumeLogin').onclick=()=>{const retry=retryAction||flush;return action(async()=>{try{await list()}catch(error){showIssue(error,retry);return}clearIssue();await retry();if(!blocked&&dirty)await flush();if(!blocked)status('로그인을 확인했습니다. 작성 내용을 이어서 처리했습니다.')})};
+$('retrySave').onclick=async()=>{const retry=retryAction||flush;await action(async()=>{clearIssue();await retry();if(!blocked&&dirty)await flush()});if(!blocked)await followAdminDeepLink()};
+$('resumeLogin').onclick=async()=>{const retry=retryAction||flush;await action(async()=>{try{await list()}catch(error){showIssue(error,retry);return}clearIssue();await retry();if(!blocked&&dirty)await flush();if(!blocked)status('로그인을 확인했습니다. 작성 내용을 이어서 처리했습니다.')});if(!blocked)await followAdminDeepLink()};
 $('loadLatest').onclick=()=>action(async()=>{if(!current)return;const post=(await api('/posts/'+encodeURIComponent(current.id))).post;fill(post);status('최신 작업본을 불러왔습니다. 이전에 이 화면에서 작성한 내용 대신 표시합니다.')});
 $('keepLocal').onclick=()=>action(async()=>{
   if(!current)return;const latest=(await api('/posts/'+encodeURIComponent(current.id))).post;
@@ -187,11 +188,12 @@ window.addEventListener('beforeunload',event=>{if(dirty||saving||busy||hasManage
 ${formattingScript}
 ${managementScript}
 ${statisticsScript}
+${adminNavigationScript}
 ${publishingScript}
 ${extrasScript}
 const mountEngineDiagram=${mountEngineDiagram.toString()};
 setView('list');
-void action(async()=>{await loadCategories();await loadSiteTimezone();await list()});
+void(async()=>{await action(async()=>{await loadCategories();await loadSiteTimezone();await list()});adminReady=true;await followAdminDeepLink()})();
 
 </script></body></html>`;
 }

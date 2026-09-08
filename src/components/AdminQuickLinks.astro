@@ -1,0 +1,50 @@
+<nav class="public-admin-tools" data-public-admin-tools aria-label="관리자 바로가기" hidden>
+  <span>관리자</span>
+  <a href="https://admin.dwnc.me/#view=posts" target="_blank" rel="noopener noreferrer">글 관리 ↗</a>
+  <a href="https://admin.dwnc.me/#view=new" target="_blank" rel="noopener noreferrer">새 글 ↗</a>
+  <a href="https://admin.dwnc.me/#view=statistics" target="_blank" rel="noopener noreferrer">통계 ↗</a>
+  <a href="https://admin.dwnc.me/#view=settings" target="_blank" rel="noopener noreferrer">설정 ↗</a>
+  <small>새 탭에서 열립니다.</small>
+</nav>
+
+<script>
+  import { mountPublicAdminLinks } from '../lib/public-admin-links';
+  mountPublicAdminLinks();
+</script>
+
+<style is:global>
+  .public-admin-tools[hidden], .public-edit-link[hidden] { display: none !important; }
+  .public-admin-tools {
+    margin-left: var(--rail, 0px);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    padding: 10px 24px;
+    background: var(--paper-light, #fbf9f3);
+    border-bottom: 1px solid var(--line, #cbc4b6);
+    color: var(--ink, #172025);
+    font: 13px/1.6 var(--sans, sans-serif);
+  }
+  .public-admin-tools > span { font-weight: 700; }
+  .public-admin-tools small { color: var(--ink-soft, #5d6669); }
+  .public-admin-tools a, a.public-edit-link { color: var(--accent, #0e5362); text-underline-offset: 3px; }
+  a.public-edit-link {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    min-height: 32px;
+    margin-top: 6px;
+    padding: 3px 9px;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    font: 12px/1.5 var(--sans, sans-serif);
+    letter-spacing: normal;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .public-admin-tools a:focus-visible, a.public-edit-link:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+  .archive-year li > .public-edit-link, .home-index li > .public-edit-link, .post-related li > .public-edit-link { grid-column: 1 / -1; justify-self: start; }
+  .search-results > .public-edit-link { margin: -6px 0 14px; padding: 4px 10px; }
+  @media (max-width: 900px) { .public-admin-tools { margin-left: 0; padding: 10px 20px; } }
+</style>

@@ -89,7 +89,7 @@ async function keysFor(teamDomain: string, fetcher: typeof fetch, nowMs: number,
 export async function verifyAccessIdentity(
   request: Request,
   env: AccessEnvironment,
-  { fetcher = fetch, now = () => Date.now() }: { fetcher?: typeof fetch; now?: () => number } = {},
+  { fetcher = fetch, now = () => Date.now(), strictExpiry = false }: { fetcher?: typeof fetch; now?: () => number; strictExpiry?: boolean } = {},
 ): Promise<AccessIdentity> {
   const { teamDomain, audience, allowedEmail } = normalizeConfiguration(env);
   const token = request.headers.get('cf-access-jwt-assertion') ?? '';
@@ -115,7 +115,7 @@ export async function verifyAccessIdentity(
   const email = typeof payload.email === 'string' ? payload.email.trim().toLocaleLowerCase('en-US') : '';
   if (!valid || payload.iss !== teamDomain || !audiences.includes(audience)
     || typeof payload.sub !== 'string' || !payload.sub
-    || typeof payload.exp !== 'number' || payload.exp < seconds - 30
+    || typeof payload.exp !== 'number' || (strictExpiry ? payload.exp <= seconds : payload.exp < seconds - 30)
     || (typeof payload.nbf === 'number' && payload.nbf > seconds + 30)
     || email !== allowedEmail) throw new Error('ACCESS_E_IDENTITY');
   return { subject: payload.sub, email };
