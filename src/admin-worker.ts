@@ -1,3 +1,4 @@
+import { prepareHtmlSourcePaste } from './lib/html-source-paste.ts';
 import { PostViewStatistics } from './lib/post-view-statistics.ts';
 import { boundedBody } from './lib/content-operations.ts';
 import { SITE_MEDIA_PATH_PATTERN } from './lib/cms-configuration.ts';
@@ -81,6 +82,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
   if (SITE_MEDIA_PATH_PATTERN.test(url.pathname)) return serveSiteMedia(request,env,true);
   if (NATIVE_MEDIA_PATH_PATTERN.test(url.pathname)) return serveAdminNativeMedia(request, env);
   if (url.pathname.startsWith('/media/')) return serveLegacyMedia(request, env, context);
+  if (request.method === 'POST' && url.pathname === '/api/html-paste') return json(prepareHtmlSourcePaste((await requestJson(request)).html));
   const config = new CmsConfigurationStore(env.NATIVE_DB);
   if (request.method === 'GET' && url.pathname === '/api/posts/resolve') {
     const paths = url.searchParams.getAll('path');
@@ -195,6 +197,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
 }
 
 function errorResponse(error: unknown) {
+  if (error instanceof Error && error.message === 'ADMIN_E_HTML_PASTE') return json({error:'HTML 내용을 확인해 주세요.',code:'invalid_html_paste'},400);
   const code = error instanceof Error ? error.message : '';
   if (code === 'ADMIN_E_STATISTICS_RANGE') return json({error:'날짜는 시작일 순서대로, 오늘까지 최대 366일 범위로 지정해 주세요.'},400);
   if (code === 'NATIVE_E_REVISION') return json({ error: '다른 변경이 먼저 저장되었습니다. 현재 작성 내용은 유지됩니다.', code: 'revision_conflict' }, 409);

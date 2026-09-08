@@ -2,6 +2,17 @@
 
 최종 갱신: 2026-09-08 KST — DWNC-CORE-009 본문 사진 선택 대표이미지 지정 운영 확인 완료
 
+### 현재 작업 — 클립보드 이미지와 HTML 소스 붙여넣기 (DWNC-CORE-010)
+
+- 사용자 확정: 클립보드 이미지를 붙여넣으면 첨부사진처럼 업로드·본문 삽입한다. 일반 텍스트로 복사한 HTML 소스도 붙여넣는 즉시 지원서식을 적용하며 미지원태그는 걷어내고 글자는 남긴다. 기존 웹페이지 글/표/서식 복사 동작은 유지한다.
+- 완료조건: 기존 이미지 업로드·소유·자동저장/명시공개 계약 재사용, 커서위치·실패/재로그인/재시도에서 입력보존, 일반문장의 비교기호를 HTML로오인하지않음, 지원서식은 기존 sanitizer와일치, 스크립트/외부리소스 실행이나자동다운로드없음, 합성시험·브라우저 확인과 최종새빌드 운영반영.
+- backend는 기존 sanitizer 재사용 auth-only read-only HTML 변환API/판별helper, management_ui는 paste/upload흐름, integration_review는 독립검토/합성fixture/빌드, 메인은브라우저/공식상태/통합을맡는다. 실제사용자클립보드는읽거나교체하지않고 합성ClipboardEvent로시험한다.
+- 실제 글 수정/저장/발행/삭제, R2 덮어쓰기/삭제, Git push, raw deploy, DNS/route 변경 및 비밀/비공개 콘텐츠 기록 금지는 유지한다. 새붙여넣기 시험은 합성자료에만 수행한다.
+- 구현/시험 완료: Clipboard files 우선/items fallback으로 중복을 피하고 기존업로드queue/Range를 재사용해 사진순서·커서·실패큐·로그인재시도를 유지한다. 이미지와 plain설명이 함께오면 글자도보존한다. plain HTML source 판별은 코드편집기의 syntax-colored text/html보다 우선하며 일반 rich HTML은 기존동작을 유지한다. 변환실패는원문텍스트로삽입해소실하지않는다.
+- `POST /api/html-paste`는 기존 Access/origin/body제한과 native sanitizer를 재사용하는 읽기전용 변환이다. 미지원wrapper의텍스트보존, script/style/head등실행내용제외, 소스속img제외/외부fetch0을따른다. 일반비교식/코드예시는plain유지한다. DB/R2쓰기없다.
+- 독립검토·전체 editor:test(신규 html-source-paste/editor-paste 포함), 다중사진 실패재시도, source-only 전체빌드 PASS. Astro오류/경고0, surface1417불변/dist media0/privateleak0. 로그 `/private/tmp/dwnc-core010-editor-test.log`, `/private/tmp/dwnc-core010-source-build.log`.
+- 메인내장브라우저: 새합성관리자 #1에서 실제 DataTransfer+ClipboardEvent를 전달하는 fixture버튼으로 사진1→2/업로드·작업본저장, HTML소스→h2/strong/em/list 변환, 작업본저장 후다른새탭에서사진2·제목/굵기유지를 확인했다. OS클립보드 API는호출하지않았고 실제운영 글에도붙여넣지않았다. 합성서버47307(4322/4324). 최종커밋→새번들생성→운영반영이남는다.
+
 ### 최신 완료 — 선택한 본문 사진을 대표이미지로 지정 (DWNC-CORE-009)
 
 - 사용자 요청: 기존 대표이미지 메뉴 외에도 편집기 속 실제 사진을 클릭/선택했을 때 `이 사진을 대표이미지로 지정` 기능을 제공한다.

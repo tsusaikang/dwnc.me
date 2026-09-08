@@ -28,4 +28,9 @@ for(const path of ['/posts/01','/posts/1/','https://dwnc.me/posts/1','//evil.tes
 assert.equal((await request('/api/posts/resolve?path=/posts/1&path=/posts/2')).status,400);assert.equal((await request('/api/posts/resolve?path=/posts/999999')).status,404);
 assert.equal((await request('/api/posts/resolve?path=/posts/1',{'cf-access-jwt-assertion':''})).status,401);
 assert.deepEqual(db.sqlite.prepare('SELECT * FROM editor_working_copies ORDER BY post_id').all(),before);
+// HTML conversion is authenticated, same-origin, and has no database writes.
+const convert=(headers={},body={html:'<p>붙여넣기 <strong>서식</strong></p>'})=>request('/api/html-paste',{origin:'https://admin.dwnc.me','content-type':'application/json',...headers},{method:'POST',body:JSON.stringify(body)});
+response=await convert();assert.equal(response.status,200);assert.deepEqual(await response.json(),{html:'<p>붙여넣기 <strong>서식</strong></p>',omitted:false});assert.equal(response.headers.get('cache-control'),'no-store');assert.equal(response.headers.get('access-control-allow-origin'),null);
+assert.equal((await convert({origin:'https://dwnc.me'})).status,403);assert.equal((await convert({'cf-access-jwt-assertion':''})).status,401);assert.equal((await convert({}, {html:'not html'})).status,400);assert.equal((await request('/api/html-paste')).status,404);
+assert.deepEqual(db.sqlite.prepare('SELECT * FROM editor_working_copies ORDER BY post_id').all(),before);
 console.log(JSON.stringify({suite:'admin-session',status:'PASS',behavior:'strict authenticated boolean only, exact credentialed CORS, fail closed, canonical working-copy resolution, no writes'}));
