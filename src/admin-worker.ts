@@ -10,7 +10,7 @@ import edgeRedirectManifest from '../docs/EDGE_REDIRECTS_V1.json' with { type: '
 import mediaManifest from './data/public-media-r2-v1.json' with { type: 'json' };
 import publicRequestSurface from './data/public-request-surface-v1.json' with { type: 'json' };
 import {
-  NATIVE_MEDIA_PATH_PATTERN, NATIVE_POST_ID_PATTERN,
+  IMPORTED_MEDIA_PATH_PATTERN, NATIVE_MEDIA_PATH_PATTERN, NATIVE_POST_ID_PATTERN,
 } from './lib/native-content.ts';
 import { createMediaWorker } from './lib/media-worker.ts';
 import { serveAdminNativeMedia } from './lib/native-public-worker.ts';
@@ -95,7 +95,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
     return new Response(request.method==='HEAD'?null:response.body,{headers});
   }
   if (SITE_MEDIA_PATH_PATTERN.test(url.pathname)) return serveSiteMedia(request,env,true);
-  if (NATIVE_MEDIA_PATH_PATTERN.test(url.pathname)) return serveAdminNativeMedia(request, env);
+  if (NATIVE_MEDIA_PATH_PATTERN.test(url.pathname) || IMPORTED_MEDIA_PATH_PATTERN.test(url.pathname)) return serveAdminNativeMedia(request, env);
   if (url.pathname.startsWith('/media/')) return serveLegacyMedia(request, env, context);
   if (request.method === 'POST' && url.pathname === '/api/html-paste') return json(prepareHtmlSourcePaste((await requestJson(request)).html));
   const config = new CmsConfigurationStore(env.NATIVE_DB);
@@ -215,6 +215,7 @@ function errorResponse(error: unknown) {
   if (error instanceof Error && error.message === 'ADMIN_E_HTML_PASTE') return json({error:'HTML 내용을 확인해 주세요.',code:'invalid_html_paste'},400);
   const code = error instanceof Error ? error.message : '';
   if (code === 'ADMIN_E_STATISTICS_RANGE') return json({error:'날짜는 시작일 순서대로, 오늘까지 최대 366일 범위로 지정해 주세요.'},400);
+  if (code === 'NATIVE_E_PUBLIC_CATEGORY') return json({error:'공개하려면 블로그의 카테고리를 먼저 선택해 주세요.',code:'public_category_required'},400);
   if (code === 'NATIVE_E_REVISION') return json({ error: '다른 변경이 먼저 저장되었습니다. 현재 작성 내용은 유지됩니다.', code: 'revision_conflict' }, 409);
   if (code === 'NATIVE_E_CATEGORY_IN_USE') return json({error:'글에서 사용 중인 카테고리는 삭제할 수 없습니다. 해당 글의 카테고리를 먼저 변경해 주세요.',code:'category_in_use'},400);
   if (code === 'NATIVE_E_NOT_EMPTY') return json({error:'내용이나 사진이 있는 글은 여기서 삭제할 수 없습니다. 비어 있는 새 초안만 삭제할 수 있습니다.'},400);

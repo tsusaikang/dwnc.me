@@ -12,6 +12,7 @@ import { createEditorDatabase, seedLegacy } from './fixtures/editor-database.mjs
 const database = await createEditorDatabase();
 const legacyImage = seedLegacy(database);
 const store = new NativePostStore(database);
+const staticArticle = await store.getPublishedBySequence(1);
 // Minimal local HTMLRewriter equivalent for the selectors used by the public
 // Worker. It transforms synthetic HTML, never imported article source.
 class FixtureHTMLRewriter {
@@ -58,6 +59,16 @@ const bucket = {
 const legacyImageSha = createHash('sha256').update(imageBytes).digest('hex');
 await bucket.put(legacyImage.slice(1),imageBytes,{sha256:legacyImageSha,httpMetadata:{contentType:'image/png'},customMetadata:{sha256:legacyImageSha,contract:'dwnc-native-media-v1'}});
 await store.addMedia({id:'123e4567-e89b-42d3-a456-426614174000',postId:'legacy-1',publicPath:legacyImage,objectKey:legacyImage.slice(1),sha256:legacyImageSha,bytes:imageBytes.length,mime:'image/png',alt:'합성 시험 이미지',createdAt:'2026-09-01T00:00:00Z'});
+// Optional private-import browser scenario; all records and bytes are synthetic.
+if (process.env.DWNC_PRIVATE_FIXTURE === '1') {
+  const path='/media/native/123e4567-e89b-42d3-a456-426614174089.svg';
+  const bytes=Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="240" height="120"><rect width="240" height="120" fill="#27787c"/><text x="30" y="65" fill="white">PRIVATE SVG</text><script>document.documentElement.setAttribute("data-executed","yes")</script></svg>');
+  const sha256=createHash('sha256').update(bytes).digest('hex');
+  await bucket.put(path.slice(1),bytes,{httpMetadata:{contentType:'image/svg+xml'},customMetadata:{sha256,contract:'dwnc-native-media-v1'}});
+  await store.addMedia({id:'123e4567-e89b-42d3-a456-426614174089',postId:'legacy-1',publicPath:path,objectKey:path.slice(1),sha256,bytes:bytes.length,mime:'image/svg+xml',alt:'합성 비공개 SVG',createdAt:'2026-09-01T00:00:00Z'});
+  database.sqlite.prepare("UPDATE legacy_posts SET title='합성 비공개 이전 글', category_id='private-import',category_slug='private-import',category_label='합성 원래 분류',body_html=body_html || ? WHERE id='legacy-1'").run('<p><img src="'+path+'" alt="합성 비공개 SVG"></p>');
+  database.sqlite.prepare("INSERT INTO content_operations(post_id,kind,visibility) VALUES('legacy-1','post','private')").run();
+}
 const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const jwk = Object.assign(publicKey.export({ format: 'jwk' }), { kid: 'fixture', alg: 'RS256', use: 'sig' });
 const env = { ACCESS_TEAM_DOMAIN: 'https://fixture.cloudflareaccess.com', ACCESS_AUD: 'synthetic-editor-fixture-audience', ACCESS_ALLOWED_EMAIL: 'owner@example.test', NATIVE_DB: database, NATIVE_MEDIA_BUCKET: bucket, MEDIA_BUCKET: bucket };
@@ -140,7 +151,6 @@ const adminMarkup = adminComponent.split('<script>')[0].replaceAll('https://admi
 const adminCss = adminComponent.match(/<style is:global>([\s\S]*?)<\/style>/u)?.[1] ?? '';
 const adminBrowserSource = (await readFile(new URL('../src/lib/public-admin-links.ts', import.meta.url), 'utf8')).replaceAll('https://admin.dwnc.me','http://127.0.0.1:4322').replaceAll('https://dwnc.me','http://127.0.0.1:4324').replace(/^export /gmu,'');
 const adminBrowserScript = ts.transpileModule(adminBrowserSource,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText + '\nmountPublicAdminLinks();';
-const staticArticle = await store.getPublishedBySequence(1);
 const syntheticIndex = [{ title: staticArticle.title, description: staticArticle.description, path: '/posts/1', date: '2026.09.01', publishedAt: staticArticle.publishedAt, updatedAt: staticArticle.updatedAt, featured: true, cover: legacyImage, coverAlt: '합성 시험 이미지', categoryId: 'daily', categories: ['일상'], tags: [], categoryPath: ['일상'], leafCategory: { label: '일상', path: '/category/일상' }, searchText: '합성 기존 공개 글 방문자에게 보이는 원래 본문입니다.' }];
 const syntheticShell = (main = '') => `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>합성 공개 화면</title><meta name="description"><link rel="canonical"><meta property="og:title"><meta property="og:description"><meta property="og:url"><meta property="og:site_name"><meta property="og:type"><meta name="twitter:card"><link rel="stylesheet" href="/__fixture/global.css"></head><body><header class="site-header"><div class="shell"><a class="brand" href="/">합성 블로그</a><span class="site-header__note"></span><nav class="site-nav"></nav></div></header><main id="main">${main}</main><dialog id="category-drawer"><nav></nav></dialog><footer class="site-footer"><div class="site-footer__inner shell"><p><a href="/"></a><span></span></p><div class="site-footer__links"><span></span></div></div></footer></body></html>`;
 const publicHandler = createNativePublicWorker(async (request) => {

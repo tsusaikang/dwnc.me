@@ -4,6 +4,9 @@ import sanitizeHtml from 'sanitize-html';
 
 export const NATIVE_POST_ID_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u;
 export const NATIVE_MEDIA_PATH_PATTERN = /^\/media\/native\/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\.(?:avif|gif|jpe?g|png|webp)$/u;
+// Imported originals may contain vector images and videos; new uploads retain
+// the narrower raster-image contract above.
+export const IMPORTED_MEDIA_PATH_PATTERN = /^\/media\/native\/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\.(?:svg|ico|mp4)$/u;
 
 const TITLE_LIMIT = 180;
 const DESCRIPTION_LIMIT = 320;
@@ -185,7 +188,7 @@ export function sanitizeLegacyHtml(value: string) {
       a: ['href', 'rel', 'target'],
       iframe: ['allowfullscreen', 'height', 'loading', 'referrerpolicy', 'src', 'title', 'width'],
       img: [...LEGACY_ATTRIBUTES, 'decoding', 'src'],
-      video: [...LEGACY_ATTRIBUTES, 'autoplay', 'loop', 'muted', 'playsinline', 'poster', 'preload', 'src'],
+      video: [...LEGACY_ATTRIBUTES, 'autoplay', 'loop', 'muted', 'playsinline', 'poster', 'preload', 'src', 'controls'],
     },
     allowedSchemes: ['http', 'https', 'mailto'],
     allowedSchemesByTag: { img: ['http', 'https'], iframe: ['https'], video: ['http', 'https'] },

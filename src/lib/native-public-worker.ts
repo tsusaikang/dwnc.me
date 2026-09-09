@@ -3,7 +3,7 @@ import { ContentOperations, boundedBody } from './content-operations.ts';
 import edgeRedirects from '../../docs/EDGE_REDIRECTS_V1.json' with { type: 'json' };
 import { SITE_MEDIA_PATH_PATTERN } from './cms-configuration.ts';
 import { prepareImportedPresentation, IMPORTED_PRESENTATION_CSS, ENGINE_DIAGRAM_CSS, ENGINE_DIAGRAM_BOOTSTRAP } from './imported-presentation.ts';
-import { escapeHtml, NATIVE_MEDIA_PATH_PATTERN } from './native-content.ts';
+import { escapeHtml, IMPORTED_MEDIA_PATH_PATTERN, NATIVE_MEDIA_PATH_PATTERN } from './native-content.ts';
 import { CmsConfigurationStore, DEFAULT_CATEGORIES, DEFAULT_SETTINGS, categoryDescendants, categoryLineage, type CmsCategory, type CmsSettings } from './cms-configuration.ts';
 import publicSequence from '../data/public-sequence-v1.json' with { type: 'json' };
 import { NativePostStore, snapshotVisible, type NativePost } from './native-post-store.ts';
@@ -248,13 +248,28 @@ async function dynamicMedia(
     ? await store.getAdminMedia(new URL(request.url).pathname)
     : await store.getPublicMedia(new URL(request.url).pathname,request);
   if (!media) return withVersion(unavailable(request.method), env);
-  const object = request.method === 'HEAD' ? await env.NATIVE_MEDIA_BUCKET.head(media.objectKey) : await env.NATIVE_MEDIA_BUCKET.get(media.objectKey);
+  // Video players (including Safari) request byte ranges to load and seek MP4.
+  let range: {offset:number;length:number} | undefined;
+  if (media.mime === 'video/mp4' && request.method === 'GET' && request.headers.has('range')) {
+    const match = request.headers.get('range')!.match(/^bytes=(\d*)-(\d*)$/u);
+    const start = match?.[1] ? Number(match[1]) : Math.max(0,media.bytes-Number(match?.[2]));
+    const end = match?.[1] && match[2] ? Math.min(media.bytes-1,Number(match[2])) : media.bytes-1;
+    if (!match || !match[1] && !match[2] || !Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start > end || start >= media.bytes)
+      return new Response(null,{status:416,headers:{'content-range':`bytes */${media.bytes}`,'cache-control':'no-store'}});
+    range={offset:start,length:end-start+1};
+  }
+  const object = request.method === 'HEAD' ? await env.NATIVE_MEDIA_BUCKET.head(media.objectKey) : await env.NATIVE_MEDIA_BUCKET.get(media.objectKey,range?{range}:undefined);
   if (!object || object.size !== media.bytes || object.httpMetadata?.contentType?.toLowerCase() !== media.mime
     || object.customMetadata?.contract !== 'dwnc-native-media-v1' || object.customMetadata?.sha256 !== media.sha256
     || !SHA256_PATTERN.test(media.sha256) || !(object.checksums?.sha256 instanceof ArrayBuffer)
     || bytesToHex(object.checksums.sha256) !== media.sha256) return withVersion(unavailable(request.method), env);
   const headers = new Headers({ 'content-type': media.mime, 'content-length': String(media.bytes), 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', etag: object.httpEtag });
-  return withVersion(new Response(request.method === 'HEAD' ? null : (object as R2ObjectBody).body, { headers }), env);
+  if (media.mime === 'video/mp4') headers.set('accept-ranges','bytes');
+  if (range) { headers.set('content-range',`bytes ${range.offset}-${range.offset+range.length-1}/${media.bytes}`);headers.set('content-length',String(range.length)); }
+  // Keep original SVG bytes, but prohibit script, document embedding and network
+  // loads if the image URL is opened as a document.
+  if (media.mime === 'image/svg+xml') headers.set('content-security-policy', "sandbox; default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'");
+  return withVersion(new Response(request.method === 'HEAD' ? null : (object as R2ObjectBody).body, { status: range ? 206 : 200, headers }), env);
 }
 
 export function serveAdminNativeMedia(request: Request, env: NativeMediaEnvironment) {
@@ -311,11 +326,11 @@ export function createNativePublicWorker(staticHandler: StaticHandler) {
     const target=alias?.to??normalized;
     if(target!==url.pathname){url.pathname=target;request=new Request(url,request);}
     if(SITE_MEDIA_PATH_PATTERN.test(url.pathname))return serveSiteMedia(request,env);
-    if(url.pathname.startsWith('/media/')&&!NATIVE_MEDIA_PATH_PATTERN.test(url.pathname)){
+    if(url.pathname.startsWith('/media/')&&!NATIVE_MEDIA_PATH_PATTERN.test(url.pathname)&&!IMPORTED_MEDIA_PATH_PATTERN.test(url.pathname)){
       if(!await allowedImportedMedia(url.pathname,request,env))return unavailable(request.method);
       const response=await staticHandler(request,env,context);const headers=new Headers(response.headers);headers.set('cache-control','no-store');return new Response(response.body,{status:response.status,headers});
     }
-    if (NATIVE_MEDIA_PATH_PATTERN.test(url.pathname)) return dynamicMedia(request, env, store);
+    if (NATIVE_MEDIA_PATH_PATTERN.test(url.pathname) || IMPORTED_MEDIA_PATH_PATTERN.test(url.pathname)) return dynamicMedia(request, env, store);
     const postMatch = url.pathname.match(/^\/posts\/(\d+)$/u);
     const pageMatch=url.pathname.match(/^\/pages\/([a-f0-9-]{36})$/u);
     const aggregate = url.pathname === '/about' || url.pathname === '/' || url.pathname === '/archive' || url.pathname === '/category'

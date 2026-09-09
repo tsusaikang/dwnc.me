@@ -1,6 +1,6 @@
 import { ContentOperations, contentKind, type ContentKind, type Visibility } from './content-operations.ts';
 import {
-  nativeImagePathsInHtml, normalizeEditorPostInput, normalizeNativePostInput,
+  IMPORTED_MEDIA_PATH_PATTERN, nativeImagePathsInHtml, normalizeEditorPostInput, normalizeNativePostInput,
   type NormalizedNativePostInput,
 } from './native-content.ts';
 import { CmsConfigurationStore } from './cms-configuration.ts';
@@ -274,9 +274,9 @@ export class NativePostStore {
 
   async mediaForPost(id: string) {
     const post = await this.getForAdmin(id); if (!post) throw new Error('NATIVE_E_MEDIA_POST');
-    const media = await this.database.prepare(`SELECT id, public_path, alt FROM ${post.sourceKind === 'legacy' ? 'legacy_media' : 'native_media'} WHERE post_id = ?1 ORDER BY created_at`).bind(id).all<{id:string;public_path:string;alt:string}>();
+    const media = await this.database.prepare(`SELECT id, public_path, alt, mime FROM ${post.sourceKind === 'legacy' ? 'legacy_media' : 'native_media'} WHERE post_id = ?1 ORDER BY created_at`).bind(id).all<{id:string;public_path:string;alt:string;mime:string}>();
     const images = new Map<string, {id: string | null; path: string; alt: string; kind: 'native' | 'legacy'}>();
-    for (const item of media.results ?? []) images.set(item.public_path, {id:item.id,path:item.public_path,alt:item.alt,kind:'native'});
+    for (const item of media.results ?? []) if(item.mime.startsWith('image/')) images.set(item.public_path, {id:item.id,path:item.public_path,alt:item.alt,kind:'native'});
     const allowed = new Set(mediaManifest.entries.filter((entry) => entry.contentType.startsWith('image/')).map((entry) => entry.publicPath));
     const $ = load(post.bodyHtml);
     $('img[src]').each((_i, image) => { const path = $(image).attr('src') ?? ''; if (allowed.has(path)) images.set(path, {id:null,path,alt:$(image).attr('alt') ?? '',kind:'legacy'}); });
@@ -286,7 +286,11 @@ export class NativePostStore {
 
   async normalizeInput(value: unknown, current: NativePost, requirePublishable = false) {
     const categories = (await new CmsConfigurationStore(this.database).categories()).value;
-    return normalizeEditorPostInput(value, current, { requirePublishable, categories });
+    // Preserve a private import's original classification without publishing it
+    // into the site's shared category settings. Only its current value is valid.
+    const choices = current.sourceKind === 'legacy' && !categories.some(node => node.id === current.categoryId)
+      ? [...categories, {id:current.categoryId,slug:current.categorySlug,label:current.categoryLabel,parentId:null,sortOrder:0}] : categories;
+    return normalizeEditorPostInput(value, current, { requirePublishable, categories: choices });
   }
 
   async update(id: string, revision: number, value: unknown): Promise<NativePost> {
@@ -314,7 +318,7 @@ export class NativePostStore {
         category_id = ?6, category_slug = ?7, category_label = ?8, tags_json = ?9,
         cover_media_id = ?10, revision = revision + 1, updated_at = ?11, body_format = ?14, cover_path = ?15, cover_alt = ?16, cover_selection_set = 1
         WHERE post_id = ?12 AND revision = ?13
-          AND (NOT EXISTS (SELECT 1 FROM cms_configuration WHERE key='categories') OR EXISTS (SELECT 1 FROM cms_configuration, json_each(value_json) c WHERE cms_configuration.key='categories' AND json_extract(c.value,'$.id') = ?6))
+          AND (NOT EXISTS (SELECT 1 FROM cms_configuration WHERE key='categories') OR EXISTS (SELECT 1 FROM cms_configuration, json_each(value_json) c WHERE cms_configuration.key='categories' AND json_extract(c.value,'$.id') = ?6) OR EXISTS (SELECT 1 FROM legacy_posts WHERE id=?12 AND category_id=?6))
           AND EXISTS (SELECT 1 FROM ${ADMIN_POST_SOURCE} WHERE id = ?12 AND status != 'tombstone')
         RETURNING revision`).bind(
         input.title, input.description, input.bodyMarkdown, input.bodyHtml, input.bodyText,
@@ -335,6 +339,7 @@ export class NativePostStore {
     if (!current || current.revision !== revision || current.status === 'tombstone') throw new Error('NATIVE_E_REVISION');
     await this.normalizeInput(current, current, true);
     const policy = await new ContentOperations(this.database,this.now).preparePublish(id,options);
+    if (policy.visibility !== 'private' && !(await new CmsConfigurationStore(this.database).categories()).value.some(node => node.id === current.categoryId)) throw new Error('NATIVE_E_PUBLIC_CATEGORY');
     const now = nowIso(this.now);
     const legacy = current.sourceKind === 'legacy';
     const fields = legacy ? WORKING_FIELDS.filter((field) => field !== 'body_markdown')
@@ -484,6 +489,13 @@ export class NativePostStore {
       if(row.operation_visibility!=='protected'||!request||!await new ContentOperations(this.database,this.now).authorized(row.post_id,request,true,row.snapshot_revision))return null;
     }
     const references = nativeImagePathsInHtml(row?.body_markdown ?? '');
+    const document = load(row?.body_markdown ?? '');
+    document('img[src], video[src], video[poster]').each((_index, node) => {
+      for (const attribute of ['src','poster']) {
+        const path = document(node).attr(attribute) ?? '';
+        if (IMPORTED_MEDIA_PATH_PATTERN.test(path)) references.push(path);
+      }
+    });
     if (!row || (row.cover_media_id !== row.id && !references.includes(row.public_path))) return null;
     return { ...mediaFromRow(row), bodyMarkdown: row.body_markdown, coverMediaId: row.cover_media_id };
   }

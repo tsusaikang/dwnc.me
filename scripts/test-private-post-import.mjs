@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict';
+import {mkdtemp,mkdir,writeFile,readFile,rm,symlink,realpath} from 'node:fs/promises';
+import os from 'node:os';import path from 'node:path';import {createHash} from 'node:crypto';import {DatabaseSync} from 'node:sqlite';
+import {loadPrivatePosts,privateMediaIdentity,privatePostStatements,privatePostInspectionStatements,classifyPrivatePostSnapshot,privateImportSummary} from './lib/private-post-import.mjs';
+const hash=b=>createHash('sha256').update(b).digest('hex');
+const root=await realpath(await mkdtemp(path.join(os.tmpdir(),'dwnc-private-import-synthetic-')));
+try {
+  const base=path.join(root,'migration/private/naver/12345');
+  for(const d of [base+'/normalized',base+'/media',root+'/migration/private/sequence',root+'/src/data'])await mkdir(d,{recursive:true});
+  const png=Buffer.from('synthetic owned image');await writeFile(base+'/media/photo.png',png);
+  const icon=Buffer.from('synthetic original icon');await writeFile(base+'/media/icon.cur',icon);
+  const svg=Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0"/></svg>'),video=Buffer.from('synthetic preserved MP4');
+  await writeFile(base+'/media/drawing.svg',svg);await writeFile(base+'/media/clip.mp4',video);
+  const inner='<div style="background-image: url(../media/icon.cur)">배경 보존</div><p>보존 <strong>문장</strong></p><img src="../media/photo.png" alt="합성 사진"><img src="../media/drawing.svg"><video src="../media/clip.mp4" poster="../media/photo.png" controls></video><iframe src="https://example.com/clip" title="원본 영상"></iframe>';
+  const markdown='---\ntitle: 합성 제목\nsource: naver\nsourceId: "12345"\nvisibility: private\npublishedAt: 2020-01-01T00:00:00Z\ncategories: [합성 비공개 분류]\ntags: [합성]\ncover: ../media/photo.png\n---\n\n<div class="naver-content naver-content--test">\n'+inner+'\n</div>\n';
+  await writeFile(base+'/normalized/post.md',markdown);
+  const manifest={source:'naver',source_id:'12345',visibility:'비공개',normalized_body_sha256:hash(inner),images:[{local_path:'../media/photo.png',status:'downloaded',mime:'image/png',sha256:hash(png),size:png.length},{local_path:'../media/drawing.svg',status:'downloaded',mime:'image/svg+xml',sha256:hash(svg),size:svg.length},{local_path:'../media/icon.cur',status:'downloaded',mime:'image/x-icon',sha256:hash(icon),size:icon.length}],videos:[{local_path:'../media/clip.mp4',status:'downloaded',mime:'video/mp4',sha256:hash(video),size:video.length}]};
+  await writeFile(base+'/migration.json',JSON.stringify(manifest));
+  await writeFile(root+'/migration/private/sequence/global-sequence-v1.json',JSON.stringify({entries:[{globalSequence:10,source:'naver',sourceId:'12345',visibility:'private',status:'active',publishedAt:'2020-01-01T00:00:00Z'}]}));
+  await writeFile(root+'/src/data/public-sequence-v1.json','[]');
+  const [post]=await loadPrivatePosts(root,{expectedCount:1,verifyLedger:false});
+  assert.equal(post.globalSequence,10);assert.equal(post.id,'legacy-10');assert.equal(post.categoryId,'private-import');assert.equal(post.categoryLabel,'합성 비공개 분류');assert.deepEqual(post.legacyCategories,['합성 비공개 분류']);
+  assert.ok(!post.bodyHtml.includes('<iframe'));assert.ok(post.bodyHtml.includes('https://example.com/clip'));assert.ok(!post.bodyHtml.includes('../media/'));assert.equal(post.media.length,4);assert.ok(post.bodyHtml.includes('.ico'));assert.ok(post.bodyHtml.includes('background-image'));assert.ok(post.bodyHtml.includes('.svg'));assert.ok(post.bodyHtml.includes('.mp4'));assert.ok(post.bodyHtml.includes('<video'));assert.equal(post.coverPath,post.media[0].publicPath);assert.equal(post.externalFrames,1);
+  assert.match(post.media[0].publicPath,/^\/media\/native\/[a-f0-9-]{14}4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\.png$/u);
+  assert.deepEqual(privateMediaIdentity('12345','../media/photo.png',hash(png),'image/png'),privateMediaIdentity('12345','../media/photo.png',hash(png),'image/png'));
+  assert.equal(privateImportSummary([post]).mediaBytes,png.length+svg.length+video.length+icon.length);
+  const db=new DatabaseSync(':memory:');
+  for(const name of ['0001_native_editor.sql','0002_legacy_editor.sql','0003_legacy_import_state.sql','0004_editor_working_copies.sql','0005_editor_body_format.sql','0007_content_operations.sql'])db.exec(await readFile(path.join('migrations',name),'utf8'));
+  const inspect=()=>privatePostInspectionStatements(post).map(s=>db.prepare(s.sql).all(...s.params));
+  const batch=statements=>{db.exec('BEGIN');try{for(const s of statements)db.prepare(s.sql).run(...s.params);db.exec('COMMIT')}catch(e){db.exec('ROLLBACK');throw e}};
+  assert.equal(classifyPrivatePostSnapshot(post,inspect()),'new');
+  batch(privatePostStatements(post));
+  assert.equal(classifyPrivatePostSnapshot(post,inspect()),'exact');
+  assert.equal(db.prepare('SELECT visibility FROM content_operations').get().visibility,'private');
+  assert.throws(()=>batch(privatePostStatements(post)));assert.equal(classifyPrivatePostSnapshot(post,inspect()),'exact');
+  db.prepare('UPDATE legacy_posts SET title=?').run('사용자가 수정한 제목');assert.throws(()=>classifyPrivatePostSnapshot(post,inspect()),/PRIVATE_IMPORT_E_EXISTING_CONFLICT/u);
+  // Failure on policy collision rolls back the post and media in the same batch.
+  const another={...post,id:'legacy-11',globalSequence:11,sourceId:'12346',legacyPath:'/naver/12346',media:[]};
+  db.prepare("INSERT INTO content_operations(post_id,kind,visibility) VALUES('legacy-11','post','private')").run();
+  assert.throws(()=>batch(privatePostStatements(another)));assert.equal(db.prepare("SELECT COUNT(*) AS n FROM legacy_posts WHERE id='legacy-11'").get().n,0);
+  db.close();
+  await writeFile(base+'/media/photo.png','changed');await assert.rejects(loadPrivatePosts(root,{expectedCount:1,verifyLedger:false}),/PRIVATE_IMPORT_E_MEDIA_HASH/u);
+  await rm(base+'/media/photo.png');await symlink('/etc/hosts',base+'/media/photo.png');await assert.rejects(loadPrivatePosts(root,{expectedCount:1,verifyLedger:false}),/PRIVATE_IMPORT_E_PATH/u);
+  console.log('Private import synthetic source/media/identity, atomic insert, exact skip and conflict preservation PASS');
+} finally {await rm(root,{recursive:true,force:true});}
