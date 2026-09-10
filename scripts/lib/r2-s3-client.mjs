@@ -63,6 +63,19 @@ export function validateR2Credentials(credentials) {
   return credentials;
 }
 
+export function validR2CredentialPipeStats(stats, {
+  platform = process.platform, uid = process.getuid?.(),
+} = {}) {
+  // Linux socketpair descriptors use sockfs mode 0777 and link count 1;
+  // these are kernel socket metadata, not permissions on a credential file.
+  const legacyPipe = (stats.isFIFO() || stats.isSocket()) && stats.nlink === 0
+    && [0o600, 0o666].includes(stats.mode & 0o777);
+  const linuxSocket = platform === 'linux' && stats.isSocket() && stats.nlink === 1
+    && (stats.mode & 0o777) === 0o777;
+  return (legacyPipe || linuxSocket) && (uid === undefined || stats.uid === uid)
+    && stats.size >= 0 && stats.size <= 4096;
+}
+
 export function r2CredentialsFromEnvironment(environment = process.env) {
   const fdDefined = Object.hasOwn(environment, 'R2_CREDENTIALS_FD');
   const legacyDefined = LEGACY_CREDENTIAL_NAMES.some((name) => Object.hasOwn(environment, name));
@@ -73,10 +86,7 @@ export function r2CredentialsFromEnvironment(environment = process.env) {
     let bytes;
     try {
       stats = fstatSync(3);
-      if (!(stats.isFIFO() || stats.isSocket()) || stats.nlink !== 0
-        || ![0o600, 0o666].includes(stats.mode & 0o777)
-        || typeof process.getuid === 'function' && stats.uid !== process.getuid()
-        || stats.size < 0 || stats.size > 4096) fail('MEDIA_E_R2_CREDENTIALS_FD');
+      if (!validR2CredentialPipeStats(stats)) fail('MEDIA_E_R2_CREDENTIALS_FD');
       bytes = Buffer.alloc(4097);
       let total = 0;
       while (true) {

@@ -7,6 +7,7 @@ import path from 'node:path';
 import {
   remoteValidationEnvironment, sanitizedEnvironment, writeAnonymousInheritedInput,
 } from './lib/cloudflare-process.mjs';
+import { validR2CredentialPipeStats } from './lib/r2-s3-client.mjs';
 import { canonicalJson } from './lib/cloudflare-release.mjs';
 import {
   assertManifestEqual,
@@ -60,6 +61,21 @@ async function spawnFailure(script, args, expectedCode, extraEnvironment = {}, r
     assertions += 1;
   }
 }
+
+const socketStats = { isSocket: () => true, isFIFO: () => false,
+  nlink: 1, mode: 0o140777, uid: 1000, size: 0 };
+assert.equal(validR2CredentialPipeStats(socketStats, { platform: 'linux', uid: 1000 }), true);
+for (const platform of ['darwin', 'freebsd', 'win32']) {
+  assert.equal(validR2CredentialPipeStats(socketStats, { platform, uid: 1000 }), false);
+}
+for (const changed of [{ uid: 1001 }, { nlink: 2 }, { size: 4097 }, { size: -1 },
+  { isSocket: () => false }, { isSocket: () => false, isFIFO: () => true }, { mode: 0o140755 }]) {
+  assert.equal(validR2CredentialPipeStats({ ...socketStats, ...changed },
+    { platform: 'linux', uid: 1000 }), false);
+}
+assert.equal(validR2CredentialPipeStats({ ...socketStats, nlink: 0, mode: 0o140600 },
+  { platform: 'darwin', uid: 1000 }), true);
+assertions += 12;
 
 // A child can reject the input and close its duplex pipe after our writable
 // callback succeeded. Node/Linux then emits a late read-side ECONNRESET.
