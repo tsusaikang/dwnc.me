@@ -12,12 +12,11 @@ const sourceArchive = fs.readFileSync(
   'utf8',
 );
 const sourceProjectState = fs.readFileSync(path.join(projectRoot, 'PROJECT_STATE.md'), 'utf8');
-const newestCurrentDate = [...sourceCurrent.matchAll(/- \*\*Updated-at:\*\* `(\d{4}-\d{2}-\d{2})`/g)]
-  .map((match) => match[1]).sort().at(-1);
-const newerThanCurrentDate = new Date(new Date(`${newestCurrentDate}T00:00:00Z`).valueOf() + 86400000)
-  .toISOString().slice(0, 10);
-
 const linkedFiles = [
+  'docs/GIT_DELIVERY_20260910_142007.md',
+  'docs/history/PROJECT_STATE_HISTORY_20260909_234401.md',
+  'docs/결함_보완_요구사항_20260909_223512.md',
+  'docs/운영자_상황별_대응_점검_20260909_223042.md',
   'docs/MEDIA_SERVING_CONTRACT.md',
   'docs/MIGRATION_PLAN.md',
   'docs/URL_CONTRACT.md',
@@ -84,9 +83,10 @@ function assertPlainLanguageSummary({ current = sourceCurrent } = {}) {
     undefined,
     `user summary contains unclear technical wording: ${unclearTerm}`,
   );
+  const currentPosition = userSummary.match(/### 현재 위치\n([\s\S]*?)(?=\n### |$)/)?.[1];
+  assert.ok(currentPosition?.trim(), 'user summary needs a current position');
   for (const requiredPhrase of [
-    '시험용 사이트 프로그램',
-    '실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하지 않는다',
+    '완료 항목은 현재 문서에 남기지 않고',
     '승인 없이 실제 `dwnc.me`의 주소 연결 설정과 방문자 흐름을 다시 바꾸는 일',
   ]) {
     assert.ok(
@@ -122,10 +122,10 @@ withFixture(
   (result) => assertRejected(result, /invalid current status invalid-status/),
 );
 
-const firstDoneRequirement = sourceCurrent.match(
+const firstDoneRequirement = sourceArchive.match(
   /### `([A-Z0-9-]+)` — [^\n]+\n- \*\*Status:\*\* `done`[\s\S]*?(?=\n### |\n## |$)/,
 );
-assert.ok(firstDoneRequirement, 'test fixture could not find a current done requirement');
+assert.ok(firstDoneRequirement, 'test fixture could not find an archived done requirement');
 const [firstRequirement, firstRequirementId] = firstDoneRequirement;
 withFixture(
   { archive: `${sourceArchive}\n\n${firstRequirement}\n` },
@@ -137,36 +137,9 @@ withFixture(
   (result) => assertRejected(result, /must have exactly one Evidence section/),
 );
 
-const recentCompletedSource = sourceCurrent.slice(
-  sourceCurrent.indexOf('## 최근 완료된 요구사항'),
-);
-const recentDoneMatches = [
-  ...recentCompletedSource.matchAll(
-    /^### `([A-Z0-9-]+)` — [^\n]+\n- \*\*Status:\*\* `done`\n- \*\*Updated-at:\*\* `(\d{4}-\d{2}-\d{2})`/gm,
-  ),
-];
-assert.ok(recentDoneMatches.length > 0, 'test fixture could not find recent done requirements');
-assert.ok(recentDoneMatches.length <= 12, 'source already exceeds recent done limit');
-const overflowUpdatedAt = new Date(`${recentDoneMatches.at(-1)[2]}T00:00:00Z`);
-overflowUpdatedAt.setUTCDate(overflowUpdatedAt.getUTCDate() + 1);
-const overflowDate = overflowUpdatedAt.toISOString().slice(0, 10);
-const overflowDone = Array.from({ length: 13 - recentDoneMatches.length }, (_, index) => {
-  const id = String(900 + index);
-  return [
-    `### \`DWNC-P2-${id}\` — retention fixture ${id}`,
-    '- **Status:** `done`',
-    `- **Updated-at:** \`${overflowDate}\``,
-    '- **Plans:** `PLAN-09`',
-    '- **Priority:** `P2`',
-    '- **Acceptance:**',
-    '  - fixture acceptance',
-    '- **Evidence:**',
-    '  - fixture evidence',
-  ].join('\n');
-}).join('\n\n');
 withFixture(
-  { current: `${sourceCurrent}\n\n${overflowDone}\n` },
-  (result) => assertRejected(result, /recent completed requirements 13 exceed limit 12/),
+  { current: `${sourceCurrent}\n\n${archivedRequirement({ id: 'DWNC-P2-900', updatedAt: '2026-09-09' })}\n` },
+  (result) => assertRejected(result, /invalid current status done/),
 );
 
 withFixture(
@@ -236,13 +209,8 @@ withFixture(
 );
 
 withFixture(
-  {
-    archive: `${sourceArchive}\n\n${archivedRequirement({
-      id: 'DWNC-P2-999',
-      updatedAt: newerThanCurrentDate,
-    })}\n`,
-  },
-  (result) => assertRejected(result, /oldest-first movement violated/),
+  { current: sourceCurrent.replace('current-status=unfinished', 'recent-complete-limit=12') },
+  (result) => assertRejected(result, /missing exact retention policy marker/),
 );
 
 withFixture(
@@ -270,49 +238,14 @@ withFixture(
   (result) => assertRejected(result, /user summary contains unclear technical wording: gate/),
 );
 
-assert.throws(
-  () =>
-    assertPlainLanguageSummary({
-    current: sourceCurrent.replace(
-      '시험용 사이트 프로그램 최초 생성이',
-      '최초 Worker 생성이',
-    ),
+for (const unclearWording of ['최초 Worker 생성', 'Worker가 최초 생성', 'DNS 변경']) {
+  assert.throws(
+    () => assertPlainLanguageSummary({
+      current: sourceCurrent.replace('### 최종 결과\n', `### 최종 결과\n${unclearWording}\n`),
     }),
-  /user summary contains unclear technical wording: 최초 Worker/,
-);
-
-assert.throws(
-  () =>
-    assertPlainLanguageSummary({
-    current: sourceCurrent.replace(
-      '시험용 사이트 프로그램 최초 생성이',
-      'Worker가 최초 생성되면',
-    ),
-    }),
-  /user summary contains unclear technical wording: Worker가/,
-);
-
-assert.throws(
-  () =>
-    assertPlainLanguageSummary({
-    current: sourceCurrent.replace(
-      '실제 `dwnc.me` 주소가 새 사이트를 가리키도록 연결하지 않는다',
-      '실제 `dwnc.me` 주소와 DNS는 연결하지 않는다',
-    ),
-    }),
-  /user summary contains unclear technical wording: DNS/,
-);
-
-assert.throws(
-  () =>
-    assertPlainLanguageSummary({
-    current: sourceCurrent.replace(
-      '승인 없이 실제 `dwnc.me`의 주소 연결 설정과 방문자 흐름을 다시 바꾸는 일',
-      '실제 `dwnc.me` 도메인 연결과 DNS 변경',
-    ),
-    }),
-  /user summary contains unclear technical wording: DNS/,
-);
+    /user summary contains unclear technical wording/,
+  );
+}
 
 withFixture(
   {
@@ -325,20 +258,33 @@ withFixture(
 );
 
 withFixture(
-  { current: sourceCurrent.replace('- **Plans:** `PLAN-05`', '- **Plans:** `PLAN-99`') },
+  { current: sourceCurrent.replace('- **Plans:** `PLAN-09`', '- **Plans:** `PLAN-99`') },
   (result) => assertRejected(result, /references unknown plan ID PLAN-99/),
 );
 
 withFixture(
   {
-    current: sourceCurrent
-      .replace(/^(\| `PLAN-07` \|[^\n]*\| )`완료` \|$/m, '$1`진행 중` |')
-      .replace(
-        /^(\| `PLAN-08` \|[^\n]*\| )`완료` \|$/m,
-        '$1`진행 중` |',
-      ),
+    current: sourceCurrent.replace(
+      /^(\| `PLAN-00` \|[^\n]*\| )`계속 적용` \|$/m,
+      '$1`진행 중` |',
+    ),
   },
-  (result) => assertRejected(result, /overall plan must have at most one in-progress PLAN; found 3/),
+  (result) => assertRejected(result, /overall plan must have at most one in-progress PLAN; found 2/),
+);
+
+withFixture(
+  { current: sourceCurrent.replace(/^(\| `PLAN-09` \|[^\n]*\| )`진행 중` \|$/m, '$1`완료` |') },
+  (result) => assertRejected(result, /PLAN-09 is complete and must be archived/),
+);
+
+withFixture(
+  { archive: sourceArchive.replace(/^(\| `PLAN-08` \|[^\n]*\| )`완료` \|$/m, '$1`대기` |') },
+  (result) => assertRejected(result, /PLAN-08 is not complete and must remain current/),
+);
+
+withFixture(
+  { archive: sourceArchive.replace(/^(\| `PLAN-08` \|[^\n]*)$/m, '$1\n$1') },
+  (result) => assertRejected(result, /duplicate plan ID PLAN-08/),
 );
 
 withFixture(
@@ -346,4 +292,9 @@ withFixture(
   (result) => assertRejected(result, /has invalid priority urgent/),
 );
 
-console.log('requirements validator tests PASS: baseline=1, negative=23');
+withFixture(
+  { current: sourceCurrent.replace('(../PROJECT_STATE.md)', '(../missing-state-fixture.md)') },
+  (result) => assertRejected(result, /local link target does not exist/),
+);
+
+console.log('requirements validator tests PASS: current-only policy, archive, IDs, links, metadata and dashboard');

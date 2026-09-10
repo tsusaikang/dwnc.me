@@ -117,7 +117,10 @@
     "inventory:validate": "node scripts/validate-inventory.mjs",
     "build:validate": "node scripts/validate-build.mjs",
     "requirements:validate": "node scripts/validate-requirements.mjs",
-    "requirements:test": "node scripts/test-requirements-validator.mjs"
+    "requirements:test": "node scripts/test-requirements-validator.mjs",
+    "cloudflare:git:test": "node scripts/test-cloudflare-git-delivery.mjs",
+    "cloudflare:git:deploy:public": "node scripts/deploy-cloudflare-git.mjs public",
+    "cloudflare:git:deploy:admin": "node scripts/deploy-cloudflare-git.mjs admin"
   },
   "dependencies": {
     "@astrojs/markdown-satteri": "0.3.7",

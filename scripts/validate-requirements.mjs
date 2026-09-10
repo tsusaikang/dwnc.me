@@ -5,13 +5,11 @@ import { fileURLToPath } from 'node:url';
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const currentPath = path.join(projectRoot, 'docs', 'REQUIREMENTS.md');
 const archivePath = path.join(projectRoot, 'docs', 'REQUIREMENTS_ARCHIVE.md');
-const recentCompleteLimit = 12;
 const allowedCurrentStatuses = new Set([
   'planned',
   'in-progress',
   'blocked',
   'decision-needed',
-  'done',
 ]);
 const allowedArchiveStatuses = new Set(['done']);
 const allowedPriorities = new Set(['P0', 'P1', 'P2', 'P3']);
@@ -19,10 +17,9 @@ const allowedPlanStatuses = new Set(['계속 적용', '완료', '진행 중', '�
 const requirementHeadingPattern = /^### `([A-Z0-9-]+)` — (.+)$/;
 const planRowPattern = /^\| `(PLAN-\d{2})` \| [^\n]+ \| [^\n]+ \| `([^`]+)` \|$/gm;
 const archivePolicy =
-  '<!-- requirements-archive-policy: status=done order=updated-at-id-asc movement=oldest-first -->';
+  '<!-- requirements-archive-policy: status=done order=updated-at-id-asc -->';
 const dashboardHeading = '## 한눈에 보는 진행 상황';
 const ledgerHeading = '## 요구사항 원장';
-const completedHeading = '## 최근 완료된 요구사항';
 const technicalReferenceHeading = '### 기술 참고';
 const plainLanguageRequirementId = 'DWNC-OPS-004';
 const planTraceabilityRequirementId = 'DWNC-OPS-005';
@@ -30,10 +27,8 @@ const requiredDashboardSections = [
   '### 최종 결과',
   '### 전체 계획',
   '### 현재 위치',
-  '### 미디어 정리 결과',
   '### 아직 결정할 일과 진행을 막는 조건',
   '### 바로 다음 작업',
-  '### 최근 완료',
   '### 이번 작업에서 하지 않는 것',
   '### 새 요청 반영 방법',
   technicalReferenceHeading,
@@ -127,7 +122,6 @@ function parseRequirements(filePath, kind) {
   const text = readUtf8(filePath);
   const lines = text.split(/\r?\n/);
   const requirements = [];
-  const completedLineIndex = lines.indexOf(completedHeading);
 
   if (/\/Users\/|\/home\/|[A-Za-z]:\\Users\\/i.test(text)) {
     addError(filePath, 'must not contain absolute user paths');
@@ -137,16 +131,13 @@ function parseRequirements(filePath, kind) {
   }
 
   if (kind === 'current') {
-    const policy = `<!-- requirements-policy: recent-complete-limit=${recentCompleteLimit} -->`;
+    const policy = '<!-- requirements-policy: current-status=unfinished -->';
     if (!text.includes(policy)) addError(filePath, `missing exact retention policy marker ${policy}`);
 
     const dashboardIndex = text.indexOf(dashboardHeading);
     if (dashboardIndex === -1) addError(filePath, `missing dashboard heading ${dashboardHeading}`);
     const ledgerIndex = text.indexOf(ledgerHeading);
     if (ledgerIndex === -1) addError(filePath, `missing requirement ledger section ${ledgerHeading}`);
-    if (completedLineIndex === -1) {
-      addError(filePath, `missing recent completed requirements section ${completedHeading}`);
-    }
     let previousIndex = -1;
     for (const section of requiredDashboardSections) {
       const index = text.indexOf(section);
@@ -170,7 +161,7 @@ function parseRequirements(filePath, kind) {
       addError(filePath, `missing exact archive policy marker ${archivePolicy}`);
     }
     for (const line of lines) {
-      if (line.startsWith('###') && !requirementHeadingPattern.test(line)) {
+      if (line.startsWith('### ') && !requirementHeadingPattern.test(line)) {
         addError(filePath, `malformed archived requirement heading: ${line}`);
       }
     }
@@ -207,12 +198,6 @@ function parseRequirements(filePath, kind) {
     if (priority && !allowedPriorities.has(priority)) {
       addError(filePath, `${id} has invalid priority ${priority}`);
     }
-    if (kind === 'current' && status === 'done' && index < completedLineIndex) {
-      addError(filePath, `${id} is done but is outside Recent completed requirements`);
-    }
-    if (kind === 'current' && status && status !== 'done' && index > completedLineIndex) {
-      addError(filePath, `${id} is not done but is inside Recent completed requirements`);
-    }
 
     requirements.push({ id, title, status, updatedAt, plans, priority, acceptance, evidence, filePath });
     index = end - 1;
@@ -237,16 +222,25 @@ const archive = parseRequirements(archivePath, 'archive');
 validateLocalLinks(currentPath, current.text);
 validateLocalLinks(archivePath, archive.text);
 
-const plans = [...current.text.matchAll(planRowPattern)].map((match) => ({
-  id: match[1],
-  status: match[2],
-}));
+const plans = [current, archive].flatMap((document, index) =>
+  [...document.text.matchAll(planRowPattern)].map((match) => ({
+    id: match[1],
+    status: match[2],
+    filePath: index === 0 ? currentPath : archivePath,
+  })),
+);
 const planIds = new Set();
 for (const plan of plans) {
-  if (planIds.has(plan.id)) addError(currentPath, `duplicate plan ID ${plan.id}`);
+  if (planIds.has(plan.id)) addError(plan.filePath, `duplicate plan ID ${plan.id}`);
   planIds.add(plan.id);
+  if (plan.filePath === currentPath && plan.status === '완료') {
+    addError(currentPath, `${plan.id} is complete and must be archived`);
+  }
+  if (plan.filePath === archivePath && plan.status !== '완료') {
+    addError(archivePath, `${plan.id} is not complete and must remain current`);
+  }
   if (!allowedPlanStatuses.has(plan.status)) {
-    addError(currentPath, `${plan.id} has invalid plan status ${plan.status}`);
+    addError(plan.filePath, `${plan.id} has invalid plan status ${plan.status}`);
   }
 }
 if (plans.length === 0) addError(currentPath, 'overall plan must contain at least one PLAN row');
@@ -351,14 +345,6 @@ for (const requirement of all) {
   }
 }
 
-const currentDone = current.requirements.filter(({ status }) => status === 'done');
-if (currentDone.length > recentCompleteLimit) {
-  addError(
-    currentPath,
-    `recent completed requirements ${currentDone.length} exceed limit ${recentCompleteLimit}; archive the oldest`,
-  );
-}
-
 function compareRequirementOrder(left, right) {
   const dateOrder = left.updatedAt.localeCompare(right.updatedAt);
   return dateOrder !== 0 ? dateOrder : left.id.localeCompare(right.id);
@@ -381,23 +367,7 @@ function validateAscendingOrder(requirements, filePath, label) {
   }
 }
 
-validateAscendingOrder(currentDone, currentPath, 'recent completed requirements');
 validateAscendingOrder(archive.requirements, archivePath, 'archived requirements');
-
-if (archive.requirements.length > 0 && currentDone.length > 0) {
-  const newestArchived = archive.requirements.at(-1);
-  const oldestCurrent = currentDone[0];
-  if (
-    validIsoDate(newestArchived.updatedAt) &&
-    validIsoDate(oldestCurrent.updatedAt) &&
-    compareRequirementOrder(newestArchived, oldestCurrent) > 0
-  ) {
-    addError(
-      archivePath,
-      `oldest-first movement violated: archived ${newestArchived.id} is newer than current ${oldestCurrent.id}`,
-    );
-  }
-}
 
 if (current.requirements.length === 0) addError(currentPath, 'must contain at least one requirement');
 
@@ -407,7 +377,7 @@ if (errors.length > 0) {
 } else {
   console.log(
     `requirements validation PASS: current=${current.requirements.length}, ` +
-      `recent-done=${currentDone.length}/${recentCompleteLimit}, archived=${archive.requirements.length}, ` +
+      `archived=${archive.requirements.length}, ` +
       `unique-ids=${all.length}`,
   );
 }
