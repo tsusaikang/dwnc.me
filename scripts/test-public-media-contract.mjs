@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { mkdtemp, readFile, rm, rmdir, symlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -59,6 +60,25 @@ async function spawnFailure(script, args, expectedCode, extraEnvironment = {}, r
     assertions += 1;
   }
 }
+
+// A child can reject the input and close its duplex pipe after our writable
+// callback succeeded. Node/Linux then emits a late read-side ECONNRESET.
+const lateResetPipe = new EventEmitter();
+lateResetPipe.end = (_bytes, callback) => callback();
+await writeAnonymousInheritedInput(lateResetPipe, 'synthetic-input');
+assert.doesNotThrow(() => lateResetPipe.emit('error', Object.assign(new Error('synthetic reset'), {
+  code: 'ECONNRESET',
+})));
+lateResetPipe.emit('close');
+assert.equal(lateResetPipe.listenerCount('error'), 0);
+const failedWritePipe = new EventEmitter();
+failedWritePipe.end = (_bytes, callback) => callback(new Error('synthetic failed write'));
+await assert.rejects(writeAnonymousInheritedInput(failedWritePipe, 'synthetic-input'),
+  /CLOUDFLARE_E_SEALED_INPUT/);
+assert.doesNotThrow(() => failedWritePipe.emit('error', new Error('synthetic async write error')));
+failedWritePipe.emit('close');
+assert.equal(failedWritePipe.listenerCount('error'), 0);
+assertions += 5;
 
 const tracked = await loadTrackedPublicMediaManifest(ROOT);
 

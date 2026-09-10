@@ -1024,7 +1024,6 @@ export async function writeAnonymousInheritedInput(stream, value, {
       const finish = (error = null) => {
         if (settled) return;
         settled = true;
-        stream.off('error', onError);
         signal?.removeEventListener('abort', onAbort);
         if (error !== null && error !== undefined) {
           reject(new Error('CLOUDFLARE_E_SEALED_INPUT'));
@@ -1035,7 +1034,11 @@ export async function writeAnonymousInheritedInput(stream, value, {
         try { stream.destroy?.(); } catch { /* best effort */ }
         finish(new Error('sealed input aborted'));
       };
+      // The writable callback may finish before the duplex pipe's readable
+      // side closes. Keep its error handler through close for late ECONNRESET
+      // (or the error event following a failed write callback).
       stream.once('error', onError);
+      stream.once('close', () => stream.off('error', onError));
       signal?.addEventListener('abort', onAbort, { once: true });
       if (signal?.aborted) { onAbort(); return; }
       stream.end(bytes, (error) => finish(error));
