@@ -2,6 +2,8 @@ export interface AccessEnvironment {
   ACCESS_TEAM_DOMAIN?: string;
   ACCESS_AUD?: string;
   ACCESS_ALLOWED_EMAIL?: string;
+  /** Optional runtime secret: comma-separated exact email addresses. */
+  ACCESS_ADDITIONAL_ALLOWED_EMAILS?: string;
 }
 
 export interface AccessIdentity {
@@ -45,10 +47,16 @@ function normalizeConfiguration(env: AccessEnvironment) {
     throw new Error('ACCESS_E_CONFIG');
   }
   const audience = env.ACCESS_AUD?.trim() ?? '';
-  const allowedEmail = env.ACCESS_ALLOWED_EMAIL?.trim().toLocaleLowerCase('en-US') ?? '';
+  const additionalEmails = env.ACCESS_ADDITIONAL_ALLOWED_EMAILS?.trim() ?? '';
+  const allowedEmails = new Set([
+    env.ACCESS_ALLOWED_EMAIL ?? '',
+    ...(additionalEmails ? additionalEmails.split(',') : []),
+  ].map((email) => email.trim().toLocaleLowerCase('en-US')));
   if (!/^[A-Za-z0-9_-]{20,200}$/u.test(audience)
-    || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(allowedEmail)) throw new Error('ACCESS_E_CONFIG');
-  return { teamDomain: teamDomain.origin, audience, allowedEmail };
+    || [...allowedEmails].some((email) => !/^[^\s@*,;?]+@[^\s@*,;?]+\.[^\s@*,;?]+$/u.test(email))) {
+    throw new Error('ACCESS_E_CONFIG');
+  }
+  return { teamDomain: teamDomain.origin, audience, allowedEmails };
 }
 
 async function keysFor(teamDomain: string, fetcher: typeof fetch, nowMs: number, refresh = false) {
@@ -91,7 +99,7 @@ export async function verifyAccessIdentity(
   env: AccessEnvironment,
   { fetcher = fetch, now = () => Date.now(), strictExpiry = false }: { fetcher?: typeof fetch; now?: () => number; strictExpiry?: boolean } = {},
 ): Promise<AccessIdentity> {
-  const { teamDomain, audience, allowedEmail } = normalizeConfiguration(env);
+  const { teamDomain, audience, allowedEmails } = normalizeConfiguration(env);
   const token = request.headers.get('cf-access-jwt-assertion') ?? '';
   if (!token || token.length > 16 * 1024) throw new Error('ACCESS_E_TOKEN');
   const parts = token.split('.');
@@ -117,7 +125,7 @@ export async function verifyAccessIdentity(
     || typeof payload.sub !== 'string' || !payload.sub
     || typeof payload.exp !== 'number' || (strictExpiry ? payload.exp <= seconds : payload.exp < seconds - 30)
     || (typeof payload.nbf === 'number' && payload.nbf > seconds + 30)
-    || email !== allowedEmail) throw new Error('ACCESS_E_IDENTITY');
+    || !allowedEmails.has(email)) throw new Error('ACCESS_E_IDENTITY');
   return { subject: payload.sub, email };
 }
 

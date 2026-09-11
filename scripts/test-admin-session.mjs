@@ -19,6 +19,17 @@ const jwt=token();clearAccessKeyCacheForTests();await verifyAccessIdentity(new R
 const request=(path='/api/session',headers={},options={})=>worker.fetch(new Request(`https://admin.dwnc.me${path}`,{headers:{'cf-access-jwt-assertion':jwt,origin:'https://dwnc.me',...headers},...options}),env,{});
 let response=await request();assert.equal(response.status,200);assert.deepEqual(await response.json(),{authenticated:true});assert.equal(response.headers.get('cache-control'),'no-store');assert.equal(response.headers.get('vary'),'Origin');assert.equal(response.headers.get('access-control-allow-origin'),'https://dwnc.me');assert.equal(response.headers.get('access-control-allow-credentials'),'true');assert.equal(response.headers.get('set-cookie'),null);
 for(const assertion of ['',token({exp:Math.floor(Date.now()/1000)-1}),token({email:'other@example.test'}),token({aud:'other-audience'}),jwt.slice(0,-8)+'invalid!']){response=await request('/api/session',{'cf-access-jwt-assertion':assertion});assert.equal(response.status,401);assert.deepEqual(await response.json(),{authenticated:false});assert.equal(response.headers.get('access-control-allow-origin'),'https://dwnc.me');}
+// A second exact account receives the same session and editor access only while configured.
+const secondHeaders={'cf-access-jwt-assertion':token({email:'second@example.test'})};
+assert.equal((await request('/api/session',secondHeaders)).status,401);
+env.ACCESS_ADDITIONAL_ALLOWED_EMAILS='Second@example.test';
+response=await request('/api/session',secondHeaders);assert.equal(response.status,200);assert.deepEqual(await response.json(),{authenticated:true});
+assert.equal((await request('/',secondHeaders)).status,200);
+assert.equal((await request('/api/posts/resolve?path=/posts/1',secondHeaders)).status,200);
+assert.equal((await request('/api/session',{'cf-access-jwt-assertion':token({email:'other@example.test'})})).status,401);
+delete env.ACCESS_ADDITIONAL_ALLOWED_EMAILS;
+assert.equal((await request('/api/session',secondHeaders)).status,401);
+assert.equal((await request('/api/session')).status,200);
 for(const origin of ['null','https://evil.test','https://dwnc.me.evil.test','http://dwnc.me','https://www.dwnc.me','https://dwnc.me:444']){response=await request('/api/session',{origin});assert.equal(response.status,403);assert.equal(response.headers.get('access-control-allow-origin'),null);assert.deepEqual(await response.json(),{authenticated:false});}
 for(const method of ['POST','OPTIONS','HEAD'])assert.equal((await request('/api/session',{}, {method})).status,405);
 assert.equal((await request('/api/session?token=unused')).status,403);

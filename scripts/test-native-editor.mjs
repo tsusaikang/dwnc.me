@@ -128,6 +128,29 @@ const identity = await verifyAccessIdentity(new Request('https://admin.example.t
 equal(identity.email, 'owner@example.com');
 await rejects(() => verifyAccessIdentity(new Request('https://admin.example.test/', { headers: { 'cf-access-jwt-assertion': accessToken({ email: 'other@example.com' }) } }), accessEnv, { fetcher: certFetch, now: () => 1_900_000_000_000 }), /ACCESS_E_IDENTITY/u);
 
+// Runtime additions keep the original account and require exact signed email membership.
+const verifyWithEmails = (env, claims = {}) => verifyAccessIdentity(
+  new Request('https://admin.example.test/', { headers: { 'cf-access-jwt-assertion': accessToken(claims) } }),
+  env, { fetcher: certFetch, now: () => 1_900_000_000_000 },
+);
+const multipleEmailEnv = { ...accessEnv, ACCESS_ADDITIONAL_ALLOWED_EMAILS: ' Second@Example.test , third@example.test, OWNER@example.com ' };
+equal((await verifyWithEmails(multipleEmailEnv)).email, 'owner@example.com');
+equal((await verifyWithEmails(multipleEmailEnv, { email: ' SECOND@example.test ' })).email, 'second@example.test');
+equal((await verifyWithEmails(multipleEmailEnv, { email: 'third@example.test' })).email, 'third@example.test');
+equal((await verifyWithEmails({ ...accessEnv, ACCESS_ADDITIONAL_ALLOWED_EMAILS: '  ' })).email, 'owner@example.com');
+for (const email of ['other@example.test', 'second@sub.example.test', 'second@example.test.evil', 'second+alias@example.test']) {
+  await rejects(() => verifyWithEmails(multipleEmailEnv, { email }), /ACCESS_E_IDENTITY/u);
+}
+for (const addition of ['*', 'example.test', '@example.test', '*@example.test', 'second@*.test', 'second?@example.test', 'second@example.test,', 'second@example.test;third@example.test']) {
+  await rejects(() => verifyWithEmails({ ...accessEnv, ACCESS_ADDITIONAL_ALLOWED_EMAILS: addition }), /ACCESS_E_CONFIG/u);
+}
+await rejects(() => verifyWithEmails({ ...multipleEmailEnv, ACCESS_ALLOWED_EMAIL: '' }), /ACCESS_E_CONFIG/u);
+for (const claims of [
+  { email: 'second@example.test', aud: 'different-audience' },
+  { email: 'second@example.test', iss: 'https://other.cloudflareaccess.com' },
+  { email: 'second@example.test', exp: 1_800_000_000 },
+]) await rejects(() => verifyWithEmails(multipleEmailEnv, claims), /ACCESS_E_IDENTITY/u);
+
 const rotated = generateKeyPairSync('rsa', { modulusLength: 2048 });
 const rotatedJwk = rotated.publicKey.export({ format: 'jwk' }); Object.assign(rotatedJwk, { kid: 'key-2', alg: 'RS256', use: 'sig' });
 function rotatedToken() {
