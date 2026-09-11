@@ -1,3 +1,4 @@
+import { IMAGE_LAYOUT_CSS } from './image-layout.ts';
 import { load } from 'cheerio';
 import { sanitizeLegacyHtml } from './native-content.ts';
 import corrections from '../data/imported-formatting-corrections.json' with { type: 'json' };
@@ -145,4 +146,4 @@ export const IMPORTED_PRESENTATION_CSS = String.raw`
 .prose figure[data-ke-type="opengraph"] .og-host{font-size:12px;line-height:1.5}
 .prose figure:is(.alignLeft,.alignCenter,.alignRight){max-width:100%}
 .prose figure.alignCenter{margin-inline:auto}.prose figure.alignLeft{margin-inline:0 auto}.prose figure.alignRight{margin-inline:auto 0}
-`;
+` + IMAGE_LAYOUT_CSS;

@@ -18,22 +18,23 @@ class Node {
 }
 const fields={bodyHtml:new Node(),image:new Node(),uploadPanel:new Node()};
 const makeRange=(index=1)=>({index,commonAncestorContainer:fields.bodyHtml,cloneRange(){return makeRange(this.index)},deleteContents(){},insertNode(node){node.parentNode=fields.bodyHtml;fields.bodyHtml.children.splice(this.index,0,node)},setStartAfter(node){this.index=fields.bodyHtml.children.indexOf(node)+1},collapse(){},selectNodeContents(){this.index=fields.bodyHtml.children.length},createContextualFragment(html){return new Node('',html)}});
+let historyChanges=0;
 let selectionRange=makeRange(), uploads=[],saved=[],messages=[],failUpload=false,failFlush=false,failHtml=false;
 const doc={createElement:tag=>new Node(tag),createTextNode:text=>new Node('',text),createRange:()=>makeRange(),};
 const win={getSelection:()=>({rangeCount:1,getRangeAt:()=>selectionRange,removeAllRanges(){},addRange(range){selectionRange=range}})};
-const ctx=createContext({document:doc,window:win,crypto:webcrypto,Uint8Array,Array,Set,JSON,encodeURIComponent,console,$:id=>fields[id],status:text=>messages.push(text),bodyRange:()=>selectionRange,clearMediaSelection(){},closeFormatPanels(){},renderSaveState(){},setTimeout(){},clearTimeout(){},api:async(path,options)=>{
+const ctx=createContext({document:doc,window:win,crypto:webcrypto,Uint8Array,Array,Set,JSON,encodeURIComponent,console,$:id=>fields[id],status:text=>messages.push(text),bodyRange:()=>selectionRange,clearMediaSelection(){},captureEditorBefore(){},rememberEditorChange(){historyChanges++},closeFormatPanels(){},renderSaveState(){},setTimeout(){},clearTimeout(){},api:async(path,options)=>{
  if(path==='/html-paste'){if(failHtml){failHtml=false;throw new Error('synthetic authentication_required')}return {html:'<p><strong>합성 서식</strong></p>',omitted:true}}
  assert.equal(path,'/posts/synthetic-post/media');assert.equal(options.method,'POST');assert.equal(options.headers['content-type'],'image/png');assert.equal(Number(options.headers['x-dwnc-file-size']),options.body.byteLength);assert.equal(options.headers['x-dwnc-file-sha256'].length,64);
  if(failUpload){failUpload=false;throw new Error('synthetic authentication_required')}
  const publicPath='/media/native/synthetic-'+(uploads.length+1)+'.png';uploads.push(publicPath);return {media:{publicPath}};
 }});
-runInContext(`let current={id:'synthetic-post'},busy=false,dirty=false,change=0,uploadQueue=[],uploadRange=null,retryAction=null,formatRange=null,pastedImageNodes=null;async function action(work){if(busy)return;busy=true;try{await work()}catch(error){retryAction=work;status('synthetic failed')}finally{busy=false}}function schedule(allowBusy=false){if(busy&&allowBusy!==true)return;dirty=true;change++}`,ctx);
+runInContext(`let editorTyping=null;let current={id:'synthetic-post'},busy=false,dirty=false,change=0,uploadQueue=[],uploadRange=null,retryAction=null,formatRange=null,pastedImageNodes=null;async function action(work){if(busy)return;busy=true;try{await work()}catch(error){retryAction=work;status('synthetic failed')}finally{busy=false}}function schedule(allowBusy=false){if(busy&&allowBusy!==true)return;dirty=true;change++}`,ctx);
 ctx.flush=async()=>{if(failFlush){failFlush=false;return false}saved.push(fields.bodyHtml.innerHTML);return true};
 runInContext(htmlPasteDetectorScript+uploadSource+pasteSource,ctx);
 const file=(name='paste.png',extra={})=>({name,type:'image/png',size:3,arrayBuffer:async()=>new Uint8Array([1,2,3]).buffer,...extra});
 const paste=async({files=[],items=[],plain='',rich=''}={})=>{let prevented=false;await fields.bodyHtml.handlers.paste({preventDefault(){prevented=true},clipboardData:{files,items,getData:type=>type==='text/plain'?plain:rich}});return prevented};
-const reset=()=>{fields.bodyHtml.children=[];fields.bodyHtml.append(new Node('p','앞 문단'),new Node('p','뒤 문단'));selectionRange=makeRange();uploads=[];saved=[];messages=[];runInContext('uploadQueue=[];uploadRange=null;busy=false;dirty=false;retryAction=null',ctx)};
-reset();const photo=file();assert.equal(await paste({files:[photo],items:[{kind:'file',type:'image/png',getAsFile:()=>photo}]}),true);assert.equal(uploads.length,1,'files/items duplicate must upload once');assert.match(saved.at(-1),/^<p>앞 문단<\/p><figure>.*<\/figure><p>뒤 문단<\/p>$/);assert.equal(runInContext('uploadQueue.length',ctx),0);
+const reset=()=>{fields.bodyHtml.children=[];fields.bodyHtml.append(new Node('p','앞 문단'),new Node('p','뒤 문단'));selectionRange=makeRange();historyChanges=0;uploads=[];saved=[];messages=[];runInContext('uploadQueue=[];uploadRange=null;busy=false;dirty=false;retryAction=null',ctx)};
+reset();const photo=file();assert.equal(await paste({files:[photo],items:[{kind:'file',type:'image/png',getAsFile:()=>photo}]}),true);assert.equal(uploads.length,1,'files/items duplicate must upload once');assert.equal(historyChanges,1,'Uploaded image participates in body history');assert.match(saved.at(-1),/^<p>앞 문단<\/p><figure>.*<\/figure><p>뒤 문단<\/p>$/);assert.equal(runInContext('uploadQueue.length',ctx),0);
 reset();await paste({files:[photo],plain:'함께 복사한 설명'});assert.match(saved.at(-1),/앞 문단.*함께 복사한 설명.*<figure>.*뒤 문단/);
 reset();await paste({items:[{kind:'file',type:'image/png',getAsFile:()=>photo}]});assert.equal(uploads.length,1,'items fallback');
 reset();await paste({files:[file('first.png'),file('second.png')]});assert.equal(uploads.length,2);assert.ok(saved.at(-1).indexOf('synthetic-1')<saved.at(-1).indexOf('synthetic-2'));

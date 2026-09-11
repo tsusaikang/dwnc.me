@@ -1,3 +1,4 @@
+import { IMAGE_LAYOUT_CLASSES } from './image-layout.ts';
 import { taxonomyNodeById } from './taxonomy.ts';
 import type { CmsCategory } from './cms-configuration.ts';
 import sanitizeHtml from 'sanitize-html';
@@ -206,14 +207,15 @@ export function sanitizeNativeHtml(value: string) {
     allowedTags: LEGACY_TAGS.filter((tag) => !['aside', 'iframe', 'video'].includes(tag)),
     allowedAttributes: {
       ...TABLE_LIST_ATTRIBUTES,
-      '*': ['style', 'align', 'title', 'lang', 'dir', 'class'],
+      '*': ['style', 'align', 'title', 'lang', 'dir', 'class', 'data-dwnc-original-width', 'data-dwnc-original-max-width', 'data-dwnc-original-height'],
       a: ['href', 'rel', 'target'],
       img: ['src', 'alt', 'width', 'height', 'loading', 'decoding', 'style'],
       figure: ['class', 'data-ke-type', 'style'],
     },
-    allowedClasses: { figure: ['imageblock', 'alignLeft', 'alignCenter', 'alignRight'], a: ['og-image'], div: ['og-image', 'og-text'], p: ['og-title', 'og-desc', 'og-host'], span: ['og-image', 'og-text', 'og-title', 'og-desc', 'og-host'] },
+    allowedClasses: { figure: ['imageblock', 'alignLeft', 'alignCenter', 'alignRight'], a: ['og-image'], div: ['og-image', 'og-text', ...IMAGE_LAYOUT_CLASSES], p: ['og-title', 'og-desc', 'og-host'], span: ['og-image', 'og-text', 'og-title', 'og-desc', 'og-host'] },
     allowedStyles: {
       '*': {
+        '--dwnc-original-layout-width': [/^\d{1,4}px$/u],
         color: [COLOR_STYLE], 'background-color': [COLOR_STYLE],
         'font-size': [SIZE_STYLE],
         'font-family': [/^(?:system-ui|sans-serif|serif|monospace|Arial|Georgia|['"]?나눔고딕['"]?|['"]?나눔명조['"]?)(?:\s*,\s*(?:sans-serif|serif|monospace))?(?:\s*!important)?$/iu],
@@ -223,7 +225,7 @@ export function sanitizeNativeHtml(value: string) {
         'text-decoration-line': [/^(?:none|underline|line-through|overline)(?:\s+(?:underline|line-through|overline))*(?:\s*!important)?$/iu],
         'text-align': [/^(?:left|center|right|justify|start|end)(?:\s*!important)?$/iu],
         'vertical-align': [/^(?:top|middle|bottom|baseline|sub|super)$/iu],
-        width: [SIZE_STYLE], height: [SIZE_STYLE], 'max-width': [SIZE_STYLE],
+        width: [SIZE_STYLE, /^\d{1,6}px(?:\s*!important)?$/iu, /^auto(?:\s*!important)?$/iu], height: [SIZE_STYLE], 'max-width': [SIZE_STYLE],
         'margin-left': [/^(?:auto|0(?:px)?)(?:\s*!important)?$/iu], 'margin-right': [/^(?:auto|0(?:px)?)(?:\s*!important)?$/iu],
       },
     },

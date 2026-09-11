@@ -14,6 +14,7 @@ const sourceArchive = fs.readFileSync(
 const sourceProjectState = fs.readFileSync(path.join(projectRoot, 'PROJECT_STATE.md'), 'utf8');
 const linkedFiles = [
   'docs/GIT_DELIVERY_20260910_142007.md',
+  'docs/신규_기능_요구사항_20260911_173052.md',
   'docs/history/PROJECT_STATE_HISTORY_20260909_234401.md',
   'docs/결함_보완_요구사항_20260909_223512.md',
   'docs/운영자_상황별_대응_점검_20260909_223042.md',
