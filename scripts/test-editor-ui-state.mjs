@@ -11,6 +11,7 @@ import { createEditorDatabase } from './fixtures/editor-database.mjs';
 // Lightweight DOM for executable editor state tests. Layout and native selection
 // are checked separately in the browser fixture using the same emitted HTML.
 class Element {
+  get options() { return this.children; }
   value = ''; textContent = ''; innerHTML = ''; children = []; dataset = {}; style = { setProperty() {} }; listeners = {}; hidden = false; disabled = false; files = [];
   append(...children) { this.children.push(...children); }
   replaceChildren(...children) { this.children = children; }

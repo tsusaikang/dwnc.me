@@ -59,6 +59,19 @@ const bucket = {
 const legacyImageSha = createHash('sha256').update(imageBytes).digest('hex');
 await bucket.put(legacyImage.slice(1),imageBytes,{sha256:legacyImageSha,httpMetadata:{contentType:'image/png'},customMetadata:{sha256:legacyImageSha,contract:'dwnc-native-media-v1'}});
 await store.addMedia({id:'123e4567-e89b-42d3-a456-426614174000',postId:'legacy-1',publicPath:legacyImage,objectKey:legacyImage.slice(1),sha256:legacyImageSha,bytes:imageBytes.length,mime:'image/png',alt:'합성 시험 이미지',createdAt:'2026-09-01T00:00:00Z'});
+// Opt-in direct-photo scenario. Only the explicitly supplied synthetic PNGs are
+// read; all post/media writes stay in this in-memory database and bucket.
+if (process.env.DWNC_PHOTO_FIXTURE_DIR) {
+  const draft=await store.createDraft({id:'daily',slug:'일상',label:'일상'}),photos=[];
+  for(const [index,name] of ['A','B','C','small'].entries()){
+    const bytes=await readFile(new URL('file://'+process.env.DWNC_PHOTO_FIXTURE_DIR+'/synthetic-'+name+'.png'));
+    const id='123e4567-e89b-42d3-a456-42661417410'+index,path='/media/native/'+id+'.png',sha256=createHash('sha256').update(bytes).digest('hex');
+    await bucket.put(path.slice(1),bytes,{httpMetadata:{contentType:'image/png'},customMetadata:{sha256,contract:'dwnc-native-media-v1'}});
+    await store.addMedia({id,postId:draft.id,publicPath:path,objectKey:path.slice(1),sha256,bytes:bytes.length,mime:'image/png',alt:'합성 사진 '+name,createdAt:new Date().toISOString()});
+    photos.push('<figure class="imageblock alignCenter"><a href="https://example.test/photo-'+name+'"><img src="'+path+'" alt="합성 사진 '+name+'"></a><figcaption><em>보존할 설명 '+name+'</em></figcaption></figure>');
+  }
+  await store.update(draft.id,draft.revision,{title:'사진 직접 조작 합성 시험',description:'CORE-014 로컬 시험',bodyFormat:'html',bodyMarkdown:'<h2>사진 조작 시험</h2><p>첫 문단의 <strong>굵은 글씨</strong>를 보존합니다.</p>'+photos[0]+'<p>사진 사이 문단의 <em>기울임</em>을 보존합니다.</p>'+photos[1]+'<p>두 번째 사진 뒤 문단입니다.</p>'+photos[2]+'<table><tbody><tr><td>보존할 표</td><td>합성 자료</td></tr></tbody></table>'+photos[3]+'<p>끝 문단입니다.</p>',categoryId:'daily',tags:[],coverMediaId:null});
+}
 // Optional private-import browser scenario; all records and bytes are synthetic.
 if (process.env.DWNC_PRIVATE_FIXTURE === '1') {
   const path='/media/native/123e4567-e89b-42d3-a456-426614174089.svg';
