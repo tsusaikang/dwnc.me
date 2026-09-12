@@ -7,6 +7,7 @@ import {
   TAG_PAGE_SIZE,
   TAXONOMY,
 } from '../src/lib/taxonomy.ts';
+import { categoryDisplayId, categoryDisplayLabel, categoryDisplayNode, categoryDisplayNodes } from '../src/lib/category-display.ts';
 import { BOOTSTRAP_PUBLIC_PROJECTION_SHA256, publicProjectionDigest } from './lib/global-sequence.mjs';
 
 const ROOT = process.cwd();
@@ -224,8 +225,8 @@ const importedInclusiveMemberships = TAXONOMY.reduce((sum, node) => sum + import
 if (baselineProjection && importedInclusiveMemberships !== 441) issue('taxonomy.memberships', `Imported inclusive category memberships are ${importedInclusiveMemberships}; expected 441.`);
 
 const categoryPosts = (node) => {
-  const accepted = new Set([node.id, ...descendantsOf(node.id).map((child) => child.id)]);
-  return publicPosts.filter((post) => accepted.has(categoryForPost.get(post.canonicalPath)?.id));
+  const accepted = new Set([categoryDisplayId(node.id), ...descendantsOf(node.id).map((child) => child.id)]);
+  return publicPosts.filter((post) => accepted.has(categoryDisplayId(categoryForPost.get(post.canonicalPath)?.id ?? '')));
 };
 const tagCounts = new Map();
 let tagAssignments = 0;
@@ -305,7 +306,9 @@ function validateDrawer($, activeCategoryId, label) {
     if (expanded === hidden) issue('drawer.expanded', `${label} has inconsistent aria-expanded/hidden state.`);
   });
   if (!activeCategoryId) return;
-  const current = dialog.find(`.category-branch[data-category-id="${activeCategoryId}"] > .category-branch__row > a[aria-current="page"]`);
+  activeCategoryId = categoryDisplayId(activeCategoryId);
+  const branch = dialog.find(`.category-branch[data-category-id="${activeCategoryId}"]`);
+  const current = branch.find('> .category-branch__row > a[aria-current="page"], > ul > .category-branch--all > .category-branch__row > a[aria-current="page"]');
   if (current.length !== 1) issue('drawer.current', `${label} does not mark its current leaf exactly once.`);
   for (const ancestor of lineageOf(activeCategoryId).slice(0, -1)) {
     const branch = dialog.find(`.category-branch[data-category-id="${ancestor.id}"]`);
@@ -353,7 +356,7 @@ function validateCards($, expected, label) {
     if (!post) return;
     const shown = $(element).find('.post-card__meta > span').text().trim();
     const leaf = categoryForPost.get(post.canonicalPath);
-    if (shown !== leaf?.label) issue('listing.leaf', `${label} displays a non-leaf category for ${post.canonicalPath}.`);
+    if (shown !== categoryDisplayLabel(leaf?.id ?? '', leaf?.label)) issue('listing.leaf', `${label} displays a non-leaf category for ${post.canonicalPath}.`);
   });
 }
 
@@ -376,9 +379,9 @@ for (const node of TAXONOMY) {
       if (seen.has(post.canonicalPath)) issue('category.duplicate', `${basePath} repeats ${post.canonicalPath}.`);
       seen.add(post.canonicalPath);
     }
-    validatePagination($, basePath, page, totalPages, node.label);
+    validatePagination($, basePath, page, totalPages, categoryDisplayLabel(node.id, node.label));
     const currentCrumb = $('.breadcrumbs li:last-child [aria-current="page"]').text().trim();
-    if (currentCrumb !== node.label) issue('category.breadcrumb', `${route} has the wrong breadcrumb.`);
+    if (currentCrumb !== categoryDisplayLabel(node.id, node.label)) issue('category.breadcrumb', `${route} has the wrong breadcrumb.`);
     validateDrawer($, node.id, route);
   }
   if (seen.size !== posts.length) issue('category.union', `/category/${node.slug} covers ${seen.size}/${posts.length} posts.`);
@@ -403,7 +406,7 @@ const categoryIndex = await routeDocument('/category');
 if (categoryIndex) {
   const { $ } = categoryIndex;
   const links = new Set($('.category-tree-index a[href^="/category/"]').toArray().map((element) => normalizedRoute($(element).attr('href'))));
-  if ($('.category-tree-index__root').length !== EXPECTED_ROOTS || links.size !== EXPECTED_NODES) {
+  if ($('.category-tree-index__root').length !== EXPECTED_ROOTS - 1 || links.size !== EXPECTED_NODES - 1) {
     issue('category.index', `Category index has ${$('.category-tree-index__root').length} roots and ${links.size} unique node links.`);
   }
   if (canonicalFrom($) !== '/category') issue('category.index-canonical', 'Category index canonical URL is wrong.');
@@ -413,7 +416,7 @@ if (categoryIndex) {
 const home = await routeDocument('/');
 if (home) {
   const actual = home.$('.home-category-list > a').toArray().map((element) => normalizedRoute(home.$(element).attr('href')));
-  compareArray('home.roots', 'home root list', actual, roots.map((root) => `/category/${root.slug}`));
+  compareArray('home.roots', 'home root list', actual, categoryDisplayNodes(roots).map((root) => `/category/${root.slug}`));
   const featured = publicPosts.find((post) => post.featured)
     ?? publicPosts.find((post) => post.cover)
     ?? publicPosts[0];
@@ -471,11 +474,11 @@ if (tagIndex) {
 }
 
 const relatedExpected = (post) => {
-  const categoryId = categoryForPost.get(post.canonicalPath)?.id;
+  const categoryId = categoryDisplayId(categoryForPost.get(post.canonicalPath)?.id ?? '');
   const currentTime = post.publishedAt.getTime();
   return publicPosts
     .filter((candidate) => candidate.canonicalPath !== post.canonicalPath
-      && categoryForPost.get(candidate.canonicalPath)?.id === categoryId)
+      && categoryDisplayId(categoryForPost.get(candidate.canonicalPath)?.id ?? '') === categoryId)
     .sort((a, b) => Math.abs(a.publishedAt.getTime() - currentTime) - Math.abs(b.publishedAt.getTime() - currentTime)
       || b.publishedAt.getTime() - a.publishedAt.getTime()
       || b.globalSequence - a.globalSequence)
@@ -495,7 +498,7 @@ for (const [index, post] of publicPosts.entries()) {
   }
   const breadcrumb = $('.post-header .breadcrumbs');
   const crumbLinks = breadcrumb.find('a').toArray().map((element) => normalizedRoute($(element).attr('href')));
-  const expectedCrumbLinks = ['/category', ...lineageOf(category?.id).map((node) => `/category/${node.slug}`)];
+  const expectedCrumbLinks = ['/category', ...lineageOf(categoryDisplayId(category?.id ?? '')).map((node) => `/category/${node.slug}`)];
   compareArray('post.breadcrumb-links', post.canonicalPath, crumbLinks, expectedCrumbLinks);
   if (breadcrumb.find('li:last-child [aria-current="page"]').text().trim() !== post.title) {
     issue('post.breadcrumb-current', `${post.canonicalPath} lacks its current breadcrumb title.`);
@@ -541,9 +544,10 @@ catch { issue('taxonomy.search-read', 'Search index could not be read.'); }
 const searchByPath = new Map(searchIndex.map((entry) => [normalizedRoute(entry.path), entry]));
 for (const post of publicPosts) {
   const entry = searchByPath.get(post.canonicalPath);
-  const category = categoryForPost.get(post.canonicalPath);
+  const originalCategory = categoryForPost.get(post.canonicalPath);
+  const category = categoryDisplayNode(originalCategory?.id ?? '', TAXONOMY);
   const lineage = lineageOf(category?.id);
-  const aliases = [...new Set(lineage.flatMap((node) => [node.label, ...node.legacyMatchers.map((matcher) => matcher.value)]))];
+  const aliases = [...new Set([...originalCategory.legacyMatchers.map((matcher) => matcher.value), ...lineage.flatMap((node) => [node.label, ...node.legacyMatchers.map((matcher) => matcher.value)])])];
   if (!entry
     || JSON.stringify(entry.categories) !== JSON.stringify([category?.label])
     || JSON.stringify(entry.categoryPath) !== JSON.stringify(lineage.map((node) => node.label))
@@ -576,7 +580,7 @@ $rss('item').each((_, item) => {
   if (guid !== link) issue('taxonomy.rss-exact', `${guid || '[empty]'} differs from its RSS link ${link || '[empty]'}.`);
   if (guidNode.attr('isPermaLink') !== 'true') issue('taxonomy.rss-exact', `${link || '[empty]'} has a non-permalink RSS guid.`);
   const categories = $rss(item).find('category').toArray().map((element) => $rss(element).text().trim());
-  const expected = post ? categoryForPost.get(post.canonicalPath)?.label : undefined;
+  const expected = post ? categoryDisplayNode(categoryForPost.get(post.canonicalPath)?.id ?? '', TAXONOMY)?.label : undefined;
   if (!post || categories.length !== 1 || categories[0] !== expected) {
     issue('taxonomy.rss-leaf', `${post?.canonicalPath ?? link ?? '[unknown]'} has inconsistent RSS leaf category.`);
   }

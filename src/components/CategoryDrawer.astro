@@ -13,14 +13,14 @@ const { activeCategoryId } = Astro.props;
     <header class="category-drawer__header">
       <div>
         <p>Subjects</p>
-        <h2 id="category-drawer-title">갈래</h2>
+        <h2 id="category-drawer-title">카테고리</h2>
       </div>
       <button type="button" data-category-close>닫기</button>
     </header>
-    <nav aria-label="글 갈래">
+    <nav aria-label="글 카테고리">
       <CategoryTree activeCategoryId={activeCategoryId} />
     </nav>
-    <a class="category-drawer__all" href="/category">모든 갈래 한눈에 보기 <span aria-hidden="true">↗</span></a>
+    <a class="category-drawer__all" href="/category">모든 카테고리 한눈에 보기 <span aria-hidden="true">↗</span></a>
   </div>
 </dialog>
 
@@ -108,9 +108,7 @@ const { activeCategoryId } = Astro.props;
       const expanded = button.getAttribute('aria-expanded') === 'true';
       button.setAttribute('aria-expanded', String(!expanded));
       target.hidden = expanded;
-      const symbol = button.querySelector<HTMLElement>('[aria-hidden="true"]');
       const label = button.querySelector<HTMLElement>('.visually-hidden');
-      if (symbol) symbol.textContent = expanded ? '+' : '−';
       if (label) label.textContent = label.textContent?.replace(expanded ? '접기' : '펼치기', expanded ? '펼치기' : '접기') ?? '';
     });
   });

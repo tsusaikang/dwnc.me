@@ -1,10 +1,11 @@
+import { categoryDisplayId, categoryDisplayLabel, categoryDisplayNode, categoryDisplayNodes } from './category-display.ts';
 import { eligiblePostView, PostViewStatistics } from './post-view-statistics.ts';
 import { ContentOperations, boundedBody } from './content-operations.ts';
 import edgeRedirects from '../../docs/EDGE_REDIRECTS_V1.json' with { type: 'json' };
 import { SITE_MEDIA_PATH_PATTERN } from './cms-configuration.ts';
 import { prepareImportedPresentation, IMPORTED_PRESENTATION_CSS, ENGINE_DIAGRAM_CSS, ENGINE_DIAGRAM_BOOTSTRAP } from './imported-presentation.ts';
 import { escapeHtml, IMPORTED_MEDIA_PATH_PATTERN, NATIVE_MEDIA_PATH_PATTERN } from './native-content.ts';
-import { CmsConfigurationStore, DEFAULT_CATEGORIES, DEFAULT_SETTINGS, categoryDescendants, categoryLineage, type CmsCategory, type CmsSettings } from './cms-configuration.ts';
+import { CmsConfigurationStore, DEFAULT_CATEGORIES, DEFAULT_SETTINGS, type CmsCategory, type CmsSettings } from './cms-configuration.ts';
 import publicSequence from '../data/public-sequence-v1.json' with { type: 'json' };
 import { NativePostStore, snapshotVisible, type NativePost } from './native-post-store.ts';
 import {
@@ -61,6 +62,14 @@ function sequenceOf(path: string) { return Number(path.match(/^\/posts\/(\d+)$/u
 function comparePosts(left: DiscoveryPost, right: DiscoveryPost) {
   return right.publishedAt.localeCompare(left.publishedAt) || sequenceOf(right.path) - sequenceOf(left.path);
 }
+function categoryDescendants(id: string, nodes: CmsCategory[]): CmsCategory[] {
+  return categoryDisplayNodes(nodes).filter((node) => node.parentId === categoryDisplayId(id));
+}
+function categoryLineage(id: string, nodes: CmsCategory[]): CmsCategory[] {
+  const node = categoryDisplayNode(id, nodes); if (!node) return [];
+  const parent = categoryDisplayNode(node.parentId ?? '', nodes);
+  return parent ? [parent, node] : [node];
+}
 function nativeDiscovery(post: NativePost, categories: CmsCategory[] = DEFAULT_CATEGORIES): DiscoveryPost {
   const publishedAt = post.publishedAt ?? post.updatedAt;
   const lineage = categoryLineage(post.categoryId, categories); const category = lineage.at(-1) ?? {label:post.categoryLabel,slug:post.categorySlug};
@@ -70,7 +79,7 @@ function nativeDiscovery(post: NativePost, categories: CmsCategory[] = DEFAULT_C
     updatedAt: post.updatedAt, featured: false, cover: post.coverPath, coverAlt: post.coverAlt,
     categoryId: post.categoryId, categories: [category.label], tags: [...post.tags],
     categoryPath: lineage.map((node) => node.label), leafCategory: { label: category.label, path: `/category/${category.slug}` },
-    searchText: [post.title, post.description, ...lineage.map((node) => node.label), ...TAXONOMY.filter((node)=>lineage.some((entry)=>entry.id===node.id)).flatMap((node)=>node.legacyMatchers.map((matcher)=>matcher.value)), ...post.tags, post.bodyText].join(' ').toLocaleLowerCase('ko-KR'),
+    searchText: [post.title, post.description, post.categoryLabel, ...TAXONOMY.filter((node)=>node.id===post.categoryId).flatMap((node)=>node.legacyMatchers.map((matcher)=>matcher.value)), ...lineage.map((node) => node.label), ...TAXONOMY.filter((node)=>lineage.some((entry)=>entry.id===node.id)).flatMap((node)=>node.legacyMatchers.map((matcher)=>matcher.value)), ...post.tags, post.bodyText].join(' ').toLocaleLowerCase('ko-KR'),
   };
 }
 function validDiscovery(value: unknown): value is DiscoveryPost {
@@ -120,24 +129,24 @@ function archiveMain(posts: DiscoveryPost[]) {
 function homeMain(posts: DiscoveryPost[], categories: CmsCategory[]) {
   if (!posts.length) return '<section class="section shell"><h1>아직 공개된 글이 없습니다.</h1></section>';
   const featured = posts.find((post) => post.featured) ?? posts.find((post) => post.cover) ?? posts[0];
-  const latest = posts.filter((post) => post.path !== featured.path).slice(0, 7); const roots = categories.filter((node) => node.parentId === null);
+  const latest = posts.filter((post) => post.path !== featured.path).slice(0, 7); const roots = categoryDisplayNodes(categories).filter((node) => node.parentId === null);
   const cover = featured.cover ? `<a class="home-feature__image" href="${escapeHtml(featured.path)}" tabindex="-1" aria-hidden="true"><img src="${escapeHtml(featured.cover)}" alt="${escapeHtml(featured.coverAlt ?? '')}" decoding="async" fetchpriority="high"></a>` : '';
-  return `${posts.some(post=>post.kind==='notice')?`<section class="shell notices" aria-label="공지"><h2>공지</h2><ul>${posts.filter(post=>post.kind==='notice').map(post=>`<li><a href="${escapeHtml(post.path)}">${escapeHtml(post.title)}</a></li>`).join('')}</ul></section>`:''}<section class="home-journal" aria-labelledby="featured-title"><article class="home-feature">${cover}<div class="home-feature__copy"><p class="home-feature__meta"><time datetime="${escapeHtml(featured.publishedAt)}">${escapeHtml(featured.date)}</time><span>${escapeHtml(featured.leafCategory.label)}</span></p><h1 id="featured-title"><a href="${escapeHtml(featured.path)}">${escapeHtml(featured.title)}</a></h1><a class="text-link" href="${escapeHtml(featured.path)}">이 글 읽기 <span aria-hidden="true">↗</span></a></div></article><aside class="home-index" aria-label="최근 글"><div class="home-index__heading"><div><p>${posts.at(-1)?.publishedAt.slice(0, 4) ?? ''}—${new Date().getUTCFullYear()}</p><h2>최근 글</h2></div><button type="button" data-search-open>찾기</button></div><ol>${latest.map((post) => `<li><a href="${escapeHtml(post.path)}">${escapeHtml(post.title)}</a><time datetime="${escapeHtml(post.publishedAt)}">${escapeHtml(post.date)}</time></li>`).join('')}</ol><a class="text-link" href="/archive">모든 글 보기 <span aria-hidden="true">↗</span></a></aside></section><section class="home-categories"><header><p class="eyebrow">Subjects</p><h2>갈래별로 읽기</h2></header><div class="home-category-list">${roots.map((category, index) => { const accepted = new Set([category.id, ...categoryDescendants(category.id, categories).map((item) => item.id)]); return `<a href="/category/${encodeURIComponent(category.slug)}"><span>${String(index + 1).padStart(2, '0')}</span><strong>${escapeHtml(category.label)}</strong><small>${posts.filter((post) => accepted.has(post.categoryId)).length}편</small></a>`; }).join('')}</div></section>`;
+  return `${posts.some(post=>post.kind==='notice')?`<section class="shell notices" aria-label="공지"><h2>공지</h2><ul>${posts.filter(post=>post.kind==='notice').map(post=>`<li><a href="${escapeHtml(post.path)}">${escapeHtml(post.title)}</a></li>`).join('')}</ul></section>`:''}<section class="home-journal" aria-labelledby="featured-title"><article class="home-feature">${cover}<div class="home-feature__copy"><p class="home-feature__meta"><time datetime="${escapeHtml(featured.publishedAt)}">${escapeHtml(featured.date)}</time><span>${escapeHtml(featured.leafCategory.label)}</span></p><h1 id="featured-title"><a href="${escapeHtml(featured.path)}">${escapeHtml(featured.title)}</a></h1><a class="text-link" href="${escapeHtml(featured.path)}">이 글 읽기 <span aria-hidden="true">↗</span></a></div></article><aside class="home-index" aria-label="최근 글"><div class="home-index__heading"><div><p>${posts.at(-1)?.publishedAt.slice(0, 4) ?? ''}—${new Date().getUTCFullYear()}</p><h2>최근 글</h2></div><button type="button" data-search-open>찾기</button></div><ol>${latest.map((post) => `<li><a href="${escapeHtml(post.path)}">${escapeHtml(post.title)}</a><time datetime="${escapeHtml(post.publishedAt)}">${escapeHtml(post.date)}</time></li>`).join('')}</ol><a class="text-link" href="/archive">모든 글 보기 <span aria-hidden="true">↗</span></a></aside></section><section class="home-categories"><header><p class="eyebrow">Subjects</p><h2>카테고리별로 읽기</h2></header><div class="home-category-list">${roots.map((category, index) => { const accepted = new Set([categoryDisplayId(category.id), ...categoryDescendants(category.id, categories).map((item) => item.id)]); return `<a href="/category/${encodeURIComponent(category.slug)}"><span>${String(index + 1).padStart(2, '0')}</span><strong>${escapeHtml(category.label)}</strong><small>${posts.filter((post) => accepted.has(categoryDisplayId(post.categoryId))).length}편</small></a>`; }).join('')}</div></section>`;
 }
 function tagsMain(tags: TagNode[]) {
   return `<header class="page-header tag-index-header"><div class="shell"><p class="eyebrow">Index · ${tags.length}</p><h1>태그</h1></div></header><section class="section tag-index-section"><div class="shell tag-index"><label for="tag-filter">태그 찾기</label><input id="tag-filter" type="search" placeholder="태그 이름을 입력하세요" autocomplete="off" data-tag-filter><p class="tag-index__status" data-tag-status aria-live="polite">전체 ${tags.length}개</p><ol data-tag-list>${tags.map((tag) => `<li data-tag-item data-tag-label="${escapeHtml(tag.label.toLocaleLowerCase('ko-KR'))}"><a href="/tag/${encodeURIComponent(tag.slug)}"><strong>#${escapeHtml(tag.label)}</strong><small>${tag.count}편</small></a></li>`).join('')}</ol></div></section>`;
 }
 function categoryIndexMain(posts: DiscoveryPost[], categories: CmsCategory[]) {
-  const roots = categories.filter((node) => !node.parentId);
+  const roots = categoryDisplayNodes(categories).filter((node) => !node.parentId);
   const count = (category: CmsCategory) => {
-    const accepted = new Set([category.id, ...categoryDescendants(category.id, categories).map((node) => node.id)]);
-    return posts.filter((post) => accepted.has(post.categoryId)).length;
+    const accepted = new Set([categoryDisplayId(category.id), ...categoryDescendants(category.id, categories).map((node) => node.id)]);
+    return posts.filter((post) => accepted.has(categoryDisplayId(post.categoryId))).length;
   };
   // Match the static category index: the narrow first grid column is the number,
   // while labels and child links occupy their existing responsive layout.
-  return `<header class="page-header category-index-header"><div class="shell"><p class="eyebrow">Subjects · ${roots.length}</p><h1>갈래</h1><p>큰 주제에서 세부 기록으로 이어지는 ${posts.length}편의 글입니다.</p></div></header><section class="section category-index-section"><div class="shell category-tree-index">${roots.map((root, index) => {
+  return `<header class="page-header category-index-header"><div class="shell"><p class="eyebrow">Subjects · ${roots.length}</p><h1>카테고리</h1><p>큰 주제에서 세부 기록으로 이어지는 ${posts.length}편의 글입니다.</p></div></header><section class="section category-index-section"><div class="shell category-tree-index">${roots.map((root, index) => {
     const children = categoryDescendants(root.id, categories);
-    const directCount = posts.filter((post) => post.categoryId === root.id).length;
+    const directCount = posts.filter((post) => categoryDisplayId(post.categoryId) === root.id).length;
     const totalCount = count(root);
     return `<section class="category-tree-index__root"><a class="category-tree-index__root-link" href="/category/${encodeURIComponent(root.slug)}"><span>${String(index + 1).padStart(2, '0')}</span><strong>${escapeHtml(root.label)}</strong><small>${directCount === totalCount ? `${totalCount}편` : `직접 ${directCount} · 전체 ${totalCount}편`}</small></a>${children.length ? `<ol class="category-tree-index__children">${children.map((child) => `<li><a href="/category/${encodeURIComponent(child.slug)}"><strong>${escapeHtml(child.label)}</strong><small>${count(child)}편</small></a></li>`).join('')}</ol>` : ''}</section>`;
   }).join('')}</div></section>`;
@@ -145,17 +154,22 @@ function categoryIndexMain(posts: DiscoveryPost[], categories: CmsCategory[]) {
 function siteNavigation(settings: CmsSettings, canonical: string) {
   const pathname = new URL(canonical).pathname;
   const categoryActive = pathname === '/category' || pathname.startsWith('/category/');
-  const categoryMenu = (label: string) => `<span class="site-nav__category${categoryActive ? ' is-active' : ''}"><a href="/category"${pathname === '/category' ? ' aria-current="page"' : ''}>${escapeHtml(label)}</a><button type="button" data-category-open aria-controls="category-drawer" aria-expanded="false" aria-haspopup="dialog" aria-label="전체 갈래 열기"><span aria-hidden="true">+</span></button></span>`;
-  const menu = settings.menu.map((item) => item.path === '/category' ? categoryMenu(item.label) : `<a href="${escapeHtml(item.path)}"${new URL(item.path, canonical).pathname === pathname ? ' aria-current="page"' : ''}>${escapeHtml(item.label)}</a>`).join('');
-  return menu + (settings.menu.some((item) => item.path === '/category') ? '' : categoryMenu('갈래')) + '<button class="search-trigger" type="button" data-search-open aria-label="글 검색 열기"><span>찾기</span></button>';
+  const categoryMenu = (label: string) => `<span class="site-nav__category${categoryActive ? ' is-active' : ''}"><a href="/category"${pathname === '/category' ? ' aria-current="page"' : ''}>${escapeHtml(label)}</a><button type="button" data-category-open aria-controls="category-drawer" aria-expanded="false" aria-haspopup="dialog" aria-label="전체 카테고리 열기"><span aria-hidden="true">⌄</span></button></span>`;
+  const menu = settings.menu.map((item) => item.path === '/category' ? categoryMenu('카테고리') : `<a href="${escapeHtml(item.path)}"${new URL(item.path, canonical).pathname === pathname ? ' aria-current="page"' : ''}>${escapeHtml(item.label)}</a>`).join('');
+  return menu + (settings.menu.some((item) => item.path === '/category') ? '' : categoryMenu('카테고리')) + '<button class="search-trigger" type="button" data-search-open aria-label="글 검색 열기"><span>찾기</span></button>';
 }
 function categoryTree(categories: CmsCategory[], current?: string) {
+  const currentId = current ? categoryDisplayId(current) : undefined;
   const branch = (node: CmsCategory): string => {
-    const children = categoryDescendants(node.id,categories); const active = node.id === current; const expanded = active || children.some((item) => item.id === current);
-    return `<li class="category-branch${active?' is-current':''}" data-category-id="${escapeHtml(node.id)}"><div class="category-branch__row"><a href="/category/${encodeURIComponent(node.slug)}"${active?' aria-current="page"':''}>${escapeHtml(node.label)}</a>${children.length?`<button type="button" data-category-branch-toggle aria-controls="category-branch-${escapeHtml(node.id)}" aria-expanded="${expanded}"><span aria-hidden="true">${expanded?'−':'+'}</span><span class="visually-hidden">${escapeHtml(node.label)} 하위 갈래</span></button>`:''}</div>${children.length?`<ul id="category-branch-${escapeHtml(node.id)}"${expanded?'':' hidden'}>${children.map(branch).join('')}</ul>`:''}</li>`;
+    const children = categoryDescendants(node.id,categories); const active = node.id === currentId;
+    const ancestor = children.some((item) => item.id === currentId); const expanded = active || ancestor;
+    const href = `/category/${encodeURIComponent(node.slug)}`;
+    const link = (label: string) => `<a href="${href}"${active?' aria-current="page"':''}>${escapeHtml(label)}</a>`;
+    return `<li class="category-branch${active?' is-current':''}${ancestor?' is-active-ancestor':''}" data-category-id="${escapeHtml(node.id)}"${ancestor?' data-active-ancestor="true"':''}><div class="category-branch__row">${children.length?`<button type="button" data-category-branch-toggle aria-controls="category-branch-${escapeHtml(node.id)}" aria-expanded="${expanded}"><span>${escapeHtml(node.label)}</span><span class="category-branch__chevron" aria-hidden="true">⌄</span><span class="visually-hidden"> 하위 카테고리 ${expanded?'접기':'펼치기'}</span></button>`:link(node.label)}</div>${children.length?`<ul id="category-branch-${escapeHtml(node.id)}"${expanded?'':' hidden'}><li class="category-branch category-branch--all"><div class="category-branch__row">${link(`${node.label} 전체 보기`)}</div></li>${children.map(branch).join('')}</ul>`:''}</li>`;
   };
-  return `<ul class="category-tree">${categories.filter((node)=>!node.parentId).map(branch).join('')}</ul>`;
+  return `<ul class="category-tree">${categoryDisplayNodes(categories).filter((node)=>!node.parentId).map(branch).join('')}</ul>`;
 }
+
 async function rewriteDocument(response: Response, main: string | null, title: string, description: string, canonical: string,
   article = false, settings: CmsSettings = DEFAULT_SETTINGS, categories: CmsCategory[] = DEFAULT_CATEGORIES, post?: NativePost, socialCover?: string | null) {
   const coverPath=post?.coverPath??socialCover; const image = coverPath ? `https://dwnc.me${coverPath}` : null;
@@ -175,7 +189,7 @@ async function rewriteDocument(response: Response, main: string | null, title: s
     .on('.site-footer__inner > p > span', {element(element){element.setInnerContent(settings.description);}})
     .on('.brand', { element(element) { element.setInnerContent(settings.title); element.setAttribute('aria-label',`${settings.title} 홈`); } })
     .on('.site-nav', { element(element) { element.setInnerContent(siteNavigation(settings, canonical), { html: true }); } })
-    .on('#category-drawer nav', { element(element) { element.setInnerContent(categoryTree(categories,post?.categoryId),{html:true}); } })
+    .on('#category-drawer nav', { element(element) { element.setInnerContent(categoryTree(categories,post?.categoryId ?? categories.find((node) => node.slug === decodeURIComponent(new URL(canonical).pathname.split('/')[2] ?? ''))?.id),{html:true}); } })
     .on('link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]', {element(element){if(settings.iconPath)element.setAttribute('href',settings.iconPath);}})
     .on('head', { element(element) {
       if(settings.iconPath)element.append(`<link rel="icon" href="${escapeHtml(settings.iconPath)}">`,{html:true});
@@ -225,15 +239,15 @@ async function postDocument(response: Response, post: NativePost, canonical: str
   const title = `${post.title} — ${settings.title}`, description = post.description || post.bodyText.slice(0,160);
   const lineage = categoryLineage(post.categoryId,categories), category = lineage.at(-1) ?? {label:post.categoryLabel,slug:post.categorySlug};
   const tags=tagNodes(posts); const tagLinks=post.tags.map((label)=>{const tag=tags.find((item)=>item.label===label.normalize('NFC').trim());return tag?`<a rel="tag" href="/tag/${encodeURIComponent(tag.slug)}">#${escapeHtml(label)}</a>`:'';}).join('');
-  const breadcrumb=`<nav class="breadcrumbs" aria-label="현재 위치"><ol><li><a href="/category">갈래</a></li>${lineage.map((node)=>`<li><a href="/category/${encodeURIComponent(node.slug)}">${escapeHtml(node.label)}</a></li>`).join('')}<li><span aria-current="page">${escapeHtml(post.title)}</span></li></ol></nav>`;
+  const breadcrumb=`<nav class="breadcrumbs" aria-label="현재 위치"><ol><li><a href="/category">카테고리</a></li>${lineage.map((node)=>`<li><a href="/category/${encodeURIComponent(node.slug)}">${escapeHtml(node.label)}</a></li>`).join('')}<li><span aria-current="page">${escapeHtml(post.title)}</span></li></ol></nav>`;
   const index=posts.findIndex((item)=>item.path===new URL(canonical).pathname), previous=posts[index+1], next=index>0?posts[index-1]:null;
-  const related=posts.filter((item)=>item.categoryId===post.categoryId&&item.path!==new URL(canonical).pathname).sort((a,b)=>Math.abs(Date.parse(a.publishedAt)-Date.parse(post.publishedAt!))-Math.abs(Date.parse(b.publishedAt)-Date.parse(post.publishedAt!))).slice(0,5);
+  const related=posts.filter((item)=>categoryDisplayId(item.categoryId)===categoryDisplayId(post.categoryId)&&item.path!==new URL(canonical).pathname).sort((a,b)=>Math.abs(Date.parse(a.publishedAt)-Date.parse(post.publishedAt!))-Math.abs(Date.parse(b.publishedAt)-Date.parse(post.publishedAt!))).slice(0,5);
   const neighbor=(item:DiscoveryPost|null|undefined,rel:string,label:string)=>item?`<a rel="${rel}" href="${escapeHtml(item.path)}"><span>${label}</span><strong>${escapeHtml(item.title)}</strong><time datetime="${escapeHtml(item.publishedAt)}">${item.date}</time></a>`:'<span></span>';
   const bodyHtml=prepareImportedPresentation(post.bodyHtml,post.source&&post.sourceId?{source:post.source,sourceId:post.sourceId}:undefined);
   const presentation=`<style>${IMPORTED_PRESENTATION_CSS}${bodyHtml.includes('data-engine-diagram')?ENGINE_DIAGRAM_CSS:''}</style>${bodyHtml.includes('data-engine-diagram')?`<script>${ENGINE_DIAGRAM_BOOTSTRAP}</script>`:''}`;
   const images=(post.bodyHtml.match(/<img\b/giu)??[]).length;const photo=images>=8||(images>=4&&post.bodyText.length/images<400)||(images>=1&&images<=3&&post.bodyText.length<120);
   const cover=post.coverPath&&!post.bodyHtml.includes(post.coverPath)?`<img class="post-cover" src="${escapeHtml(post.coverPath)}" alt="${escapeHtml(post.coverAlt)}" decoding="async">`:'';
-  const main=`<article class="article-page article-page--${photo?'photo':'longform'}" data-category-id="${escapeHtml(post.categoryId)}"><header class="post-header"><div class="post-header__inner">${breadcrumb}<p class="post-header__kicker">${escapeHtml(category.label)}</p><p class="post-header__meta"><a href="/category/${encodeURIComponent(category.slug)}">${escapeHtml(category.label)}</a><time datetime="${escapeHtml(post.publishedAt??'')}">${dateLabel(post.publishedAt??post.updatedAt,settings.timezone)}</time></p><h1>${escapeHtml(post.title)}</h1></div></header>${cover}<div class="prose">${bodyHtml}</div>${settings.ccl!=='none'?`<p class="shell post-license"><a rel="license" href="https://creativecommons.org/licenses/${settings.ccl}/4.0/">CC ${settings.ccl.toUpperCase()} 4.0</a></p>`:''}${presentation}<footer class="post-footer"><div class="post-footer__inner"><div class="post-tags"><a href="/category/${encodeURIComponent(category.slug)}">${escapeHtml(category.label)}</a>${tagLinks}</div>${related.length?`<section class="post-related" aria-labelledby="post-related-title"><h2 id="post-related-title">같은 갈래의 글</h2><ol>${related.map((item)=>`<li><a href="${escapeHtml(item.path)}">${escapeHtml(item.title)}</a><time datetime="${escapeHtml(item.publishedAt)}">${item.date}</time></li>`).join('')}</ol></section>`:''}<nav class="post-sequence" aria-label="시간순 글 이동">${neighbor(previous,'prev','이전 글')}${neighbor(next,'next','다음 글')}</nav></div></footer></article>`;
+  const main=`<article class="article-page article-page--${photo?'photo':'longform'}" data-category-id="${escapeHtml(post.categoryId)}"><header class="post-header"><div class="post-header__inner">${breadcrumb}<p class="post-header__kicker">${escapeHtml(category.label)}</p><p class="post-header__meta"><a href="/category/${encodeURIComponent(category.slug)}">${escapeHtml(category.label)}</a><time datetime="${escapeHtml(post.publishedAt??'')}">${dateLabel(post.publishedAt??post.updatedAt,settings.timezone)}</time></p><h1>${escapeHtml(post.title)}</h1></div></header>${cover}<div class="prose">${bodyHtml}</div>${settings.ccl!=='none'?`<p class="shell post-license"><a rel="license" href="https://creativecommons.org/licenses/${settings.ccl}/4.0/">CC ${settings.ccl.toUpperCase()} 4.0</a></p>`:''}${presentation}<footer class="post-footer"><div class="post-footer__inner"><div class="post-tags"><a href="/category/${encodeURIComponent(category.slug)}">${escapeHtml(category.label)}</a>${tagLinks}</div>${related.length?`<section class="post-related" aria-labelledby="post-related-title"><h2 id="post-related-title">같은 카테고리의 글</h2><ol>${related.map((item)=>`<li><a href="${escapeHtml(item.path)}">${escapeHtml(item.title)}</a><time datetime="${escapeHtml(item.publishedAt)}">${item.date}</time></li>`).join('')}</ol></section>`:''}<nav class="post-sequence" aria-label="시간순 글 이동">${neighbor(previous,'prev','이전 글')}${neighbor(next,'next','다음 글')}</nav></div></footer></article>`;
   return rewriteDocument(response,main,title,description,canonical,true,settings,categories,post);
 }
 
@@ -403,7 +417,7 @@ export function createNativePublicWorker(staticHandler: StaticHandler) {
       const paths=new Map<string,string|undefined>([['/',undefined],['/archive',undefined],['/category',undefined],['/tags',undefined],['/about',undefined]]);
       for(const post of posts)paths.set(post.path,post.updatedAt??post.publishedAt);
       for(const page of (await store.listPublished(false)).filter(post=>post.kind==='page'))paths.set(`/pages/${page.id}`,page.updatedAt);
-      for(const category of categories){const ids=new Set([category.id,...categoryDescendants(category.id,categories).map((node)=>node.id)]);const count=posts.filter((post)=>ids.has(post.categoryId)).length;for(let page=1;page<=Math.max(1,Math.ceil(count/CATEGORY_PAGE_SIZE));page++)paths.set(`/category/${category.slug}${page>1?`/page/${page}`:''}`,undefined);}
+      for(const category of categories){const ids=new Set([categoryDisplayId(category.id),...categoryDescendants(category.id,categories).map((node)=>node.id)]);const count=posts.filter((post)=>ids.has(categoryDisplayId(post.categoryId))).length;for(let page=1;page<=Math.max(1,Math.ceil(count/CATEGORY_PAGE_SIZE));page++)paths.set(`/category/${category.slug}${page>1?`/page/${page}`:''}`,undefined);}
       for(const tag of tagNodes(posts))for(let page=1;page<=Math.max(1,Math.ceil(tag.count/TAG_PAGE_SIZE));page++)paths.set(`/tag/${tag.slug}${page>1?`/page/${page}`:''}`,undefined);
       const xml=`<?xml version="1.0" encoding="utf-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">${[...paths].map(([path,updated])=>`<url><loc>https://dwnc.me${xmlEscape(path)}</loc>${updated?`<lastmod>${xmlEscape(updated)}</lastmod>`:''}</url>`).join('')}</urlset>`;
       return withVersion(new Response(xml,{headers:{'content-type':'application/xml; charset=utf-8','cache-control':'no-store'}}),env);
@@ -413,18 +427,23 @@ export function createNativePublicWorker(staticHandler: StaticHandler) {
     if (url.pathname === '/about') {main=null;title=`소개 — ${settings.title}`;}
     else if (url.pathname === '/') { main = homeMain(posts,categories); canonical = 'https://dwnc.me/'; }
     else if (url.pathname === '/archive') { main = archiveMain(posts); title = '모든 글 — dwnc.me'; description = `${settings.author}의 전체 기록 ${posts.length}편`; }
-    else if (url.pathname === '/category') { main = categoryIndexMain(posts,categories); title = '갈래 — dwnc.me'; description = `${settings.title} 글 갈래`; }
+    else if (url.pathname === '/category') { main = categoryIndexMain(posts,categories); title = '카테고리 — dwnc.me'; description = `${settings.title} 글 카테고리`; }
     else if (url.pathname === '/tags') { const tags = tagNodes(posts); main = tagsMain(tags); title = '태그 — dwnc.me'; description = `${settings.title}의 태그 ${tags.length}개`; }
     else {
       const match = url.pathname.match(/^\/(category|tag)\/([^/]+)(?:\/page\/([1-9]\d*))?$/u)!;
       let slug: string; try { slug = decodeURIComponent(match[2]).normalize('NFC'); } catch { return withVersion(unavailable(), env); }
       const page = Number(match[3] ?? 1);
       if (match[1] === 'category') {
-        const category = categories.find((node)=>node.slug===slug); if (!category) return withVersion(unavailable(), env);
-        const accepted = new Set([category.id, ...categoryDescendants(category.id, categories).map((item) => item.id)]);
-        const filtered = posts.filter((post) => accepted.has(post.categoryId));
+        const originalCategory = categories.find((node)=>node.slug===slug); const category = originalCategory ? {...originalCategory, label: categoryDisplayLabel(originalCategory.id, originalCategory.label)} : undefined; if (!category) return withVersion(unavailable(), env);
+        const accepted = new Set([categoryDisplayId(category.id), ...categoryDescendants(category.id, categories).map((item) => item.id)]);
+        const filtered = posts.filter((post) => accepted.has(categoryDisplayId(post.categoryId)));
         main = listingMain('Category', category.label, filtered, `/category/${category.slug}`, page, CATEGORY_PAGE_SIZE) ?? '';
-        title = `${category.label}${page > 1 ? ` ${page}쪽` : ''} — dwnc.me`; description = `${category.label} 갈래의 글 ${filtered.length}편`;
+        if (main) {
+          const lineage = categoryLineage(category.id, categories);
+          const breadcrumb = `<nav class="breadcrumbs" aria-label="현재 위치"><ol><li><a href="/category">카테고리</a></li>${lineage.map((node,index) => `<li>${index === lineage.length-1 ? `<span aria-current="page">${escapeHtml(node.label)}</span>` : `<a href="/category/${encodeURIComponent(node.slug)}">${escapeHtml(node.label)}</a>`}</li>`).join('')}</ol></nav>`;
+          main = main.replace('<p class="eyebrow">', `${breadcrumb}<p class="eyebrow">`);
+        }
+        title = `${category.label}${page > 1 ? ` ${page}쪽` : ''} — dwnc.me`; description = `${category.label} 카테고리의 글 ${filtered.length}편`;
       } else {
         const tag = tagNodes(posts).find((item) => item.slug === slug); if (!tag) return withVersion(unavailable(), env);
         const label = tag.label.normalize('NFC').trim(); const filtered = posts.filter((post) => post.tags.some((item) => item.normalize('NFC').trim() === label));

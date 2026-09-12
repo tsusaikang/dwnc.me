@@ -1,3 +1,4 @@
+import { categoryDisplayId } from './lib/category-display.ts';
 import { prepareHtmlSourcePaste } from './lib/html-source-paste.ts';
 import { PostViewStatistics } from './lib/post-view-statistics.ts';
 import { boundedBody } from './lib/content-operations.ts';
@@ -149,7 +150,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
     if(!['all','post','page','notice'].includes(kind)) throw new Error('ADMIN_E_QUERY');
     const visibleNow = (post: {visibility?: string;scheduledAt?: string|null}) => !post.visibility || post.visibility==='public' || post.visibility==='scheduled' && !!post.scheduledAt && post.scheduledAt<=new Date().toISOString();
     const bodyMatches = q ? await store.searchAdminBodyIds(q) : new Set<string>();
-    posts = posts.filter((post) => (kind === 'all' || post.kind === kind) && (!q || bodyMatches.has(post.id) || [post.title,...post.tags,String(post.globalSequence ?? '')].join(' ').toLocaleLowerCase('ko').includes(q)) && (!categoryId || post.categoryId === categoryId) && (status === 'all' || (status === 'changed' ? post.status === 'published' && post.hasUnpublishedChanges : ['private','scheduled','protected'].includes(status) ? post.visibility === status && post.status === 'published' && (status!=='scheduled'||!visibleNow(post)) : post.status === status && (status!=='published'||visibleNow(post)))));
+    posts = posts.filter((post) => (kind === 'all' || post.kind === kind) && (!q || bodyMatches.has(post.id) || [post.title,...post.tags,String(post.globalSequence ?? '')].join(' ').toLocaleLowerCase('ko').includes(q)) && (!categoryId || categoryDisplayId(post.categoryId) === categoryDisplayId(categoryId)) && (status === 'all' || (status === 'changed' ? post.status === 'published' && post.hasUnpublishedChanges : ['private','scheduled','protected'].includes(status) ? post.visibility === status && post.status === 'published' && (status!=='scheduled'||!visibleNow(post)) : post.status === status && (status!=='published'||visibleNow(post)))));
     return json({posts:posts.slice((page-1)*pageSize,page*pageSize),total:posts.length,page,pageSize,totalPages:Math.max(1,Math.ceil(posts.length/pageSize))});
   }
   if (request.method === 'POST' && url.pathname === '/api/posts') {

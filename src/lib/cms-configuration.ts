@@ -11,7 +11,7 @@ export const DEFAULT_CATEGORIES: CmsCategory[] = TAXONOMY.map(({ id, slug, label
 export const DEFAULT_SETTINGS: CmsSettings = {
   title: 'dwnc.me', description: '자동차와 수영, 생활의 발견과 생각을 기록하는 개인 블로그.', author: '대왕날치', rssCount: 500, rssMode: 'summary', paragraphSpacing: true,
   timezone: 'Asia/Seoul', ccl: 'none', iconPath: null,
-  menu: [{label:'최근 기록',path:'/'}, { label: '모든 글', path: '/archive' }, { label: '갈래', path: '/category' }, { label: '소개', path: '/about' }],
+  menu: [{label:'최근 기록',path:'/'}, { label: '모든 글', path: '/archive' }, { label: '카테고리', path: '/category' }, { label: '소개', path: '/about' }],
 };
 const compact = (value: unknown) => String(value ?? '').normalize('NFC').replace(/\s+/gu, ' ').trim();
 export function categoryDescendants(id: string, nodes: CmsCategory[]): CmsCategory[] {

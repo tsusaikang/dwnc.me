@@ -365,7 +365,7 @@ ok(archive.includes('<h2>2026</h2>')); ok(archive.includes('<h2>2025</h2>'));
 // Dynamic category output must use the same responsive hierarchy and navigation
 // contract as the static page, rather than putting labels in a 28px number cell.
 const categoryIndex = load(await (await publicWorker(new Request('https://dwnc.me/category'), publicEnv, {})).text());
-const roots = DEFAULT_CATEGORIES.filter((node) => !node.parentId);
+const roots = DEFAULT_CATEGORIES.filter((node) => !node.parentId && node.id !== 'daily-stories');
 equal(categoryIndex('.category-tree-index__root').length, roots.length);
 equal(categoryIndex('#main .home-category-list').length, 0);
 for (const [index, root] of roots.entries()) {

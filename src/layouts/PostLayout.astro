@@ -3,7 +3,7 @@ import type { PostEntry } from '../lib/posts';
 import { formatCompactDate, formatDate } from '../lib/posts';
 import { publicPostPath, type PublicPostAddress } from '../lib/public-address';
 import type { TagNode } from '../lib/taxonomy';
-import { resolvePostCategory, taxonomyLineage } from '../lib/taxonomy';
+import { resolvePostCategory, resolvePostCategoryId, taxonomyLineage } from '../lib/taxonomy';
 import BaseLayout from './BaseLayout.astro';
 import Breadcrumbs from '../components/Breadcrumbs.astro';
 import { prepareImportedPresentation, IMPORTED_PRESENTATION_CSS, ENGINE_DIAGRAM_CSS, ENGINE_DIAGRAM_BOOTSTRAP } from '../lib/imported-presentation';
@@ -23,7 +23,7 @@ const { data } = post;
 const category = resolvePostCategory(post);
 const categoryLineage = taxonomyLineage(category.id);
 const breadcrumbItems = [
-  { label: '갈래', href: '/category' },
+  { label: '카테고리', href: '/category' },
   ...categoryLineage.slice(0, -1).map((node) => ({ label: node.label, href: `/category/${node.slug}` })),
   { label: category.label, href: `/category/${category.slug}` },
   { label: data.title },
@@ -53,7 +53,7 @@ const hasEngineDiagram = presentationHtml.includes('data-engine-diagram');
 >
   <article
     class:list={['article-page', isPhotoEssay ? 'article-page--photo' : 'article-page--longform']}
-    data-category-id={category.id}
+    data-category-id={resolvePostCategoryId(post)}
   >
     <header class="post-header">
       <div class="post-header__inner">
@@ -84,7 +84,7 @@ const hasEngineDiagram = presentationHtml.includes('data-engine-diagram');
         </div>
         {related.length > 0 && (
           <section class="post-related" aria-labelledby="post-related-title">
-            <h2 id="post-related-title">같은 갈래의 글</h2>
+            <h2 id="post-related-title">같은 카테고리의 글</h2>
             <ol>
               {related.map((item) => (
                 <li>

@@ -10,7 +10,7 @@ const featured = posts.find((post) => post.data.featured)
   ?? posts.find((post) => post.data.cover)
   ?? posts[0];
 const latest = posts.filter((post) => post.id !== featured?.id).slice(0, 7);
-const categories = categoryStats(posts).filter((category) => category.parentId === null);
+const categories = categoryStats(posts).filter((category) => category.parentId === null && category.id !== 'daily-stories');
 const featuredCategory = featured ? resolvePostCategory(featured) : undefined;
 const firstYear = posts.length
   ? Math.min(...posts.map((post) => post.data.publishedAt.getFullYear()))
@@ -63,7 +63,7 @@ const firstYear = posts.length
     <section class="home-categories">
       <header>
         <p class="eyebrow">Subjects</p>
-        <h2>갈래별로 읽기</h2>
+        <h2>카테고리별로 읽기</h2>
       </header>
       <div class="home-category-list">
         {categories.map((category, index) => (

@@ -9,11 +9,11 @@ const statsById = new Map(stats.map((category) => [category.id, category]));
 const roots = taxonomyRoots();
 ---
 
-<BaseLayout title="갈래" description="dwnc.me의 글을 주제의 갈래로 찾아봅니다." canonicalPath="/category">
+<BaseLayout title="카테고리" description="dwnc.me의 글을 주제의 카테고리로 찾아봅니다." canonicalPath="/category">
   <header class="page-header category-index-header">
     <div class="shell">
       <p class="eyebrow">Subjects · {roots.length}</p>
-      <h1>갈래</h1>
+      <h1>카테고리</h1>
       <p>큰 주제에서 세부 기록으로 이어지는 {posts.length}편의 글입니다.</p>
     </div>
   </header>

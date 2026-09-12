@@ -1,5 +1,6 @@
 ---
 import type { TaxonomyNode } from '../lib/taxonomy';
+import { categoryDisplayId } from '../lib/category-display';
 import { taxonomyAncestors, taxonomyChildren } from '../lib/taxonomy';
 
 interface Props {
@@ -10,7 +11,7 @@ interface Props {
 
 const { node, activeCategoryId, interactive = true } = Astro.props;
 const children = taxonomyChildren(node.id);
-const isCurrent = activeCategoryId === node.id;
+const isCurrent = Boolean(activeCategoryId && categoryDisplayId(activeCategoryId) === node.id);
 const isAncestor = Boolean(activeCategoryId && taxonomyAncestors(activeCategoryId).some((item) => item.id === node.id));
 const isExpanded = !interactive || isCurrent || isAncestor;
 const branchId = `category-branch-${node.id}`;
@@ -22,21 +23,19 @@ const branchId = `category-branch-${node.id}`;
   data-active-ancestor={isAncestor ? 'true' : undefined}
 >
   <div class="category-branch__row">
-    <a href={`/category/${node.slug}`} aria-current={isCurrent ? 'page' : undefined}>{node.label}</a>
-    {interactive && children.length > 0 && (
-      <button
-        type="button"
-        data-category-branch-toggle
-        aria-controls={branchId}
-        aria-expanded={isExpanded ? 'true' : 'false'}
-      >
-        <span aria-hidden="true">{isExpanded ? '−' : '+'}</span>
-        <span class="visually-hidden">{node.label} 하위 갈래 {isExpanded ? '접기' : '펼치기'}</span>
+    {interactive && children.length > 0 ? (
+      <button type="button" data-category-branch-toggle aria-controls={branchId} aria-expanded={isExpanded ? 'true' : 'false'}>
+        <span>{node.label}</span>
+        <span class="category-branch__chevron" aria-hidden="true">⌄</span>
+        <span class="visually-hidden"> 하위 카테고리 {isExpanded ? '접기' : '펼치기'}</span>
       </button>
+    ) : (
+      <a href={`/category/${node.slug}`} aria-current={isCurrent ? 'page' : undefined}>{node.label}</a>
     )}
   </div>
   {children.length > 0 && (
     <ul id={branchId} hidden={!isExpanded}>
+      <li class="category-branch category-branch--all"><div class="category-branch__row"><a href={`/category/${node.slug}`} aria-current={isCurrent ? 'page' : undefined}>{node.label} 전체 보기</a></div></li>
       {children.map((child) => (
         <Astro.self node={child} activeCategoryId={activeCategoryId} interactive={interactive} />
       ))}

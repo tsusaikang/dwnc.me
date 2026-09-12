@@ -32,15 +32,15 @@ const isCurrent = (href: string) => {
         </a>
       ))}
       <span class:list={['site-nav__category', { 'is-active': pathname === '/category' || pathname.startsWith('/category/') }] }>
-        <a href="/category" aria-current={pathname === '/category' ? 'page' : undefined}>갈래</a>
+        <a href="/category" aria-current={pathname === '/category' ? 'page' : undefined}>카테고리</a>
         <button
           type="button"
           data-category-open
           aria-controls="category-drawer"
           aria-expanded="false"
           aria-haspopup="dialog"
-          aria-label="전체 갈래 열기"
-        ><span aria-hidden="true">+</span></button>
+          aria-label="전체 카테고리 열기"
+        ><span aria-hidden="true">⌄</span></button>
       </span>
       {navItems.slice(2).map((item) => (
         <a

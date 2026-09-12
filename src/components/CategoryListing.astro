@@ -18,18 +18,18 @@ const { category, posts, page, totalPages } = Astro.props;
 const basePath = `/category/${category.slug}`;
 const lineage = taxonomyLineage(category.id);
 const breadcrumbItems = [
-  { label: '갈래', href: '/category' },
+  { label: '카테고리', href: '/category' },
   ...lineage.slice(0, -1).map((node) => ({ label: node.label, href: `/category/${node.slug}` })),
   { label: category.label },
 ];
 const countCopy = category.directCount === category.totalCount
   ? `${category.totalCount}편`
-  : `직접 ${category.directCount}편 · 하위 갈래 포함 ${category.totalCount}편`;
+  : `직접 ${category.directCount}편 · 하위 카테고리 포함 ${category.totalCount}편`;
 ---
 
 <BaseLayout
   title={page === 1 ? category.label : `${category.label} ${page}쪽`}
-  description={`${category.label} 갈래의 글 ${category.totalCount}편`}
+  description={`${category.label} 카테고리의 글 ${category.totalCount}편`}
   canonicalPath={page === 1 ? basePath : `${basePath}/page/${page}`}
   activeCategoryId={category.id}
 >

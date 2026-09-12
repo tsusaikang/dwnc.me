@@ -1,3 +1,4 @@
+import { categoryDisplayId, categoryDisplayLabel, categoryDisplayNode, categoryDisplayNodes } from './category-display.ts';
 import { publicPostSequence } from './public-address.ts';
 
 export type PublicPostSource = 'tistory' | 'naver' | 'native';
@@ -137,11 +138,11 @@ const byId = new Map(TAXONOMY.map((node) => [node.id, node]));
 const bySlug = new Map(TAXONOMY.map((node) => [normalize(node.slug), node]));
 
 export function taxonomyRoots() {
-  return TAXONOMY.filter((node) => node.parentId === null);
+  return categoryDisplayNodes(TAXONOMY).filter((node) => node.parentId === null);
 }
 
 export function taxonomyChildren(id: string) {
-  return TAXONOMY.filter((node) => node.parentId === id);
+  return categoryDisplayNodes(TAXONOMY).filter((node) => node.parentId === categoryDisplayId(id));
 }
 
 export function taxonomyNodeById(id: string) {
@@ -168,7 +169,7 @@ export function taxonomyAncestors(id: string) {
 }
 
 export function taxonomyLineage(id: string) {
-  const node = taxonomyNodeById(id);
+  const node = categoryDisplayNode(id, TAXONOMY);
   if (!node) return [];
   return [...taxonomyAncestors(id), node];
 }
@@ -202,35 +203,36 @@ export function resolvePostCategoryId(post: TaxonomyPost) {
 }
 
 export function resolvePostCategory(post: TaxonomyPost) {
-  return taxonomyNodeById(resolvePostCategoryId(post))!;
+  return categoryDisplayNode(resolvePostCategoryId(post), TAXONOMY)!;
 }
 
 export function postCategoryAliases(post: TaxonomyPost) {
-  const node = resolvePostCategory(post);
-  return [...new Set(taxonomyLineage(node.id).flatMap((item) => [
+  const node = taxonomyNodeById(resolvePostCategoryId(post))!;
+  return [...new Set([...node.legacyMatchers.map((matcher) => matcher.value), ...taxonomyLineage(node.id).flatMap((item) => [
     item.label,
     ...item.legacyMatchers.map((matcher) => matcher.value),
-  ]))];
+  ])])];
 }
 
 export function categoryStats<T extends TaxonomyPost>(posts: readonly T[]): CategoryStat[] {
   const direct = new Map(TAXONOMY.map((node) => [node.id, 0]));
   for (const post of posts) {
-    const id = resolvePostCategoryId(post);
+    const id = categoryDisplayId(resolvePostCategoryId(post));
     direct.set(id, (direct.get(id) ?? 0) + 1);
   }
   return TAXONOMY.map((node) => ({
     ...node,
-    directCount: direct.get(node.id) ?? 0,
+    label: categoryDisplayLabel(node.id, node.label),
+    directCount: direct.get(categoryDisplayId(node.id)) ?? 0,
     totalCount: [node, ...taxonomyDescendants(node.id)]
-      .reduce((sum, item) => sum + (direct.get(item.id) ?? 0), 0),
+      .reduce((sum, item) => sum + (direct.get(categoryDisplayId(item.id)) ?? 0), 0),
     depth: taxonomyAncestors(node.id).length,
   }));
 }
 
 export function postsForCategory<T extends TaxonomyPost>(posts: readonly T[], categoryId: string) {
-  const accepted = new Set([categoryId, ...taxonomyDescendants(categoryId).map((node) => node.id)]);
-  return posts.filter((post) => accepted.has(resolvePostCategoryId(post)));
+  const accepted = new Set([categoryDisplayId(categoryId), ...taxonomyDescendants(categoryId).map((node) => node.id)]);
+  return posts.filter((post) => accepted.has(categoryDisplayId(resolvePostCategoryId(post))));
 }
 
 export function normalizeTagLabel(value: string) {
@@ -284,12 +286,12 @@ export function tagNodesForPost(post: TaxonomyPost, tags: readonly TagNode[]) {
 }
 
 export function relatedPosts<T extends TaxonomyPost>(posts: readonly T[], current: T, limit = 5) {
-  const categoryId = resolvePostCategoryId(current);
+  const categoryId = categoryDisplayId(resolvePostCategoryId(current));
   const currentTime = current.data.publishedAt.getTime();
   const currentSequence = publicPostSequence(current);
   return posts
     .filter((post) => publicPostSequence(post) !== currentSequence
-      && resolvePostCategoryId(post) === categoryId)
+      && categoryDisplayId(resolvePostCategoryId(post)) === categoryId)
     .sort((a, b) => {
       const distance = Math.abs(a.data.publishedAt.getTime() - currentTime)
         - Math.abs(b.data.publishedAt.getTime() - currentTime);

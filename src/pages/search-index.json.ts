@@ -3,7 +3,7 @@ import { formatCompactDate, getPublicPosts } from '../lib/posts';
 import { derivePublicPostMetadata } from '../lib/public-post';
 import { createPublicLinkRegistry } from '../lib/public-links';
 import { publicAddressEntries, publicPostPath } from '../lib/public-address';
-import { postCategoryAliases, resolvePostCategory, taxonomyLineage } from '../lib/taxonomy';
+import { postCategoryAliases, resolvePostCategoryId, resolvePostCategory, taxonomyLineage } from '../lib/taxonomy';
 
 export const prerender = true;
 
@@ -34,7 +34,7 @@ export const GET: APIRoute = async () => {
     featured: Boolean(post.data.featured),
     cover: post.data.cover ?? null,
     coverAlt: post.data.coverAlt ?? '',
-    categoryId: category.id,
+    categoryId: resolvePostCategoryId(post),
       categories: [category.label],
       tags: [...post.data.tags],
       categoryPath,
