@@ -71,7 +71,7 @@ $('bodyHtml').addEventListener('input',event=>{
   // Native paste may replace an empty block's BR or normalize DIV/P wrappers.
   // The clipboard text immediately before the resulting caret identifies only
   // the inserted span, even when those browser changes invalidate a full diff.
-  if(pasted?.postId===current.id&&!autoLinkComposing&&!event.isComposing){
+  if(pasted?.postId===current.id&&(event.inputType==='insertFromPaste'||event.inputType==='insertText'&&event.data===pasted.plain)&&!autoLinkComposing&&!event.isComposing){
     const snapshot=autoLinkSnapshot(),range=bodyRange(),end=range?autoLinkOffset(snapshot,range.endContainer,range.endOffset):null,plain=pasted.plain.replace(/\u00a0/g,' ');
     if(end!==null)for(const finish of [end,end-1]){const start=finish-plain.length;if(start>=0&&snapshot.text.slice(start,finish).replace(/\u00a0/g,' ')===plain){autoLinkFresh=[[start,finish]];autoLinkText=snapshot.text;autoLinkApply();return}}
   }

@@ -48,6 +48,15 @@ event('paste', { clipboardData: { files: [], getData: type => type === 'text/pla
 node.data = 'old text\n' + url; caret = selectionEnd = node.data.length;
 event('input', { inputType: 'insertFromPaste' });
 assert.equal(offered()[0].start, 'old text\n'.length, 'Clipboard provenance survives native empty-block normalization and missing beforeinput');
+reset();
+event('paste', { clipboardData: { files: [], getData: type => type === 'text/plain' ? url : '' } });
+node.data = url; caret = selectionEnd = node.data.length;
+event('input', { inputType: 'insertText', data: url });
+assert.equal(offered()[0].href, url, 'Command-based paste must report the entire exact clipboard text as the inserted data');
+reset(url);
+event('paste', { clipboardData: { files: [], getData: type => type === 'text/plain' ? url : '' } });
+insert(' ');
+assert.equal(offered().length, 0, 'A paste with no insertion cannot lend provenance to the next ordinary keystroke');
 reset(); insert(url + ', www.example.test.', 'insertFromPaste'); assert.equal(offered().length, 2);
 reset(url); caret = selectionEnd = 0; insert(url + ' ', 'insertFromPaste'); assert.deepEqual(offered().map(item => item.start), [0], 'Repeated text must link only the pasted copy, not the old copy');
 reset('', true); insert(url, 'insertFromPaste'); assert.equal(offered().length, 0, 'Anchors, code, no-link spans and noneditable content are excluded');
