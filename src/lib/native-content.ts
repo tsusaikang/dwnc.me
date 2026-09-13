@@ -208,6 +208,7 @@ export function sanitizeNativeHtml(value: string) {
     allowedAttributes: {
       ...TABLE_LIST_ATTRIBUTES,
       '*': ['style', 'align', 'title', 'lang', 'dir', 'class', 'data-dwnc-original-width', 'data-dwnc-original-max-width', 'data-dwnc-original-height'],
+      span: ['data-dwnc-no-autolink'],
       a: ['href', 'rel', 'target'],
       img: ['src', 'alt', 'width', 'height', 'loading', 'decoding', 'style'],
       figure: ['class', 'data-ke-type', 'style'],

@@ -68,7 +68,7 @@ $('applyLink').onclick=()=>{
   else{const external=/^https?:/i.test(href)?' target="_blank" rel="noopener noreferrer"':'';formatCommand('insertHTML','<a href="'+escapeFormatText(href)+'"'+external+'>'+escapeFormatText(label||href)+'</a>')}
   closeFormatPanels();
 };
-$('removeLink').onclick=()=>{if(busy||!editingLink)return;const range=document.createRange();range.selectNodeContents(editingLink);formatRange=range;formatCommand('unlink');closeFormatPanels()};
+$('removeLink').onclick=()=>{if(busy||!editingLink)return;removeEditorLink(editingLink);closeFormatPanels()};
 $('insertTable').addEventListener('mousedown',event=>event.preventDefault());$('insertTable').onclick=()=>{if(busy||!current||!textFormattingAvailable())return;captureFormatRange();closeFormatPanels();$('tablePanel').hidden=false;$('tableRows').focus()};
 $('cancelTable').onclick=()=>{closeFormatPanels();restoreFormatRange()};
 $('applyTable').onclick=()=>{if(busy)return;const rows=Number($('tableRows').value),columns=Number($('tableColumns').value);if(!Number.isInteger(rows)||rows<1||rows>10||!Number.isInteger(columns)||columns<1||columns>10){status('표는 행과 열을 각각 1부터 10 사이로 입력하세요.');return}let html='<table><tbody>';for(let row=0;row<rows;row++)html+='<tr>'+Array(columns).fill('<td><br></td>').join('')+'</tr>';html+='</tbody></table><p><br></p>';formatCommand('insertHTML',html);closeFormatPanels()};

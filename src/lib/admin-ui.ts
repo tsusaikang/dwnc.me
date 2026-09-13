@@ -1,6 +1,7 @@
 import { categoryDisplayId, categoryDisplayLabel, categoryEditorChoices } from './category-display.ts';
 import { imageDirectToolsHtml, imageDirectOverlayHtml, imageDirectCss, imageDirectScript } from './admin-image-direct.ts';
 import { editorHistoryScript } from './admin-editor-history.ts';
+import { autoLinkScript } from './admin-autolink.ts';
 import { imageLayoutHtml, imageLayoutScript } from './admin-image-layout.ts';
 import { adminNavigationHtml, adminNavigationScript } from './admin-navigation.ts';
 import { statisticsCss, statisticsDialogHtml, statisticsScript } from './admin-statistics.ts';
@@ -199,6 +200,7 @@ $('keepLocal').onclick=()=>action(async()=>{
 window.addEventListener('beforeunload',event=>{if(dirty||saving||busy||hasManagementChanges()){event.preventDefault();event.returnValue=''}});
 ${editorHistoryScript}
 ${formattingScript}
+${autoLinkScript}
 ${managementScript}
 ${statisticsScript}
 ${adminNavigationScript}
