@@ -13,6 +13,7 @@ const sourceArchive = fs.readFileSync(
 );
 const sourceProjectState = fs.readFileSync(path.join(projectRoot, 'PROJECT_STATE.md'), 'utf8');
 const linkedFiles = [
+  'docs/history/글목록_대표이미지와_최근기록_20260915_004728.md',
   'docs/history/본문_기본글꼴_변경_20260914_231435.md',
   'docs/history/카테고리_글_페이지_탐색_20260914_224127.md',
   'docs/history/자동링크_구현_진행_20260913_201937.md',

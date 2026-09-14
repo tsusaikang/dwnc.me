@@ -1,4 +1,5 @@
 ---
+import { renderArchiveRow } from '../../lib/post-listing';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { formatCompactDate, getPublicPosts } from '../../lib/posts';
 import { publicPostPath } from '../../lib/public-address';
@@ -29,13 +30,11 @@ const yearGroups = Object.entries(
         <section class="archive-year">
           <h2>{year}</h2>
           <ul>
-            {yearPosts.map((post) => (
-              <li>
-                <time datetime={post.data.publishedAt.toISOString()}>{formatCompactDate(post.data.publishedAt).slice(5)}</time>
-                <a href={publicPostPath(post)}>{post.data.title}</a>
-                <small>{resolvePostCategory(post).label}</small>
-              </li>
-            ))}
+            {yearPosts.map((post) => <Fragment set:html={renderArchiveRow({
+              title: post.data.title, path: publicPostPath(post),
+              publishedAt: post.data.publishedAt.toISOString(), date: formatCompactDate(post.data.publishedAt),
+              cover: post.data.cover, coverAlt: post.data.coverAlt, leafCategory: resolvePostCategory(post),
+            })} />)}
           </ul>
         </section>
       )) : <p class="empty-state">검증을 마친 글이 아직 없습니다.</p>}

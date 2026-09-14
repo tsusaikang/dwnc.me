@@ -9,6 +9,7 @@ import {
 } from '../src/lib/taxonomy.ts';
 import { categoryDisplayId, categoryDisplayLabel, categoryDisplayNode, categoryDisplayNodes } from '../src/lib/category-display.ts';
 import { BOOTSTRAP_PUBLIC_PROJECTION_SHA256, publicProjectionDigest } from './lib/global-sequence.mjs';
+import { effectivePublicMediaPresentationData, loadTrackedPublicMediaCurationPolicy } from './lib/public-media-curation.mjs';
 
 const ROOT = process.cwd();
 const DIST = path.join(ROOT, 'dist');
@@ -74,7 +75,7 @@ function readFrontmatter(raw, file) {
       globalSequence: Number(address?.globalSequence ?? -1),
       publishedAt: new Date(data.publishedAt),
       featured: Boolean(data.featured),
-      cover: normalize(data.cover),
+      cover: normalize(effectivePublicMediaPresentationData(data, mediaCurationPolicy).cover),
       visibility: normalize(data.visibility),
       draft: Boolean(data.draft),
       categories: Array.isArray(data.categories) ? data.categories.map(normalize) : [],
@@ -86,6 +87,7 @@ function readFrontmatter(raw, file) {
   }
 }
 
+const mediaCurationPolicy = await loadTrackedPublicMediaCurationPolicy(ROOT);
 const publicProjection = JSON.parse(await readFile(path.join(ROOT, 'src/data/public-sequence-v1.json'), 'utf8'));
 const projectionByIdentity = new Map(publicProjection.map((entry) => [`${entry.source}:${entry.sourceId}`, entry]));
 const baselineProjection = publicProjection.length === EXPECTED_IMPORTED_POSTS
@@ -417,17 +419,16 @@ const home = await routeDocument('/');
 if (home) {
   const actual = home.$('.home-category-list > a').toArray().map((element) => normalizedRoute(home.$(element).attr('href')));
   compareArray('home.roots', 'home root list', actual, categoryDisplayNodes(roots).map((root) => `/category/${root.slug}`));
-  const featured = publicPosts.find((post) => post.featured)
-    ?? publicPosts.find((post) => post.cover)
-    ?? publicPosts[0];
-  const featureLinks = home.$('.home-feature a[href^="/posts/"]').toArray()
-    .map((element) => normalizedRoute(home.$(element).attr('href')));
-  if (!featured || !featureLinks.length || featureLinks.some((href) => href !== featured.canonicalPath)) {
-    issue('home.posts', 'Home featured links do not use the derived sequence canonical.');
-  }
-  const expectedLatest = publicPosts.filter((post) => post.globalSequence !== featured?.globalSequence).slice(0, 7);
-  const latestLinks = home.$('.home-index ol a').toArray().map((element) => normalizedRoute(home.$(element).attr('href')));
+  const expectedLatest = publicPosts.slice(0, 8);
+  const latestLinks = home.$('.recent-card h2 a').toArray().map((element) => normalizedRoute(home.$(element).attr('href')));
   compareArray('home.posts', 'home latest posts', latestLinks, expectedLatest.map((post) => post.canonicalPath));
+  home.$('.recent-card').each((index, element) => {
+    const expectedCover = expectedLatest[index]?.cover;
+    const images = home.$(element).find('.recent-card__image img');
+    if (images.length !== (expectedCover ? 1 : 0) || expectedCover && images.attr('src') !== expectedCover) {
+      issue('home.cover', 'Recent cards must use only their selected public covers.');
+    }
+  });
 }
 
 const archive = await routeDocument('/archive');
@@ -435,6 +436,13 @@ if (archive) {
   const archiveLinks = archive.$('.archive-list li > a').toArray()
     .map((element) => normalizedRoute(archive.$(element).attr('href')));
   compareArray('archive.posts', 'archive post links', archiveLinks, publicPosts.map((post) => post.canonicalPath));
+  archive.$('.archive-entry').each((index, element) => {
+    const expectedCover = publicPosts[index]?.cover;
+    const images = archive.$(element).find('img');
+    if (images.length !== (expectedCover ? 1 : 0) || expectedCover && images.attr('src') !== expectedCover) {
+      issue('archive.cover', 'Archive rows must use only their selected public covers.');
+    }
+  });
 }
 
 const expectedTagRoutes = new Set();

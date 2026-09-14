@@ -1,4 +1,5 @@
 ---
+import { renderRecentJournal } from '../lib/post-listing';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { formatCompactDate, getPublicPosts } from '../lib/posts';
 import { publicPostPath } from '../lib/public-address';
@@ -6,58 +7,20 @@ import { SITE_COPYRIGHT_YEAR } from '../lib/site-meta';
 import { categoryStats, resolvePostCategory } from '../lib/taxonomy';
 
 const posts = await getPublicPosts();
-const featured = posts.find((post) => post.data.featured)
-  ?? posts.find((post) => post.data.cover)
-  ?? posts[0];
-const latest = posts.filter((post) => post.id !== featured?.id).slice(0, 7);
 const categories = categoryStats(posts).filter((category) => category.parentId === null && category.id !== 'daily-stories');
-const featuredCategory = featured ? resolvePostCategory(featured) : undefined;
 const firstYear = posts.length
   ? Math.min(...posts.map((post) => post.data.publishedAt.getFullYear()))
   : 2015;
 ---
 
 <BaseLayout title="dwnc.me">
-  {featured ? (
-    <section class="home-journal" aria-labelledby="featured-title">
-      <article class="home-feature">
-        {featured.data.cover && (
-          <a class="home-feature__image" href={publicPostPath(featured)} tabindex="-1" aria-hidden="true">
-            <img src={featured.data.cover} alt={featured.data.coverAlt} decoding="async" fetchpriority="high" />
-          </a>
-        )}
-        <div class="home-feature__copy">
-          <p class="home-feature__meta">
-            <time datetime={featured.data.publishedAt.toISOString()}>{formatCompactDate(featured.data.publishedAt)}</time>
-            <span>{featuredCategory?.label ?? '기록'}</span>
-          </p>
-          <h1 id="featured-title"><a href={publicPostPath(featured)}>{featured.data.title}</a></h1>
-          <a class="text-link" href={publicPostPath(featured)}>이 글 읽기 <span aria-hidden="true">↗</span></a>
-        </div>
-      </article>
-
-      <aside class="home-index" aria-label="최근 글">
-        <div class="home-index__heading">
-          <div>
-            <p>{firstYear}—{SITE_COPYRIGHT_YEAR}</p>
-            <h2>최근 글</h2>
-          </div>
-          <button type="button" data-search-open>찾기</button>
-        </div>
-        <ol>
-          {latest.map((post) => (
-            <li>
-              <a href={publicPostPath(post)}>{post.data.title}</a>
-              <time datetime={post.data.publishedAt.toISOString()}>{formatCompactDate(post.data.publishedAt)}</time>
-            </li>
-          ))}
-        </ol>
-        <a class="text-link" href="/archive">모든 글 보기 <span aria-hidden="true">↗</span></a>
-      </aside>
-    </section>
-  ) : (
-    <p class="empty-state">아직 공개된 글이 없습니다.</p>
-  )}
+  {posts.length ? (
+    <Fragment set:html={renderRecentJournal(posts.map((post) => ({
+      title: post.data.title, path: publicPostPath(post),
+      publishedAt: post.data.publishedAt.toISOString(), date: formatCompactDate(post.data.publishedAt),
+      cover: post.data.cover, coverAlt: post.data.coverAlt, leafCategory: resolvePostCategory(post),
+    })), firstYear, SITE_COPYRIGHT_YEAR)} />
+  ) : <p class="empty-state">아직 공개된 글이 없습니다.</p>}
 
   {categories.length > 0 && (
     <section class="home-categories">

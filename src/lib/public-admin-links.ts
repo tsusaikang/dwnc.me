@@ -42,7 +42,7 @@ export function mountPublicAdminLinks() {
     const heading = document.querySelector<HTMLElement>('.article-page .post-header__inner');
     if (current && heading) attach(heading, current, heading.querySelector('h1')?.textContent ?? '이 글');
     const selectors = [
-      '.post-card h2 > a[href]', '.home-feature__copy h1 > a[href]',
+      '.post-card h2 > a[href]', '.recent-card h2 > a[href]', '.home-feature__copy h1 > a[href]',
       '.home-index li > a[href]', '.archive-year li > a[href]',
       '.post-related li > a[href]', '.notices li > a[href]',
       '.search-results > a[href]:not(.public-edit-link)',
@@ -50,7 +50,7 @@ export function mountPublicAdminLinks() {
     for (const anchor of document.querySelectorAll<HTMLAnchorElement>(selectors.join(','))) {
       if (anchor.classList.contains('public-edit-link')) continue;
       const path = editablePublicPath(anchor.href, location.origin); if (!path) continue;
-      const host = anchor.closest<HTMLElement>('.post-card__body, .home-feature__copy, li') ?? anchor;
+      const host = anchor.closest<HTMLElement>('.post-card__body, .recent-card__body, .home-feature__copy, li') ?? anchor;
       attach(host, path, anchor.textContent ?? '이 글', host === anchor);
     }
   };
