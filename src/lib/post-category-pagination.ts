@@ -17,10 +17,14 @@ const escape = (value: string) => value.replace(/[&<>"']/gu, (character) => ({
 const sequence = (path: string) => Number(path.match(/^\/posts\/(\d+)$/u)?.[1] ?? 0);
 
 // The caller supplies its existing public discovery list, never draft/body data.
-export function categoryPostPages(posts: readonly CategoryPostLink[], categoryId: string, currentPath: string) {
-  const ordered = posts.filter((post) => categoryDisplayId(post.categoryId) === categoryDisplayId(categoryId))
+export function orderedCategoryPosts<T extends Pick<CategoryPostLink, 'path' | 'publishedAt' | 'categoryId'>>(posts: readonly T[], categoryId: string): T[] {
+  return posts.filter((post) => categoryDisplayId(post.categoryId) === categoryDisplayId(categoryId))
     .sort((left, right) => Date.parse(right.publishedAt) - Date.parse(left.publishedAt)
       || sequence(right.path) - sequence(left.path));
+}
+
+export function categoryPostPages(posts: readonly CategoryPostLink[], categoryId: string, currentPath: string) {
+  const ordered = orderedCategoryPosts(posts, categoryId);
   const currentIndex = ordered.findIndex((post) => post.path === currentPath);
   const pages: CategoryPostLink[][] = [];
   for (let index = 0; index < ordered.length; index += POST_CATEGORY_PAGE_SIZE) {

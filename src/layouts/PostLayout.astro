@@ -89,7 +89,7 @@ const hasEngineDiagram = presentationHtml.includes('data-engine-diagram');
           categoryId: resolvePostCategoryId(item),
         })), category.id, address.canonicalPath, `/category/${category.slug}`)} />
         {(previous || next) && (
-          <nav class="post-sequence" aria-label="시간순 글 이동">
+          <nav class="post-sequence" aria-label="같은 카테고리의 시간순 글 이동">
             {next
               ? (
                 <a rel="next" href={publicPostPath(next)}>

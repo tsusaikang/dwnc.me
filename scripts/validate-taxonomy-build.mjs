@@ -484,7 +484,7 @@ let relatedLinks = 0;
 let previousLinks = 0;
 let nextLinks = 0;
 let tagLinks = 0;
-for (const [index, post] of publicPosts.entries()) {
+for (const post of publicPosts) {
   const document = await routeDocument(post.canonicalPath);
   if (!document) continue;
   const { $ } = document;
@@ -543,8 +543,9 @@ for (const [index, post] of publicPosts.entries()) {
 
   const previous = $('.post-sequence a[rel="prev"]');
   const next = $('.post-sequence a[rel="next"]');
-  const expectedPrevious = publicPosts[index + 1]?.canonicalPath;
-  const expectedNext = publicPosts[index - 1]?.canonicalPath;
+  const categoryIndex = expectedRelated.findIndex((item) => item.canonicalPath === post.canonicalPath);
+  const expectedPrevious = expectedRelated[categoryIndex + 1]?.canonicalPath;
+  const expectedNext = expectedRelated[categoryIndex - 1]?.canonicalPath;
   if ((expectedPrevious && normalizedRoute(previous.attr('href')) !== expectedPrevious) || (!expectedPrevious && previous.length)) {
     issue('post.previous', `${post.canonicalPath} has the wrong older-post link.`);
   }
@@ -552,7 +553,7 @@ for (const [index, post] of publicPosts.entries()) {
     issue('post.next', `${post.canonicalPath} has the wrong newer-post link.`);
   }
   const sequenceSlots = $('.post-sequence').children();
-  if (sequenceSlots.length !== 2
+  if ((!expectedPrevious && !expectedNext) ? sequenceSlots.length !== 0 : sequenceSlots.length !== 2
     || (expectedNext ? sequenceSlots.eq(0).attr('rel') !== 'next' : !sequenceSlots.eq(0).is('span'))
     || (expectedPrevious ? sequenceSlots.eq(1).attr('rel') !== 'prev' : !sequenceSlots.eq(1).is('span'))) {
     issue('post.chronology-order', `${post.canonicalPath} must put the newer card first and older card second, retaining empty edge slots.`);
@@ -561,8 +562,10 @@ for (const [index, post] of publicPosts.entries()) {
   if (next.length) nextLinks += 1;
 }
 if (tagLinks !== tagAssignments) issue('post.tag-assignment', `Article tag links total ${tagLinks}; expected ${tagAssignments}.`);
-if (previousLinks !== publicPosts.length - 1 || nextLinks !== publicPosts.length - 1) {
-  issue('post.chronology-count', `Chronology links are previous ${previousLinks} / next ${nextLinks}; expected ${publicPosts.length - 1}/${publicPosts.length - 1}.`);
+const populatedCategories = new Set(publicPosts.map(post => categoryDisplayId(categoryForPost.get(post.canonicalPath)?.id ?? ''))).size;
+const expectedNeighborLinks = publicPosts.length - populatedCategories;
+if (previousLinks !== expectedNeighborLinks || nextLinks !== expectedNeighborLinks) {
+  issue('post.chronology-count', `Chronology links are previous ${previousLinks} / next ${nextLinks}; expected ${expectedNeighborLinks}/${expectedNeighborLinks}.`);
 }
 
 let searchIndex = [];

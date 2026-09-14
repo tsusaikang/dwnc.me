@@ -302,7 +302,9 @@ export function relatedPosts<T extends TaxonomyPost>(posts: readonly T[], curren
 }
 
 export function chronologicalNeighbors<T extends TaxonomyPost>(posts: readonly T[], current: T): ChronologicalNeighbors<T> {
-  const ordered = [...posts].sort((a, b) => b.data.publishedAt.getTime() - a.data.publishedAt.getTime()
+  const categoryId = categoryDisplayId(resolvePostCategoryId(current));
+  const ordered = posts.filter((post) => categoryDisplayId(resolvePostCategoryId(post)) === categoryId)
+    .sort((a, b) => b.data.publishedAt.getTime() - a.data.publishedAt.getTime()
     || publicPostSequence(b) - publicPostSequence(a));
   const currentSequence = publicPostSequence(current);
   const index = ordered.findIndex((post) => publicPostSequence(post) === currentSequence);

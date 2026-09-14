@@ -3,6 +3,8 @@ import vm from 'node:vm';
 import { load } from 'cheerio';
 import { categoryPostPages, renderPostCategoryPagination, POST_CATEGORY_PAGINATION_SCRIPT } from '../src/lib/post-category-pagination.ts';
 import { createNativePublicWorker } from '../src/lib/native-public-worker.ts';
+import { chronologicalNeighbors } from '../src/lib/taxonomy.ts';
+import { publicAddressEntries, publicPostPath } from '../src/lib/public-address.ts';
 import { NativePostStore } from '../src/lib/native-post-store.ts';
 import { createEditorDatabase, seedLegacy } from './fixtures/editor-database.mjs';
 
@@ -31,6 +33,26 @@ assert.equal(single('[aria-current="page"]').length, 1);
 const escaped = load(renderPostCategoryPagination([{ ...posts[0], title: '<img src=x onerror=alert(1)>' }], 'daily', '/posts/1', '/category/daily'));
 assert.equal(escaped('.post-related img').length, 0);
 assert.match(escaped('.post-related a').text(), /^<img/);
+
+// Static neighbor selection merges only the two display-equivalent daily IDs.
+// Equal timestamps intentionally force the same sequence tie-break as the pages.
+const addresses = [...publicAddressEntries()].sort((a, b) => a.globalSequence - b.globalSequence).slice(0, 4);
+const taxonomyPosts = addresses.map((address, index) => ({ data: {
+  source: address.source, sourceId: address.sourceId, canonicalPath: address.legacyPaths[0],
+  categoryId: index === 2 ? 'swimming-diary' : index === 1 ? 'daily-stories' : 'daily',
+  categories: [], tags: [], publishedAt: new Date('2025-01-01T00:00:00Z'), title: '합성', visibility: 'public',
+} }));
+const neighbors = chronologicalNeighbors(taxonomyPosts, taxonomyPosts[1]);
+assert.equal(neighbors.next, taxonomyPosts[3]); assert.equal(neighbors.previous, taxonomyPosts[0]);
+assert.equal(chronologicalNeighbors(taxonomyPosts, taxonomyPosts[0]).previous, null);
+assert.equal(chronologicalNeighbors(taxonomyPosts, taxonomyPosts[3]).next, null);
+assert.deepEqual(chronologicalNeighbors(taxonomyPosts, taxonomyPosts[2]), { previous: null, next: null });
+assert.deepEqual(chronologicalNeighbors(taxonomyPosts.slice(1), taxonomyPosts[0]), { previous: null, next: null });
+const matchingPageOrder = categoryPostPages(taxonomyPosts.map(post => ({
+  title: post.data.title, path: publicPostPath(post), categoryId: post.data.categoryId,
+  publishedAt: post.data.publishedAt.toISOString(), date: '2025.01.01',
+})), 'daily', publicPostPath(taxonomyPosts[1])).pages.flat().map(post => post.path);
+assert.deepEqual(matchingPageOrder, [neighbors.next, taxonomyPosts[1], neighbors.previous].map(publicPostPath));
 
 // Run the real event handler over the rendered DOM; no fetch, location, or history
 // is provided, so list changes cannot silently become page requests/view events.
@@ -76,13 +98,14 @@ assert.equal($('a[aria-current="page"]').attr('href'), '/posts/35');
 // Real Worker/store integration: only already-public snapshots enter the list,
 // including both original daily category IDs, with drafts and access policy intact.
 const db = await createEditorDatabase(); seedLegacy(db); const store = new NativePostStore(db);
-const make = async (title, visibility = 'public', options = {}) => {
-  let post = await store.createDraft({ id: 'daily-stories', slug: '일상-이야기', label: '일상 이야기' });
+const make = async (title, visibility = 'public', options = {}, category = { id: 'daily-stories', slug: '일상-이야기', label: '일상 이야기' }) => {
+  let post = await store.createDraft(category);
   post = await store.update(post.id, post.revision, { ...post, title, bodyFormat: 'html', bodyMarkdown: '<p>합성 본문</p>' });
   return visibility === 'draft' ? post : store.publish(post.id, post.revision, { visibility, ...options });
 };
 let publicPost;
 for (let index = 0; index < 7; index++) publicPost = await make(`공개 합성 ${index}`);
+const onlySwimming = await make('다른 카테고리 한 편', 'public', {}, { id: 'swimming-diary', slug: '수영-일기', label: '수영 일기' });
 for (const visibility of ['draft', 'private', 'protected', 'scheduled']) await make(`HIDDEN_${visibility}`, visibility, { password: 'synthetic password', scheduledAt: new Date(Date.now() + 3600000).toISOString() });
 await store.update(publicPost.id, publicPost.revision, { ...publicPost, title: 'UNRELEASED_TITLE' });
 const tables = ['native_posts', 'legacy_posts', 'editor_working_copies', 'content_operations'];
@@ -109,6 +132,11 @@ const middle = load(await middleResponse.text());
 assert.deepEqual(middle('.post-sequence > a').toArray().map(node => middle(node).attr('rel')), ['next', 'prev']);
 assert.equal(middle('.post-sequence > a').first().find('span').text(), '다음 글');
 assert.equal(middle('.post-sequence > a').last().find('span').text(), '이전 글');
+assert.ok(!article('.post-sequence').text().includes('다른 카테고리'));
+const onlyResponse = await worker(new Request(`https://dwnc.me${onlySwimming.publicPath}?preview=1`), { NATIVE_DB: db }, {});
+const onlyArticle = load(await onlyResponse.text());
+assert.equal(onlyArticle('.post-related li').length, 1);
+assert.equal(onlyArticle('.post-sequence').length, 0, 'A category with one public post has no unrelated navigation');
 assert.ok(!output.includes('HIDDEN_')); assert.ok(!output.includes('UNRELEASED_TITLE'));
 assert.equal(db.sqlite.prepare('SELECT COUNT(*) AS count FROM post_view_daily').get().count, 0);
 for (const [table, rows] of Object.entries(records)) assert.deepEqual(db.sqlite.prepare(`SELECT * FROM ${table} ORDER BY 1`).all(), rows);
