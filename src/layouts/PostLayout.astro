@@ -1,4 +1,5 @@
 ---
+import { renderPostCategoryPagination } from '../lib/post-category-pagination';
 import type { PostEntry } from '../lib/posts';
 import { formatCompactDate, formatDate } from '../lib/posts';
 import { publicPostPath, type PublicPostAddress } from '../lib/public-address';
@@ -82,19 +83,11 @@ const hasEngineDiagram = presentationHtml.includes('data-engine-diagram');
           <a href={`/category/${category.slug}`}>{category.label}</a>
           {tagNodes.map((tag) => <a rel="tag" href={`/tag/${tag.slug}`}>#{tag.label}</a>)}
         </div>
-        {related.length > 0 && (
-          <section class="post-related" aria-labelledby="post-related-title">
-            <h2 id="post-related-title">같은 카테고리의 글</h2>
-            <ol>
-              {related.map((item) => (
-                <li>
-                  <a href={publicPostPath(item)}>{item.data.title}</a>
-                  <time datetime={item.data.publishedAt.toISOString()}>{formatCompactDate(item.data.publishedAt)}</time>
-                </li>
-              ))}
-            </ol>
-          </section>
-        )}
+        <Fragment set:html={renderPostCategoryPagination(related.map((item) => ({
+          title: item.data.title, path: publicPostPath(item),
+          publishedAt: item.data.publishedAt.toISOString(), date: formatCompactDate(item.data.publishedAt),
+          categoryId: resolvePostCategoryId(item),
+        })), category.id, address.canonicalPath, `/category/${category.slug}`)} />
         {(previous || next) && (
           <nav class="post-sequence" aria-label="시간순 글 이동">
             {previous

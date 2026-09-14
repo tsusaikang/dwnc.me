@@ -8,7 +8,6 @@ import PostLayout from '../layouts/PostLayout.astro';
 import {
   chronologicalNeighbors,
   collectTags,
-  relatedPosts,
   tagNodesForPost,
 } from '../lib/taxonomy';
 
@@ -30,7 +29,7 @@ export async function getStaticPaths() {
         publicPostHtml: await preparePublicPostHtml(post, publicLinkRegistry),
         publicMetadata: await derivePublicPostMetadata(post, publicLinkRegistry),
         tagNodes: tagNodesForPost(post, tags),
-        related: relatedPosts(posts, post, 5),
+        related: posts,
         ...neighbors,
       },
     };

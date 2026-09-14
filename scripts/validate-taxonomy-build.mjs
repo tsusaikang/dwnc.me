@@ -475,14 +475,10 @@ if (tagIndex) {
 
 const relatedExpected = (post) => {
   const categoryId = categoryDisplayId(categoryForPost.get(post.canonicalPath)?.id ?? '');
-  const currentTime = post.publishedAt.getTime();
   return publicPosts
-    .filter((candidate) => candidate.canonicalPath !== post.canonicalPath
-      && categoryDisplayId(categoryForPost.get(candidate.canonicalPath)?.id ?? '') === categoryId)
-    .sort((a, b) => Math.abs(a.publishedAt.getTime() - currentTime) - Math.abs(b.publishedAt.getTime() - currentTime)
-      || b.publishedAt.getTime() - a.publishedAt.getTime()
-      || b.globalSequence - a.globalSequence)
-    .slice(0, 5);
+    .filter((candidate) => categoryDisplayId(categoryForPost.get(candidate.canonicalPath)?.id ?? '') === categoryId)
+    .sort((a, b) => b.publishedAt.getTime() - a.publishedAt.getTime()
+      || b.globalSequence - a.globalSequence);
 };
 let relatedLinks = 0;
 let previousLinks = 0;
@@ -514,9 +510,34 @@ for (const [index, post] of publicPosts.entries()) {
   const actualRelated = $('.post-related li a').toArray().map((element) => normalizedRoute($(element).attr('href')));
   compareArray('post.related', post.canonicalPath, actualRelated, expectedRelated.map((item) => item.canonicalPath));
   if (new Set(actualRelated).size !== actualRelated.length
-    || actualRelated.includes(post.canonicalPath)
     || actualRelated.some((route) => !publicPosts.some((item) => item.canonicalPath === route))) {
-    issue('post.related-safety', `${post.canonicalPath} has a duplicate, self, or non-public related link.`);
+    issue('post.related-safety', `${post.canonicalPath} has a duplicate or non-public category link.`);
+  }
+  const expectedPage = Math.floor(expectedRelated.findIndex((item) => item.canonicalPath === post.canonicalPath) / 5) + 1;
+  const expectedPages = Math.ceil(expectedRelated.length / 5);
+  const lists = $('.post-related [data-category-page]');
+  const visible = lists.filter(':not([hidden])');
+  if (lists.length !== expectedPages || visible.length !== 1
+    || Number(visible.attr('data-category-page')) !== expectedPage
+    || lists.toArray().some((element) => $(element).find('li').length > 5)) {
+    issue('post.category-pages', `${post.canonicalPath} has invalid five-post pages or initial position.`);
+  }
+  const current = $('.post-related a[aria-current="page"]');
+  if (current.length !== 1 || normalizedRoute(current.attr('href')) !== post.canonicalPath
+    || visible.find('a[aria-current="page"]').length !== 1) {
+    issue('post.category-current', `${post.canonicalPath} lacks its current-post marker on the visible page.`);
+  }
+  if (expectedPages > 1) {
+    const start = Math.floor((expectedPage - 1) / 7) * 7 + 1;
+    const end = Math.min(start + 6, expectedPages);
+    const buttons = $('.post-related [data-category-page-button]:not([hidden])');
+    compareArray('post.category-page-buttons', post.canonicalPath,
+      buttons.toArray().map((element) => Number($(element).attr('data-category-page-button'))),
+      Array.from({ length: end - start + 1 }, (_, index) => start + index));
+    if ($('[data-category-page-previous]').is('[disabled]') !== (start === 1)
+      || $('[data-category-page-next]').is('[disabled]') !== (end === expectedPages)) {
+      issue('post.category-page-boundaries', `${post.canonicalPath} has invalid page-group boundaries.`);
+    }
   }
   relatedLinks += actualRelated.length;
 
