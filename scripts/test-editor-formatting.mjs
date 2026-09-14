@@ -1,11 +1,25 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { load } from 'cheerio';
+import vm from 'node:vm';
+import { fontSizePresetScript } from '../src/lib/body-typography.ts';
 import { NativePostStore } from '../src/lib/native-post-store.ts';
 import { renderNativeMarkdown, sanitizeLegacyHtml } from '../src/lib/native-content.ts';
 import { createEditorDatabase, EditorDatabase, seedLegacy } from './fixtures/editor-database.mjs';
 
 const category = { id: 'daily', slug: '일상', label: '일상' };
+// A navigation key at a boundary must retain the selected typing preset;
+// actual caret/selection movement must stop applying it to the new location.
+const caretNode={},otherCaretNode={};
+let caretRange={collapsed:true,startContainer:caretNode,startOffset:4};
+const sizeContext=vm.createContext({bodyRange:()=>caretRange,caretNode});
+vm.runInContext('let pendingFontSpans;'+fontSizePresetScript,sizeContext);
+const resetPendingSize=()=>vm.runInContext("pendingFontSpans={preset:'7',caret:{node:caretNode,offset:4}}",sizeContext);
+const pendingSize=()=>vm.runInContext('discardPendingFontSizeAfterMove();pendingFontSpans?.preset',sizeContext);
+resetPendingSize();assert.equal(pendingSize(),'7','No-op Home/End or navigation shortcut retains typing preset');
+caretRange={...caretRange,startOffset:3};assert.equal(pendingSize(),undefined,'Actual arrow movement cancels typing preset');
+resetPendingSize();caretRange={collapsed:true,startContainer:otherCaretNode,startOffset:4};assert.equal(pendingSize(),undefined,'Pointer or programmatic caret movement cancels typing preset');
+resetPendingSize();caretRange={collapsed:false,startContainer:caretNode,startOffset:4};assert.equal(pendingSize(),undefined,'Extending a selection cancels typing preset');
 const base = { title: '서식 합성 시험', description: '설명', categoryId: 'daily', tags: ['시험'], coverMediaId: null };
 const formatted = '<h2>소제목</h2><p><strong>굵게</strong> <em>기울임</em> <u>밑줄</u> <s>취소선</s></p>'
   + '<p style="text-align:center"><span style="font-size:24px!important;color:#336699;background-color:#fff2ac">크기와 색상</span></p>'
@@ -13,6 +27,7 @@ const formatted = '<h2>소제목</h2><p><strong>굵게</strong> <em>기울임</e
   + '<ol start="3" reversed><li value="5">번호</li></ol><hr>'
   + '<table><tbody><tr><th colspan="2">병합 제목</th></tr><tr><td rowspan="2">세로 병합</td><td>내용</td></tr><tr><td>내용</td></tr></tbody></table>'
   + '<p><span style="font-family:var(--dwnc-body-font)">기본 글꼴 선택</span></p>'
+  + '<p>'+Array.from({length:7},(_,index)=>'<span style="font-size:var(--dwnc-text-size-'+(index+1)+')!important"><em>상대크기 '+(index+1)+'</em></span>').join(' ')+'</p>'
   + '<p><a href="https://example.test/article">링크</a></p><pre><code>const value = 1;</code></pre>';
 
 function assertFormatting(html) {
@@ -30,6 +45,7 @@ function assertFormatting(html) {
     assert.ok($('span').attr('style').includes(style), `Missing style: ${style}`);
   }
   assert.ok($('span').attr('style').includes('!important'), 'Explicit editor size must override legacy public size rules');
+  for(let preset=1;preset<=7;preset++){const span=$('span').filter((_,node)=>$(node).text()==='상대크기 '+preset);assert.equal(span.attr('style').replace(/\s+/g,''),'font-size:var(--dwnc-text-size-'+preset+')!important');assert.equal(span.find('em').length,1)}
   assert.equal($('a').attr('href'), 'https://example.test/article');
   assert.equal($('span').filter((_, node) => $(node).text() === '기본 글꼴 선택').attr('style'), 'font-family:var(--dwnc-body-font)');
 }

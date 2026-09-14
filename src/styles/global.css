@@ -1864,7 +1864,7 @@
     width: min(calc(100% - 96px), var(--reading));
     padding-bottom: clamp(78px, 11vw, 152px);
     font-family: var(--serif);
-    font-size: clamp(1.02rem, 1.35vw, 1.1rem);
+    font-size: var(--dwnc-body-size, 18px);
     line-height: 1.98;
     word-break: keep-all;
     overflow-wrap: break-word;

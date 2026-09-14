@@ -1,3 +1,4 @@
+import { BODY_TYPOGRAPHY_CSS } from './body-typography.ts';
 import { IMAGE_LAYOUT_CSS } from './image-layout.ts';
 import { load } from 'cheerio';
 import { sanitizeLegacyHtml } from './native-content.ts';
@@ -69,7 +70,7 @@ export const IMPORTED_PRESENTATION_CSS = String.raw`
 @font-face{font-family:NanumBarunGothic;src:url('/fonts/nanum/NanumBarunGothic.woff') format('woff');font-weight:400;font-style:normal;font-display:swap}
 @font-face{font-family:NanumBarunGothic;src:url('/fonts/nanum/NanumBarunGothicBold.woff') format('woff');font-weight:700;font-style:normal;font-display:swap}
 .prose,.html-editor{--dwnc-body-font:var(--serif,"Iowan Old Style","Noto Serif KR","Nanum Myeongjo","AppleMyungjo",Batang,Georgia,serif);font-family:var(--dwnc-body-font)}
-.prose{font-size:clamp(1.02rem,1.35vw,1.1rem);line-height:1.98;overflow-wrap:break-word}
+.prose{line-height:1.98;overflow-wrap:break-word}
 .prose :is(strong,b){font-family:inherit}
 .prose :is(img,video,iframe,svg){max-width:100%;box-sizing:border-box}
 .prose :is(img,video){height:auto}
@@ -82,18 +83,18 @@ export const IMPORTED_PRESENTATION_CSS = String.raw`
 .prose li>ul{list-style:circle}.prose li>ol{list-style:decimal}
 .prose .naver-content :is(span,p,div){font-family:inherit;line-height:inherit}
 .prose .naver-content span{font-size:inherit}
-.prose .legacy-content{font-size:16px;line-height:1.75}
-.prose .naver-content--smarteditor-one{font-family:inherit;font-size:15px;line-height:1.8}
+:is(.prose,.html-editor) .legacy-content{font-size:var(--dwnc-body-size);line-height:1.75}
+:is(.prose,.html-editor) .naver-content--smarteditor-one{font-family:inherit;font-size:var(--dwnc-body-size);line-height:1.8}
 .prose .naver-content--smarteditor-one .se-text-paragraph{line-height:1.8}
-.prose .naver-content--smarteditor-one .se-fs-{font-size:15px}
-.prose .naver-content--smarteditor-3{font-family:inherit;font-size:16px;line-height:1.9}
-.prose .naver-content .se_fs_T3{font-size:16px;line-height:1.9}
-.prose .naver-content .se_fs_T1{font-size:28px;line-height:normal}
-.prose .naver-content .se_fs_T2{font-size:19px;line-height:1.9}
-.prose .naver-content :is(.se_fs_D1,.se_fs_D2){font-size:18px;line-height:normal}
-.prose .naver-content .se_fs_H1{font-size:38px;line-height:1.45}
-.prose .naver-content .se_fs_H2{font-size:30px;line-height:1.45}
-.prose .naver-content .se_fs_H3{font-size:19px;line-height:1.45}
+:is(.prose,.html-editor) .naver-content--smarteditor-one .se-fs-{font-size:var(--dwnc-body-size)}
+:is(.prose,.html-editor) .naver-content--smarteditor-3{font-family:inherit;font-size:var(--dwnc-body-size);line-height:1.9}
+:is(.prose,.html-editor) .naver-content .se_fs_T3{font-size:calc(var(--dwnc-body-size)*1);line-height:1.9}
+:is(.prose,.html-editor) .naver-content .se_fs_T1{font-size:calc(var(--dwnc-body-size)*1.75);line-height:normal}
+:is(.prose,.html-editor) .naver-content .se_fs_T2{font-size:calc(var(--dwnc-body-size)*1.1875);line-height:1.9}
+:is(.prose,.html-editor) .naver-content :is(.se_fs_D1,.se_fs_D2){font-size:calc(var(--dwnc-body-size)*1.125);line-height:normal}
+:is(.prose,.html-editor) .naver-content .se_fs_H1{font-size:calc(var(--dwnc-body-size)*2.375);line-height:1.45}
+:is(.prose,.html-editor) .naver-content .se_fs_H2{font-size:calc(var(--dwnc-body-size)*1.875);line-height:1.45}
+:is(.prose,.html-editor) .naver-content .se_fs_H3{font-size:calc(var(--dwnc-body-size)*1.1875);line-height:1.45}
 :is(.prose,.html-editor) .naver-content .se_ff_nanumgothic{font-family:"나눔고딕",NanumGothic,"se_NanumGothic",AppleSDGothicNeo,sans-serif,simhei}
 :is(.prose,.html-editor) .naver-content .se_ff_nanumbarungothic{font-family:NanumBarunGothic,"나눔바른고딕",sans-serif}
 :is(.prose,.html-editor) .naver-content .se_ff_nanummyeongjo{font-family:NanumMyeongjo,"나눔명조",serif}
@@ -103,9 +104,9 @@ export const IMPORTED_PRESENTATION_CSS = String.raw`
 .prose .naver-content :is(.se_align-right,.se-text-paragraph-align-right){text-align:right}
 .prose .naver-content :is(.se_align-justify,.se-text-paragraph-align-justify){text-align:justify}
 :is(.prose,.html-editor) .naver-content .se-ff-nanumgothic{font-family:NanumGothic,"나눔고딕",sans-serif}
-.prose .naver-content .se-fs-fs16{font-size:16px}
-.prose .naver-content .se-fs-fs19{font-size:19px}
-.prose .naver-content .se-fs-fs28{font-size:28px}
+:is(.prose,.html-editor) .naver-content .se-fs-fs16{font-size:calc(var(--dwnc-body-size)*1.066666667)}
+:is(.prose,.html-editor) .naver-content .se-fs-fs19{font-size:calc(var(--dwnc-body-size)*1.266666667)}
+:is(.prose,.html-editor) .naver-content .se-fs-fs28{font-size:calc(var(--dwnc-body-size)*1.866666667)}
 .prose .naver-content :is(.se-component,.se_component_wrap){margin-block:1.55em}
 .prose .naver-content :is(.se-imageStrip-container,.se-imageGroup-container,.se_imageStripView){display:flex;align-items:flex-start;gap:4px;max-width:100%}
 .prose .naver-content :is(.se-imageStrip-container,.se-imageGroup-container,.se_imageStripView)>*{flex:1 1 0;min-width:0;max-width:100%}
@@ -147,4 +148,4 @@ export const IMPORTED_PRESENTATION_CSS = String.raw`
 .prose figure[data-ke-type="opengraph"] .og-host{font-size:12px;line-height:1.5}
 .prose figure:is(.alignLeft,.alignCenter,.alignRight){max-width:100%}
 .prose figure.alignCenter{margin-inline:auto}.prose figure.alignLeft{margin-inline:0 auto}.prose figure.alignRight{margin-inline:auto 0}
-` + IMAGE_LAYOUT_CSS;
+` + BODY_TYPOGRAPHY_CSS + IMAGE_LAYOUT_CSS;
