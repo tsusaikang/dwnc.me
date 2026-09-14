@@ -551,6 +551,12 @@ for (const [index, post] of publicPosts.entries()) {
   if ((expectedNext && normalizedRoute(next.attr('href')) !== expectedNext) || (!expectedNext && next.length)) {
     issue('post.next', `${post.canonicalPath} has the wrong newer-post link.`);
   }
+  const sequenceSlots = $('.post-sequence').children();
+  if (sequenceSlots.length !== 2
+    || (expectedNext ? sequenceSlots.eq(0).attr('rel') !== 'next' : !sequenceSlots.eq(0).is('span'))
+    || (expectedPrevious ? sequenceSlots.eq(1).attr('rel') !== 'prev' : !sequenceSlots.eq(1).is('span'))) {
+    issue('post.chronology-order', `${post.canonicalPath} must put the newer card first and older card second, retaining empty edge slots.`);
+  }
   if (previous.length) previousLinks += 1;
   if (next.length) nextLinks += 1;
 }
