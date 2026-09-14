@@ -1863,7 +1863,7 @@
   .prose {
     width: min(calc(100% - 96px), var(--reading));
     padding-bottom: clamp(78px, 11vw, 152px);
-    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Apple SD Gothic Neo", Arial, sans-serif;
+    font-family: var(--serif);
     font-size: clamp(1.02rem, 1.35vw, 1.1rem);
     line-height: 1.98;
     word-break: keep-all;

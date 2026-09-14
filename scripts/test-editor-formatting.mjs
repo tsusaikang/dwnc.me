@@ -12,6 +12,7 @@ const formatted = '<h2>소제목</h2><p><strong>굵게</strong> <em>기울임</e
   + '<blockquote><p>인용</p></blockquote><ul><li>목록<ul><li>중첩</li></ul></li></ul>'
   + '<ol start="3" reversed><li value="5">번호</li></ol><hr>'
   + '<table><tbody><tr><th colspan="2">병합 제목</th></tr><tr><td rowspan="2">세로 병합</td><td>내용</td></tr><tr><td>내용</td></tr></tbody></table>'
+  + '<p><span style="font-family:var(--dwnc-body-font)">기본 글꼴 선택</span></p>'
   + '<p><a href="https://example.test/article">링크</a></p><pre><code>const value = 1;</code></pre>';
 
 function assertFormatting(html) {
@@ -30,6 +31,7 @@ function assertFormatting(html) {
   }
   assert.ok($('span').attr('style').includes('!important'), 'Explicit editor size must override legacy public size rules');
   assert.equal($('a').attr('href'), 'https://example.test/article');
+  assert.equal($('span').filter((_, node) => $(node).text() === '기본 글꼴 선택').attr('style'), 'font-family:var(--dwnc-body-font)');
 }
 
 const database = await createEditorDatabase();

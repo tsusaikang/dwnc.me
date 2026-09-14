@@ -59,7 +59,7 @@ export function prepareImportedPresentation(html: string, identity?: ImportedIde
 // capture Worker-only bundler helpers such as esbuild's __name.
 export const ENGINE_DIAGRAM_BOOTSTRAP = engineDiagramBootstrapSource;
 
-// Shared by static articles, dynamic articles, and the administrator's preview.
+// Shared by static articles, dynamic articles, and the administrator's editor/preview.
 // Inline author choices remain more specific than these defaults.
 export const IMPORTED_PRESENTATION_CSS = String.raw`
 @font-face{font-family:NanumGothic;src:url('/fonts/nanum/NanumGothic.woff') format('woff');font-weight:400;font-style:normal;font-display:swap}
@@ -68,7 +68,8 @@ export const IMPORTED_PRESENTATION_CSS = String.raw`
 @font-face{font-family:NanumMyeongjo;src:url('/fonts/nanum/NanumMyeongjoBold.woff') format('woff');font-weight:700;font-style:normal;font-display:swap}
 @font-face{font-family:NanumBarunGothic;src:url('/fonts/nanum/NanumBarunGothic.woff') format('woff');font-weight:400;font-style:normal;font-display:swap}
 @font-face{font-family:NanumBarunGothic;src:url('/fonts/nanum/NanumBarunGothicBold.woff') format('woff');font-weight:700;font-style:normal;font-display:swap}
-.prose{font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue","Apple SD Gothic Neo",Arial,sans-serif;font-size:clamp(1.02rem,1.35vw,1.1rem);line-height:1.98;overflow-wrap:break-word}
+.prose,.html-editor{--dwnc-body-font:var(--serif,"Iowan Old Style","Noto Serif KR","Nanum Myeongjo","AppleMyungjo",Batang,Georgia,serif);font-family:var(--dwnc-body-font)}
+.prose{font-size:clamp(1.02rem,1.35vw,1.1rem);line-height:1.98;overflow-wrap:break-word}
 .prose :is(strong,b){font-family:inherit}
 .prose :is(img,video,iframe,svg){max-width:100%;box-sizing:border-box}
 .prose :is(img,video){height:auto}
@@ -82,10 +83,10 @@ export const IMPORTED_PRESENTATION_CSS = String.raw`
 .prose .naver-content :is(span,p,div){font-family:inherit;line-height:inherit}
 .prose .naver-content span{font-size:inherit}
 .prose .legacy-content{font-size:16px;line-height:1.75}
-.prose .naver-content--smarteditor-one{font-family:"se-nanumgothic",Arial,"나눔고딕",NanumGothic,sans-serif,Meiryo;font-size:15px;line-height:1.8}
+.prose .naver-content--smarteditor-one{font-family:inherit;font-size:15px;line-height:1.8}
 .prose .naver-content--smarteditor-one .se-text-paragraph{line-height:1.8}
 .prose .naver-content--smarteditor-one .se-fs-{font-size:15px}
-.prose .naver-content--smarteditor-3{font-family:"나눔고딕",NanumGothic,"se_NanumGothic",AppleSDGothicNeo,sans-serif,simhei;font-size:16px;line-height:1.9}
+.prose .naver-content--smarteditor-3{font-family:inherit;font-size:16px;line-height:1.9}
 .prose .naver-content .se_fs_T3{font-size:16px;line-height:1.9}
 .prose .naver-content .se_fs_T1{font-size:28px;line-height:normal}
 .prose .naver-content .se_fs_T2{font-size:19px;line-height:1.9}
@@ -93,15 +94,15 @@ export const IMPORTED_PRESENTATION_CSS = String.raw`
 .prose .naver-content .se_fs_H1{font-size:38px;line-height:1.45}
 .prose .naver-content .se_fs_H2{font-size:30px;line-height:1.45}
 .prose .naver-content .se_fs_H3{font-size:19px;line-height:1.45}
-.prose .naver-content .se_ff_nanumgothic{font-family:"나눔고딕",NanumGothic,"se_NanumGothic",AppleSDGothicNeo,sans-serif,simhei}
-.prose .naver-content .se_ff_nanumbarungothic{font-family:NanumBarunGothic,"나눔바른고딕",sans-serif}
-.prose .naver-content .se_ff_nanummyeongjo{font-family:NanumMyeongjo,"나눔명조",serif}
-.prose .naver-content .se_ff_sans-serif{font-family:sans-serif}
+:is(.prose,.html-editor) .naver-content .se_ff_nanumgothic{font-family:"나눔고딕",NanumGothic,"se_NanumGothic",AppleSDGothicNeo,sans-serif,simhei}
+:is(.prose,.html-editor) .naver-content .se_ff_nanumbarungothic{font-family:NanumBarunGothic,"나눔바른고딕",sans-serif}
+:is(.prose,.html-editor) .naver-content .se_ff_nanummyeongjo{font-family:NanumMyeongjo,"나눔명조",serif}
+:is(.prose,.html-editor) .naver-content .se_ff_sans-serif{font-family:sans-serif}
 .prose .naver-content :is(.se_align-left,.se-text-paragraph-align-left){text-align:left}
 .prose .naver-content :is(.se_align-center,.se-text-paragraph-align-center){text-align:center}
 .prose .naver-content :is(.se_align-right,.se-text-paragraph-align-right){text-align:right}
 .prose .naver-content :is(.se_align-justify,.se-text-paragraph-align-justify){text-align:justify}
-.prose .naver-content .se-ff-nanumgothic{font-family:NanumGothic,"나눔고딕",sans-serif}
+:is(.prose,.html-editor) .naver-content .se-ff-nanumgothic{font-family:NanumGothic,"나눔고딕",sans-serif}
 .prose .naver-content .se-fs-fs16{font-size:16px}
 .prose .naver-content .se-fs-fs19{font-size:19px}
 .prose .naver-content .se-fs-fs28{font-size:28px}

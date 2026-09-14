@@ -219,7 +219,7 @@ export function sanitizeNativeHtml(value: string) {
         '--dwnc-original-layout-width': [/^\d{1,4}px$/u],
         color: [COLOR_STYLE], 'background-color': [COLOR_STYLE],
         'font-size': [SIZE_STYLE],
-        'font-family': [/^(?:system-ui|sans-serif|serif|monospace|Arial|Georgia|['"]?나눔고딕['"]?|['"]?나눔명조['"]?)(?:\s*,\s*(?:sans-serif|serif|monospace))?(?:\s*!important)?$/iu],
+        'font-family': [/^var\(--dwnc-body-font\)$/u, /^(?:system-ui|sans-serif|serif|monospace|Arial|Georgia|['"]?나눔고딕['"]?|['"]?나눔명조['"]?)(?:\s*,\s*(?:sans-serif|serif|monospace))?(?:\s*!important)?$/iu],
         'font-weight': [/^(?:normal|bold|bolder|lighter|[1-9]00)(?:\s*!important)?$/iu],
         'font-style': [/^(?:normal|italic|oblique)(?:\s*!important)?$/iu],
         'text-decoration': [/^(?:none|underline|line-through|overline)(?:\s+(?:underline|line-through|overline))*(?:\s*!important)?$/iu],
