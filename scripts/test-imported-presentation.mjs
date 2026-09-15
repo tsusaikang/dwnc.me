@@ -9,6 +9,7 @@ import sequence from '../src/data/public-sequence-v1.json' with { type: 'json' }
 import { prepareImportedPresentation, ENGINE_DIAGRAM_BOOTSTRAP } from '../src/lib/imported-presentation.ts';
 import { ENGINE_DIAGRAM_BASELINE, ENGINE_STATIC_BASELINE } from '../src/lib/engine-diagram-content.ts';
 import { sanitizeLegacyHtml } from '../src/lib/native-content.ts';
+import { createPublicLinkRegistry, transformPublicPostLinks } from '../src/lib/public-links.ts';
 import { createEditorDatabase, seedLegacy } from './fixtures/editor-database.mjs';
 import { createNativePublicWorker } from '../src/lib/native-public-worker.ts';
 import { mountEngineDiagram } from '../src/lib/engine-diagram-client.js';
@@ -48,6 +49,36 @@ const processor = await createSatteriMarkdownProcessor({
   syntaxHighlight: { type: 'shiki', excludeLangs: ['math'] },
   shikiConfig: { theme: 'github-dark-default', wrap: true }, smartypants: true,
 });
+// Reproduce the screenshot from the preserved public source and the same
+// canonical-link + sanitizer pipeline that populated the legacy database.
+const cardIdentity = { source: 'tistory', sourceId: '158', canonicalPath: '/posts/582' };
+const cardSource = await body('tistory', '158');
+const cardRendered = (await processor.render(cardSource)).code;
+const registry = createPublicLinkRegistry(sequence.map(entry => ({ ...entry, visibility: 'public' })));
+const cardImported = sanitizeLegacyHtml(transformPublicPostLinks(cardRendered, { post: cardIdentity, registry }).html);
+for (const original of [cardRendered, cardImported]) {
+  const before = load(original, null, false), after = load(prepareImportedPresentation(original, cardIdentity), null, false);
+  assert.equal(before('.og-image__label').first().text(), '외부 링크');
+  assert.equal(after('.og-image__label').first().text(), '블로그 글');
+  assert.equal(after('.og-title').first().text(), before('.og-title').first().text());
+  assert.equal(after('.og-desc').first().text(), before('.og-desc').first().text());
+  assert.equal(after('.og-host').first().text(), before('.og-host').first().text());
+  assert.deepEqual(links(after.html()), links(original));
+  assert.equal(prepareImportedPresentation(after.html(), cardIdentity), after.html());
+}
+const placeholder = href => `<figure data-ke-type="opengraph" data-og-host="dwnc.me"><a href="${href}"><div class="og-image"><span class="og-image__label">외부 링크</span></div><p class="og-title">보존할 제목</p></a></figure>`;
+for (const href of ['/posts/581', 'https://dwnc.me/157', 'https://www.dwnc.me/157', 'https://dwnc.tistory.com/157', 'https://blog.naver.com/tsusai/220901832348']) {
+  assert.equal(load(prepareImportedPresentation(placeholder(href), cardIdentity))('.og-image__label').text(), '블로그 글');
+}
+for (const href of ['https://www.threads.com/@dwnc.life/post/example', 'https://other.tistory.com/157', 'https://dwnc.me.evil.test/157', 'https://dwnc.me:444/posts/581', 'javascript:/posts/581']) {
+  assert.equal(prepareImportedPresentation(placeholder(href), cardIdentity), placeholder(href));
+}
+const customLabel = placeholder('/posts/581').replace('외부 링크', '작성자가 적은 문구');
+assert.equal(prepareImportedPresentation(customLabel, cardIdentity), customLabel);
+assert.equal(prepareImportedPresentation(placeholder('/posts/581')), placeholder('/posts/581'));
+const actualExternalCard = await body('tistory', '157');
+assert.equal(prepareImportedPresentation(actualExternalCard, {source:'tistory',sourceId:'157'}), actualExternalCard);
+
 const rendered = (await processor.render(input)).code;
 const restored = prepareImportedPresentation(rendered, identity);
 const $ = load(restored);
@@ -202,6 +233,13 @@ try {
   browserRoot.querySelector('#v6x-playBtn').emit('click');runBrowserFrame(200);assert.equal(dom('#v6x-angleReadout').text(),visibleAngle);
   browserRoot.isConnected=false;runBrowserFrame(300);assert.equal(frames.size,0);
   if(bundleFlag>=0)console.log('Compiled Worker emitted diagram script: VM drawing, mode, view, time and pause PASS');
+
+  database.sqlite.prepare("UPDATE legacy_posts SET id='legacy-582', global_sequence=582, source_id='158', body_html=?, body_text=? WHERE id='legacy-588'").run(cardImported,text(cardImported));
+  const cardResponse=await worker(new Request('https://dwnc.me/posts/582?preview=1'),{NATIVE_DB:database,ASSETS:{fetch:assets}},{});
+  const cardPage=load(await cardResponse.text());
+  assert.equal(cardResponse.status,200);
+  assert.equal(cardPage('.prose a[href="/posts/581"] .og-image__label').text(),'블로그 글');
+  assert.equal(database.sqlite.prepare("SELECT body_html FROM legacy_posts WHERE id='legacy-582'").get().body_html,cardImported);
 
 } finally {
   if(oldRewriter===undefined)delete globalThis.HTMLRewriter;else globalThis.HTMLRewriter=oldRewriter;

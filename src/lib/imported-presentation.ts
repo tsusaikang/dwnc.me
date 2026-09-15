@@ -2,6 +2,7 @@ import { BODY_TYPOGRAPHY_CSS } from './body-typography.ts';
 import { IMAGE_LAYOUT_CSS } from './image-layout.ts';
 import { load } from 'cheerio';
 import { sanitizeLegacyHtml } from './native-content.ts';
+import { parsePublicPostReference } from './public-links.ts';
 import corrections from '../data/imported-formatting-corrections.json' with { type: 'json' };
 import engineDiagramBootstrapSource from './engine-diagram-bootstrap-source.json' with { type: 'json' };
 import {
@@ -40,8 +41,23 @@ export function prepareImportedPresentation(html: string, identity?: ImportedIde
   if (!identity) return html;
   const entry = corrections.find((item) => item.source === identity.source && item.sourceId === identity.sourceId);
   const engine = identity.source === 'tistory' && identity.sourceId === '165';
-  if (!entry && !engine) return html;
+  if (!entry && !engine && !html.includes('og-image__label')) return html;
   const $ = load(html, null, false);
+  let cardLabelChanged = false;
+  // The importer treated dwnc.tistory.com preview images as external assets.
+  // Classify its generated placeholder by the actual destination on each render,
+  // including old aliases and already-migrated canonical links. Keep saved copy.
+  $('figure[data-ke-type="opengraph"] > a[href]').each((_, node) => {
+    const anchor = $(node);
+    if (!parsePublicPostReference(anchor.attr('href') ?? '')) return;
+    anchor.find('.og-image > .og-image__label').each((_, label) => {
+      if ($(label).text().trim() === '외부 링크') {
+        $(label).text('블로그 글');
+        cardLabelChanged = true;
+      }
+    });
+  });
+  if (!entry && !engine && !cardLabelChanged) return html;
   const pairs = entry?.corrections ?? [];
   const replacements = engine ? [...engineReplacements, ...importedEngineReplacements] : pairs;
   for (const { expected, replacement } of replacements) {
