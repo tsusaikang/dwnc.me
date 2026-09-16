@@ -26,8 +26,9 @@ class Element {
   showModal() { this.open = true; }
   close() { this.open = false; this.emit('close'); }
   getBoundingClientRect() { return { height: 40, width: 500, top: 0, left: 0, bottom: 40, right: 500 }; }
-  setRangeText(text, start = 0, end = 0) { this.value = this.value.slice(0, start) + text + this.value.slice(end); }
-  emit(name) { for (const handler of this.listeners[name] ?? []) handler({ target: this, preventDefault() {} }); }
+  setRangeText(text, start = 0, end = 0) { this.value = this.value.slice(0, start) + text + this.value.slice(end); this.setSelectionRange(start+text.length,start+text.length); }
+  setSelectionRange(start,end) { this.selectionStart=start;this.selectionEnd=end; }
+  emit(name,properties={}) { const event={target:this,defaultPrevented:false,preventDefault(){this.defaultPrevented=true},...properties};for (const handler of this.listeners[name] ?? []) handler(event);return event; }
 }
 const database = await createEditorDatabase();
 const store = new NativePostStore(database);
@@ -38,11 +39,15 @@ const saved = await store.update(draft.id, 0, input);
 const published = await store.publish(draft.id, saved.revision);
 const otherDraft = await store.createDraft({ id: 'daily', slug: '일상', label: '일상' });
 const html = load(adminHtml('owner@example.test'));
+assert.equal(html('#title')[0].tagName,'textarea');
+assert.equal(html('#title').attr('rows'),'1');assert.equal(html('#title').attr('maxlength'),'180');
+assert.equal(html('#title').attr('aria-multiline'),'false');
 assert.deepEqual(html('#postSort option').toArray().map(node=>[node.attribs.value,html(node).text()]),[
   ['created-desc','생성일 최신순'],['created-asc','생성일 오래된순'],['updated-desc','수정일 최신순'],['updated-asc','수정일 오래된순'],
 ]);
 assert.equal(html('#postSort option[selected]').attr('value'),'updated-desc');
 const elements = new Map(html('[id]').toArray().map((node) => [node.attribs.id, Object.assign(new Element(), { hidden: 'hidden' in node.attribs, disabled: 'disabled' in node.attribs })]));
+elements.get('title').maxLength=180;elements.get('title').scrollHeight=80;
 const statisticsFixture={timezone:'Asia/Seoul',startDate:'2026-08-11',endDate:'2026-09-09',todayViews:3,totalViews:10,periodViews:7,daily:Array.from({length:30},(_,i)=>({date:new Date(Date.UTC(2026,7,11+i)).toISOString().slice(0,10),views:i===29?3:i===10?4:0})),posts:[{id:'stats-zero',title:'가나다 조회수 없는 합성 글',path:'/posts/900',views:0,totalViews:0},{id:'stats-active',title:'조회된 합성 글',path:'/posts/901',views:7,totalViews:10},...Array.from({length:23},(_,i)=>({id:'stats-'+i,title:'합성 글 '+String(i).padStart(2,'0'),path:i===0?null:'/posts/'+(902+i),views:0,totalViews:0}))]};
 let statisticsResponse=statisticsFixture;
 let failure = null;
@@ -51,7 +56,7 @@ let holdPublish = null;
 let saveStarted;
 const requests = [];
 const document = { body: new Element(), documentElement: new Element(), getElementById: (id) => elements.get(id), createElement: (tag) => Object.assign(new Element(), { tag }), addEventListener() {}, querySelector: () => new Element() };
-const window = { location:{hash:''},listeners:{},addEventListener(name,handler) {this.listeners[name]=handler}, innerHeight: 800, innerWidth: 1200, scrollY: 0, scrollTo({ top }) { this.scrollY = top; }, getSelection: () => ({ rangeCount: 0 }) };
+const window = { location:{hash:''},listeners:{},addEventListener(name,handler) {(this.listeners[name]??=[]).push(handler)}, innerHeight: 800, innerWidth: 1200, scrollY: 0, scrollTo({ top }) { this.scrollY = top; }, getSelection: () => ({ rangeCount: 0 }) };
 const context = createContext({ document, Element, window, Date, Error, console, Response, AbortController, URLSearchParams, URL, structuredClone, crypto:webcrypto, setTimeout: () => 1, clearTimeout() {}, fetch: async (path, options = {}) => {
   requests.push({ path, method: options.method ?? 'GET', body: options.body ? JSON.parse(options.body) : null });
   if (failure) {
@@ -113,6 +118,7 @@ window.scrollY = 320;
 await postButton.onclick();
 assert.equal(field('heading').scrollCalls, 1);
 assert.equal(field('title').focused, true);
+assert.equal(field('title').style.height,'81px');
 assert.equal(postButton['aria-current'], 'true');
 assert.equal(field('postsPanel').hidden, true);
 assert.equal(field('editorView').hidden, false);
@@ -476,5 +482,32 @@ const pageDraft=await store.createDraft({id:'daily',slug:'일상',label:'일상'
 window.location.hash='#edit='+encodeURIComponent(pagePublic.publicPath);failure=401;await runInContext('followAdminDeepLink()',context);assert.equal(field('openAdminLinkTab').hidden,false);assert.equal(field('retryAdminLink').hidden,false);assert.equal(runInContext('current.id',context),draft.id);navigationStart=requests.length;
 await field('retryAdminLink').onclick();assert.equal(runInContext('current.id',context),pageDraft.id);assert.equal(field('adminLinkNotice').hidden,true);assert.deepEqual(requests.slice(navigationStart).map(request=>request.method),['GET']);
 assert.equal(window.location.hash,'#edit='+encodeURIComponent(pagePublic.publicPath));
+
+// Title wraps visually while retaining a single-line value and native IME input.
+const titleField=field('title'),longTitle='긴 제목 자동 줄바꿈 확인 '.repeat(8).trim();
+titleField.scrollHeight=224;edit(longTitle);assert.equal(titleField.style.height,'225px');
+titleField.scrollHeight=80;edit('짧은 제목');assert.equal(titleField.style.height,'81px');
+assert.equal(titleField.emit('keydown',{key:'Enter'}).defaultPrevented,true);
+assert.equal(titleField.emit('keydown',{key:'Enter',isComposing:true}).defaultPrevented,false);
+assert.equal(titleField.emit('keydown',{key:'Enter',keyCode:229}).defaultPrevented,false);
+assert.equal(titleField.emit('beforeinput',{inputType:'insertLineBreak'}).defaultPrevented,true);
+assert.equal(titleField.emit('beforeinput',{inputType:'insertParagraph',isComposing:true}).defaultPrevented,false);
+titleField.value='합성 조합';titleField.setSelectionRange(5,5);titleField.emit('input',{isComposing:true});
+assert.equal(titleField.value,'합성 조합');assert.equal(titleField.selectionStart,5);
+titleField.value='앞뒤';titleField.setSelectionRange(1,1);
+assert.equal(titleField.emit('paste',{clipboardData:{getData:()=> '붙임\r\n둘째'}}).defaultPrevented,true);
+assert.equal(titleField.value,'앞붙임둘째뒤');
+titleField.value='가'.repeat(179);titleField.setSelectionRange(179,179);
+titleField.emit('paste',{clipboardData:{getData:()=> '나\n다'}});assert.equal(titleField.value,'가'.repeat(179)+'나');
+titleField.value='앞\n뒤';titleField.setSelectionRange(3,3);titleField.emit('input');
+assert.equal(titleField.value,'앞뒤');assert.equal(titleField.selectionStart,2);
+titleField.scrollHeight=160;edit(longTitle);await flush();
+assert.equal((await store.getForAdmin(pageDraft.id)).title,longTitle);
+assert.equal((await store.getPublishedBySequence(pagePublic.globalSequence)).title,'합성 직접 연결 페이지');
+await field('showPosts').onclick();titleField.scrollHeight=220;await field('resumeEditing').onclick();
+assert.equal(titleField.value,longTitle);assert.equal(titleField.style.height,'221px');
+titleField.scrollHeight=120;for(const listener of window.listeners.resize??[])listener();
+assert.equal(titleField.style.height,'121px');
+await runInContext('fill(current)',context);assert.equal(titleField.value,longTitle);assert.equal(titleField.style.height,'121px');
 
 console.log(JSON.stringify({ suite: 'editor-ui-state', status: 'PASS', behavior: 'actual emitted UI, preserved list/editor navigation, preview dialog and focus, autosave isolation, failure retry, login continuation, conflict choices, in-flight edit, flush-before-publish, edit lock and new post' }));
