@@ -38,6 +38,10 @@ const saved = await store.update(draft.id, 0, input);
 const published = await store.publish(draft.id, saved.revision);
 const otherDraft = await store.createDraft({ id: 'daily', slug: '일상', label: '일상' });
 const html = load(adminHtml('owner@example.test'));
+assert.deepEqual(html('#postSort option').toArray().map(node=>[node.attribs.value,html(node).text()]),[
+  ['created-desc','생성일 최신순'],['created-asc','생성일 오래된순'],['updated-desc','수정일 최신순'],['updated-asc','수정일 오래된순'],
+]);
+assert.equal(html('#postSort option[selected]').attr('value'),'updated-desc');
 const elements = new Map(html('[id]').toArray().map((node) => [node.attribs.id, Object.assign(new Element(), { hidden: 'hidden' in node.attribs, disabled: 'disabled' in node.attribs })]));
 const statisticsFixture={timezone:'Asia/Seoul',startDate:'2026-08-11',endDate:'2026-09-09',todayViews:3,totalViews:10,periodViews:7,daily:Array.from({length:30},(_,i)=>({date:new Date(Date.UTC(2026,7,11+i)).toISOString().slice(0,10),views:i===29?3:i===10?4:0})),posts:[{id:'stats-zero',title:'가나다 조회수 없는 합성 글',path:'/posts/900',views:0,totalViews:0},{id:'stats-active',title:'조회된 합성 글',path:'/posts/901',views:7,totalViews:10},...Array.from({length:23},(_,i)=>({id:'stats-'+i,title:'합성 글 '+String(i).padStart(2,'0'),path:i===0?null:'/posts/'+(902+i),views:0,totalViews:0}))]};
 let statisticsResponse=statisticsFixture;
@@ -86,7 +90,24 @@ await tick();
 const field = (id) => elements.get(id);
 assert.equal(field('postsPanel').hidden, false);
 assert.equal(field('editorView').hidden, true);
-const postButton = field('posts').querySelectorAll('button').find((button) => button.dataset.postId === draft.id);
+let postButton = field('posts').querySelectorAll('button').find((button) => button.dataset.postId === draft.id);
+assert.match(postButton.children[0].textContent,/생성일 .+ · 수정일 /u);
+for(const dates of [{createdAt:'not-a-date',updatedAt:'invalid'},{createdAt:null,updatedAt:undefined},{createdAt:'',updatedAt:''}]){
+  context.summaryDates=dates;
+  assert.match(runInContext('postSummaryText({...summaryDates,categoryId:"daily",categoryLabel:"일상",status:"draft"})',context),/생성일 — · 수정일 —/u);
+}
+delete context.summaryDates;
+const listQuery=()=>new URL(requests.filter(request=>request.path.startsWith('/api/posts?')).at(-1).path,'https://fixture.invalid').searchParams;
+assert.equal(listQuery().get('sort'),'updated-desc');
+field('postSort').value='created-asc';runInContext('postPage=3',context);
+field('postSort').onchange();await tick();
+assert.equal(listQuery().get('sort'),'created-asc');assert.equal(listQuery().get('page'),'1');
+runInContext('postPages=3',context);field('postNext').onclick();await tick();
+assert.equal(listQuery().get('sort'),'created-asc');assert.equal(listQuery().get('page'),'2');
+field('postSort').value='updated-desc';field('postSort').onchange();await tick();
+// Keep the original button references used by the rest of these editor tests.
+await runInContext('list()',context);
+postButton=field('posts').querySelectorAll('button').find(button=>button.dataset.postId===draft.id);
 const otherPostButton = field('posts').querySelectorAll('button').find((button) => button.dataset.postId === otherDraft.id);
 window.scrollY = 320;
 await postButton.onclick();
@@ -131,6 +152,7 @@ assert.equal((await store.getForAdmin(draft.id)).bodyHtml, workingBody);
 assert.equal((await store.getPublishedBySequence(597)).title, '원래 제목');
 assert.match(field('saveStatus').textContent, /공개 반영을 기다리는/u);
 assert.match(field('lastSaved').textContent, /마지막 저장 성공/u);
+assert.match(postButton.children.at(-1).textContent,/생성일 .+ · 수정일 /u);
 
 // Preview saves the current work first, stays isolated from publication, and
 // closes back to the editor without replacing its content or reading it again.

@@ -80,4 +80,46 @@ const cleanList=await (await publicGet('/archive')).text(),queryList=await (awai
 const slug=first.value.find(n=>n.id===childId).slug;const category=await publicGet(`/category/${encodeURIComponent(slug)}?from=reader`);assert.equal(category.status,200);assert.ok((await category.text()).includes(media.publicPath));
 const rss=await (await publicGet('/rss.xml')).text();assert.ok(rss.includes('합성 블로그'));assert.ok(rss.includes('/posts/597'));
 const sitemap=await (await publicGet('/sitemap-0.xml?updated=1')).text();assert.ok(sitemap.includes(`/category/${slug}`));assert.ok(sitemap.includes('/posts/597'));assert.ok(sitemap.includes('<lastmod>'));
+// Sort the whole mixed-source result before paging, including working-copy dates.
+const sortDb=await createEditorDatabase();seedLegacy(sortDb);
+let sortNow='2026-01-01T00:00:00Z';
+const sortStore=new NativePostStore(sortDb,()=>new Date(sortNow));
+const sortCategory={id:'daily',slug:'일상',label:'일상'};
+const sortA=await sortStore.createDraft(sortCategory);
+sortNow='2026-02-01T00:00:00Z';const sortB=await sortStore.createDraft(sortCategory);
+const sortC=await sortStore.createDraft(sortCategory);
+sortDb.sqlite.prepare('UPDATE legacy_posts SET created_at=?,updated_at=?,title=?').run('2018-01-01T00:00:00Z','2026-04-01T00:00:00Z','정렬 합성 이관');
+for(const post of [sortA,sortB,sortC])await sortStore.update(post.id,post.revision,{...input,title:'정렬 합성 새 글',categoryId:'daily'});
+// Same instant, different offsets; these must tie rather than sort as text.
+sortDb.sqlite.prepare('UPDATE native_posts SET created_at=? WHERE id=?').run('2026-02-01T09:00:00+09:00',sortC.id);
+sortDb.sqlite.prepare('UPDATE editor_working_copies SET updated_at=? WHERE post_id=?').run('2026-05-01T00:00:00Z',sortA.id);
+sortDb.sqlite.prepare('UPDATE editor_working_copies SET updated_at=? WHERE post_id=?').run('2026-03-01T00:00:00Z',sortB.id);
+sortDb.sqlite.prepare('UPDATE editor_working_copies SET updated_at=? WHERE post_id=?').run('2026-03-01T09:00:00+09:00',sortC.id);
+const tiedIds=[sortB.id,sortC.id].sort();
+const expectedOrders={
+  'created-asc':['legacy-1',sortA.id,...tiedIds],
+  'created-desc':[...tiedIds,sortA.id,'legacy-1'],
+  'updated-asc':[...tiedIds,'legacy-1',sortA.id],
+  'updated-desc':[sortA.id,'legacy-1',...tiedIds],
+};
+env.NATIVE_DB=sortDb;
+for(const [sort,expected] of Object.entries(expectedOrders)){
+  const collected=[];
+  for(let page=1;page<=2;page++){
+    const result=await (await api('/api/posts?sort='+sort+'&q=정렬&categoryId=daily&kind=post&status=all&pageSize=2&page='+page)).json();
+    assert.equal(result.total,4);assert.equal(result.totalPages,2);
+    collected.push(...result.posts.map(post=>post.id));
+  }
+  assert.deepEqual(collected,expected);
+  const drafts=await (await api('/api/posts?sort='+sort+'&status=draft&pageSize=100')).json();
+  assert.deepEqual(drafts.posts.map(post=>post.id),expected.filter(id=>id!=='legacy-1'));
+}
+const defaultList=await (await api('/api/posts')).json();
+assert.deepEqual(defaultList.posts.map(post=>post.id),expectedOrders['updated-desc']);
+assert.equal(defaultList.posts.find(post=>post.id==='legacy-1').createdAt,'2018-01-01T00:00:00Z');
+assert.equal(defaultList.posts.find(post=>post.id===sortA.id).createdAt,sortA.createdAt);
+assert.equal(defaultList.posts[0].updatedAt,'2026-05-01T00:00:00Z');
+for(const sort of ['title-asc','title-desc','unexpected','created_at DESC; DROP TABLE native_posts'])assert.equal((await api('/api/posts?sort='+encodeURIComponent(sort))).status,400);
+assert.equal(sortDb.sqlite.prepare('SELECT COUNT(*) AS count FROM native_posts').get().count,3);
+env.NATIVE_DB=db;
 console.log(JSON.stringify({suite:'cms-management',status:'PASS',behavior:'taxonomy CAS and constraints, settings, search/filter pagination, native/legacy cover ownership and publication isolation, sanitized preview'}));

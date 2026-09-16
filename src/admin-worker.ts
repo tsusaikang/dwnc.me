@@ -139,9 +139,11 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
     return json({ tags: [...counts].map(([label,count]) => ({label,count})).sort((a,b) => a.label.localeCompare(b.label,'ko')) });
   }
   if (request.method === 'GET' && url.pathname === '/api/posts') {
-    let posts = await store.listForAdmin();
+    const sort = url.searchParams.get('sort') ?? 'updated-desc';
+    if (sort !== 'created-desc' && sort !== 'created-asc' && sort !== 'updated-desc' && sort !== 'updated-asc') throw new Error('ADMIN_E_QUERY');
+    let posts = await store.listForAdmin(sort);
     if (!url.search) return json({posts});
-    if ([...url.searchParams.keys()].some((key) => !['q','categoryId','status','kind','page','pageSize'].includes(key))) throw new Error('ADMIN_E_QUERY');
+    if ([...url.searchParams.keys()].some((key) => !['q','categoryId','status','kind','page','pageSize','sort'].includes(key))) throw new Error('ADMIN_E_QUERY');
     const q = (url.searchParams.get('q') ?? '').normalize('NFC').trim().toLocaleLowerCase('ko');
     const categoryId = url.searchParams.get('categoryId'); const status = url.searchParams.get('status') ?? 'all';
     const page = Number(url.searchParams.get('page') ?? 1), pageSize = Number(url.searchParams.get('pageSize') ?? 20);

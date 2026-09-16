@@ -9,6 +9,14 @@ import mediaManifest from '../data/public-media-r2-v1.json' with { type: 'json' 
 import { slugifyLabel } from './taxonomy.ts';
 
 export type NativePostStatus = 'draft' | 'published' | 'tombstone';
+export type AdminPostSort = 'created-desc' | 'created-asc' | 'updated-desc' | 'updated-asc';
+
+const ADMIN_POST_SORT_SQL: Record<AdminPostSort, string> = {
+  'created-desc': 'julianday(p.created_at) DESC',
+  'created-asc': 'julianday(p.created_at) ASC',
+  'updated-desc': 'julianday(COALESCE(w.updated_at, p.updated_at)) DESC',
+  'updated-asc': 'julianday(COALESCE(w.updated_at, p.updated_at)) ASC',
+};
 
 export interface NativePost {
   kind?: ContentKind; visibility?: Visibility; scheduledAt?: string | null; publicPath?: string | null;
@@ -46,6 +54,7 @@ export interface AdminPostSummary {
   globalSequence: number | null;
   status: NativePostStatus;
   title: string;
+  createdAt: string;
   updatedAt: string;
   bodyFormat: 'markdown' | 'html';
   sourceKind: 'native' | 'legacy';
@@ -240,9 +249,9 @@ export class NativePostStore {
       ON CONFLICT(post_id) DO NOTHING`).bind(id);
   }
 
-  async listForAdmin(): Promise<AdminPostSummary[]> {
+  async listForAdmin(sort: AdminPostSort = 'updated-desc'): Promise<AdminPostSummary[]> {
     const posts = await this.database.prepare(`SELECT p.id, p.global_sequence, p.status,
-      COALESCE(w.title, p.title) AS title, COALESCE(w.updated_at, p.updated_at) AS updated_at,
+      COALESCE(w.title, p.title) AS title, p.created_at, COALESCE(w.updated_at, p.updated_at) AS updated_at,
       COALESCE(w.body_format, p.body_format) AS body_format, p.source_kind,
       COALESCE(w.category_id,p.category_id) AS category_id, COALESCE(w.category_label,p.category_label) AS category_label,
       COALESCE(w.tags_json,p.tags_json) AS tags_json, p.published_at,
@@ -250,13 +259,13 @@ export class NativePostStore {
       CASE WHEN w.post_id IS NULL THEN CASE WHEN p.status='published' THEN p.revision END ELSE w.published_revision END AS published_revision,
       CASE WHEN w.cover_selection_set IS NULL THEN p.cover_path ELSE w.cover_path END AS cover_path
       FROM ${ADMIN_POST_SOURCE} p LEFT JOIN editor_working_copies w ON w.post_id = p.id
-      WHERE p.status != 'tombstone' ORDER BY updated_at DESC, global_sequence DESC, p.id`).all<NativePostRow>();
+      WHERE p.status != 'tombstone' ORDER BY ${ADMIN_POST_SORT_SQL[sort]}, global_sequence DESC, p.id`).all<NativePostRow>();
     const categories = (await new CmsConfigurationStore(this.database).categories()).value;
     const operations = new ContentOperations(this.database, this.now); const policies = await operations.all();
     return (posts.results ?? []).map((row) => ({
       ...operations.publicValue(policies.get(row.id)), publicPath: row.global_sequence === null ? null : policies.get(row.id)?.kind === 'page' ? `/pages/${row.id}` : `/posts/${row.global_sequence}`,
       id: row.id, globalSequence: row.global_sequence, status: row.status, title: row.title,
-      updatedAt: row.updated_at, bodyFormat: row.body_format ?? 'markdown', sourceKind: row.source_kind,
+      createdAt: row.created_at, updatedAt: row.updated_at, bodyFormat: row.body_format ?? 'markdown', sourceKind: row.source_kind,
       categoryId: row.category_id, categoryLabel: categories.find((node) => node.id === row.category_id)?.label ?? row.category_label,
       tags: parseTags(row.tags_json), publishedAt: row.published_at, coverPath: row.cover_path ?? null,
       hasUnpublishedChanges: row.published_revision == null || row.revision !== row.published_revision,
