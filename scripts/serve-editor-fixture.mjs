@@ -100,16 +100,26 @@ globalThis.fetch = async (url) => {
 let mode = 'normal';
 let fixtureAdmin = false;
 // Synthetic events exercise the real paste handler without OS clipboard access.
-const pasteControls = `<aside style="position:fixed;left:12px;bottom:80px;z-index:1000;padding:8px;background:#fff;border:1px solid #999;font:13px sans-serif"><details><summary>합성 붙여넣기 시험</summary><button type="button" data-fixture-paste="image">이미지 붙여넣기 시험</button><button type="button" data-fixture-paste="html">HTML소스 붙여넣기 시험</button><p id="fixturePasteStatus" role="status"></p></details></aside><script>
-document.querySelectorAll('[data-fixture-paste]').forEach(button=>button.addEventListener('click',()=>{
+// Only the browser's default insertion is emulated; app input/history/save handlers run normally.
+const pasteControls = `<aside style="position:fixed;left:12px;bottom:80px;z-index:1000;max-width:460px;padding:8px;background:#fff;border:1px solid #999;font:13px sans-serif"><details><summary>합성 붙여넣기 시험</summary><p>실제 OS 단축키 대신 키·클립보드 이벤트와 브라우저 기본 삽입을 합성합니다.</p><button type="button" data-fixture-paste="image">이미지 붙여넣기 시험</button><button type="button" data-fixture-paste="html">HTML소스 붙여넣기 시험</button><button type="button" data-fixture-paste="source-rich">HTML 문자 · 서식 포함</button><button type="button" data-fixture-paste="source-plain">HTML 문자 · 무서식</button><button type="button" data-fixture-paste="styled-rich">굵은 문장 · 서식 포함</button><button type="button" data-fixture-paste="styled-plain">굵은 문장 · 무서식</button><p id="fixturePasteStatus" role="status"></p></details></aside><script>
+document.querySelectorAll('[data-fixture-paste]').forEach(button=>{button.addEventListener('mousedown',event=>event.preventDefault());button.addEventListener('click',()=>{
  const editor=document.getElementById('bodyHtml'),status=document.getElementById('fixturePasteStatus');
  if(!editor||!editor.getClientRects().length){status.textContent='먼저 HTML 글을 열어 주세요.';return;}
- editor.focus();const range=document.createRange();range.selectNodeContents(editor);range.collapse(false);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);
- const transfer=new DataTransfer();
- if(button.dataset.fixturePaste==='image'){const bytes=Uint8Array.from(atob('${imageBytes.toString('base64')}'),value=>value.charCodeAt(0));transfer.items.add(new File([bytes],'synthetic-pasted.png',{type:'image/png'}));}
- else transfer.setData('text/plain','<h2>합성 HTML 제목</h2><p>붙여넣은 <strong>굵은 글씨</strong>와 <em>기울임</em>입니다.</p><ul><li>합성 목록 항목</li></ul>');
- const event=new ClipboardEvent('paste',{clipboardData:transfer,bubbles:true,cancelable:true});editor.dispatchEvent(event);status.textContent=event.defaultPrevented?'합성 붙여넣기를 전달했습니다. 본문과 저장 상태를 확인하세요.':'붙여넣기 처리기가 이벤트를 받지 않았습니다.';
-}));</script>`;
+ const selection=window.getSelection();let range=selection.rangeCount?selection.getRangeAt(0).cloneRange():null;
+ if(!range||!editor.contains(range.commonAncestorContainer)){range=document.createRange();range.selectNodeContents(editor);range.collapse(false)}
+ editor.focus();selection.removeAllRanges();selection.addRange(range);
+ const kind=button.dataset.fixturePaste,plainOnly=kind.endsWith('-plain'),compare=kind.includes('-'),transfer=new DataTransfer();
+ if(kind==='image'){const bytes=Uint8Array.from(atob('${imageBytes.toString('base64')}'),value=>value.charCodeAt(0));transfer.items.add(new File([bytes],'synthetic-pasted.png',{type:'image/png'}));}
+ else if(kind==='html')transfer.setData('text/plain','<h2>합성 HTML 제목</h2><p>붙여넣은 <strong>굵은 글씨</strong>와 <em>기울임</em>입니다.</p><ul><li>합성 목록 항목</li></ul>');
+ else if(kind.startsWith('source-')){const source='<p><strong>합성 HTML 문자</strong> https://example.test/plain-paste</p>\\n<p>둘째 문단</p>';transfer.setData('text/plain',source);transfer.setData('text/html','<pre>'+source.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')+'</pre>')}
+ else {transfer.setData('text/plain','굵은 합성 문장 https://example.test/styled-paste\\n둘째 문단');transfer.setData('text/html','<p><strong>굵은 합성 문장</strong> https://example.test/styled-paste</p><p>둘째 문단</p>')}
+ const keyboard={key:'v',code:'KeyV',metaKey:true,shiftKey:plainOnly,bubbles:true,cancelable:true};
+ if(compare)editor.dispatchEvent(new KeyboardEvent('keydown',keyboard));
+ const event=new ClipboardEvent('paste',{clipboardData:transfer,bubbles:true,cancelable:true});editor.dispatchEvent(event);
+ if(compare&&!event.defaultPrevented)document.execCommand(plainOnly?'insertText':'insertHTML',false,transfer.getData(plainOnly?'text/plain':'text/html'));
+ if(compare)editor.dispatchEvent(new KeyboardEvent('keyup',keyboard));
+ status.textContent=compare?'합성 '+(plainOnly?'무서식':'서식 포함')+' 붙여넣기를 전달했습니다. 본문·실행 취소·저장을 확인하세요.':event.defaultPrevented?'합성 붙여넣기를 전달했습니다. 본문과 저장 상태를 확인하세요.':'붙여넣기 처리기가 이벤트를 받지 않았습니다.';
+})});</script>`;
 const counts = { saves: 0, publishes: 0 };
 const controls = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>합성 CMS 시험</title><style>body{font:18px sans-serif;max-width:900px;margin:40px auto}a{display:block;margin:18px}</style><h1>로컬 합성 CMS 시험</h1><a href="/" target="editor">관리자 열기</a><a href="http://127.0.0.1:4324/" target="public">실제 공개 처리기로 합성 방문자 화면 확인</a><a href="/__fixture/public" target="public-raw">저장된 공개 사본 확인</a>${[['fail','다음 저장 실패'],['auth','로그인 만료'],['conflict','다른 세션에서 수정'],['slow','다음 저장 3초 지연'],['slow-publish','다음 공개 반영 3초 지연'],['normal','정상으로 전환']].map(([key,label])=>`<a href="/__fixture/action/${key}">${label}</a>`).join('')}<a href="/__fixture/state">현재 합성 데이터</a></html>`;
 const fontFiles = new Set(['NanumGothic.woff','NanumGothicBold.ttf','NanumMyeongjo.woff','NanumMyeongjoBold.woff','NanumBarunGothic.woff','NanumBarunGothicBold.woff'].map(name=>'/fonts/nanum/'+name));

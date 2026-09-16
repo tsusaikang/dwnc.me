@@ -6,7 +6,7 @@ import { htmlPasteDetectorScript } from '../src/lib/html-source-paste.ts';
 const ui=await readFile(new URL('../src/lib/admin-ui.ts',import.meta.url),'utf8');
 const formatting=await readFile(new URL('../src/lib/admin-formatting.ts',import.meta.url),'utf8');
 const uploadSource=ui.slice(ui.indexOf('function clipboardImages('),ui.indexOf("$('upload').onclick="));
-const pasteSource=formatting.slice(formatting.indexOf('function pasteHtmlSource('),formatting.indexOf("$('bodyHtml').addEventListener('input'"));
+const pasteSource=formatting.slice(formatting.indexOf('let plainPasteIntent='),formatting.indexOf("$('bodyHtml').addEventListener('input'"));
 class Node {
  constructor(tag='',text=''){this.tag=tag;this.text=text;this.children=[];this.parentNode=null;this.hidden=false;this.value='';this.handlers={}}
  append(...nodes){for(const node of nodes){node.parentNode=this;this.children.push(node)}}
@@ -19,11 +19,11 @@ class Node {
 const fields={bodyHtml:new Node(),image:new Node(),uploadPanel:new Node()};
 const makeRange=(index=1)=>({index,commonAncestorContainer:fields.bodyHtml,cloneRange(){return makeRange(this.index)},deleteContents(){},insertNode(node){node.parentNode=fields.bodyHtml;fields.bodyHtml.children.splice(this.index,0,node)},setStartAfter(node){this.index=fields.bodyHtml.children.indexOf(node)+1},collapse(){},selectNodeContents(){this.index=fields.bodyHtml.children.length},createContextualFragment(html){return new Node('',html)}});
 let historyChanges=0;
-let selectionRange=makeRange(), uploads=[],saved=[],messages=[],failUpload=false,failFlush=false,failHtml=false;
+let selectionRange=makeRange(), uploads=[],saved=[],messages=[],htmlRequests=0,failUpload=false,failFlush=false,failHtml=false;
 const doc={createElement:tag=>new Node(tag),createTextNode:text=>new Node('',text),createRange:()=>makeRange(),};
-const win={getSelection:()=>({rangeCount:1,getRangeAt:()=>selectionRange,removeAllRanges(){},addRange(range){selectionRange=range}})};
+const win={handlers:{},addEventListener(type,handler){this.handlers[type]=handler},getSelection:()=>({rangeCount:1,getRangeAt:()=>selectionRange,removeAllRanges(){},addRange(range){selectionRange=range}})};
 const ctx=createContext({document:doc,window:win,crypto:webcrypto,Uint8Array,Array,Set,JSON,encodeURIComponent,console,$:id=>fields[id],status:text=>messages.push(text),bodyRange:()=>selectionRange,clearMediaSelection(){},captureEditorBefore(){},rememberEditorChange(){historyChanges++},closeFormatPanels(){},renderSaveState(){},setTimeout(){},clearTimeout(){},api:async(path,options)=>{
- if(path==='/html-paste'){if(failHtml){failHtml=false;throw new Error('synthetic authentication_required')}return {html:'<p><strong>합성 서식</strong></p>',omitted:true}}
+ if(path==='/html-paste'){htmlRequests++;if(failHtml){failHtml=false;throw new Error('synthetic authentication_required')}return {html:'<p><strong>합성 서식</strong></p>',omitted:true}}
  assert.equal(path,'/posts/synthetic-post/media');assert.equal(options.method,'POST');assert.equal(options.headers['content-type'],'image/png');assert.equal(Number(options.headers['x-dwnc-file-size']),options.body.byteLength);assert.equal(options.headers['x-dwnc-file-sha256'].length,64);
  if(failUpload){failUpload=false;throw new Error('synthetic authentication_required')}
  const publicPath='/media/native/synthetic-'+(uploads.length+1)+'.png';uploads.push(publicPath);return {media:{publicPath}};
@@ -33,7 +33,7 @@ ctx.flush=async()=>{if(failFlush){failFlush=false;return false}saved.push(fields
 runInContext(htmlPasteDetectorScript+uploadSource+pasteSource,ctx);
 const file=(name='paste.png',extra={})=>({name,type:'image/png',size:3,arrayBuffer:async()=>new Uint8Array([1,2,3]).buffer,...extra});
 const paste=async({files=[],items=[],plain='',rich=''}={})=>{let prevented=false;await fields.bodyHtml.handlers.paste({preventDefault(){prevented=true},clipboardData:{files,items,getData:type=>type==='text/plain'?plain:rich}});return prevented};
-const reset=()=>{fields.bodyHtml.children=[];fields.bodyHtml.append(new Node('p','앞 문단'),new Node('p','뒤 문단'));selectionRange=makeRange();historyChanges=0;uploads=[];saved=[];messages=[];runInContext('uploadQueue=[];uploadRange=null;busy=false;dirty=false;retryAction=null',ctx)};
+const reset=()=>{fields.bodyHtml.children=[];fields.bodyHtml.append(new Node('p','앞 문단'),new Node('p','뒤 문단'));selectionRange=makeRange();historyChanges=0;htmlRequests=0;uploads=[];saved=[];messages=[];runInContext('clearPlainPasteIntent();uploadQueue=[];uploadRange=null;busy=false;dirty=false;retryAction=null',ctx)};
 reset();const photo=file();assert.equal(await paste({files:[photo],items:[{kind:'file',type:'image/png',getAsFile:()=>photo}]}),true);assert.equal(uploads.length,1,'files/items duplicate must upload once');assert.equal(historyChanges,1,'Uploaded image participates in body history');assert.match(saved.at(-1),/^<p>앞 문단<\/p><figure>.*<\/figure><p>뒤 문단<\/p>$/);assert.equal(runInContext('uploadQueue.length',ctx),0);
 reset();await paste({files:[photo],plain:'함께 복사한 설명'});assert.match(saved.at(-1),/앞 문단.*함께 복사한 설명.*<figure>.*뒤 문단/);
 reset();await paste({items:[{kind:'file',type:'image/png',getAsFile:()=>photo}]});assert.equal(uploads.length,1,'items fallback');
@@ -47,4 +47,21 @@ reset();runInContext('busy=true',ctx);assert.equal(await paste({files:[photo]}),
 reset();assert.equal(await paste({plain:'평범한 글자 < 3'}),false);assert.equal(await paste({plain:'복사된 서식',rich:'<p>복사된 서식</p>'}),false,'existing rich text stays native');
 reset();assert.equal(await paste({plain:'<p><strong>합성 서식</strong></p>',rich:'<pre style="color:red">&lt;p&gt;HTML code&lt;/p&gt;</pre>'}),true);assert.match(fields.bodyHtml.innerHTML,/앞 문단.*<strong>합성 서식<\/strong>.*뒤 문단/);assert.equal(runInContext('dirty',ctx),true);assert.match(messages.at(-1),/제외/);
 reset();failHtml=true;const raw='<h2>실패해도 남는 합성 원문</h2>';await paste({plain:raw});assert.ok(fields.bodyHtml.innerHTML.includes(raw));assert.equal(runInContext('dirty',ctx),true);assert.match(messages.at(-1),/원문을 글자로/);
+// Standard plain-text shortcuts bypass all app HTML/image transformations.
+const plainKey=extra=>fields.bodyHtml.handlers.keydown({key:'V',code:'KeyV',metaKey:true,shiftKey:true,...extra});
+const rawHtml='<p><strong>문자 그대로</strong></p>';
+for(const shortcut of [{},{metaKey:false,ctrlKey:true},{altKey:true,key:'√'}]){
+  reset();plainKey(shortcut);
+  assert.equal(await paste({plain:rawHtml,rich:'<b>원본 서식</b>',files:[photo]}),false,'Keep native plain-text insertion and its undo/input behavior');
+  assert.equal(htmlRequests,0);assert.equal(uploads.length,0);assert.equal(runInContext('dirty',ctx),false,'Native input event, not paste interception, will schedule saving');
+  assert.equal(await paste({plain:rawHtml}),true,'Plain intent is consumed by only one paste');assert.equal(htmlRequests,1);
+}
+reset();plainKey({});assert.equal(await paste({files:[photo]}),true);assert.equal(uploads.length,0);assert.equal(htmlRequests,0);
+for(const clear of [()=>fields.bodyHtml.handlers.keyup({}),()=>fields.bodyHtml.handlers.blur({}),()=>fields.bodyHtml.handlers.pointerdown({}),()=>win.handlers.blur({}),()=>fields.bodyHtml.handlers.keydown({key:'Escape'}),()=>fields.bodyHtml.handlers.keydown({key:'v',metaKey:true}),()=>runInContext('plainPasteIntent.expires=Date.now()-1',ctx)]){
+  reset();plainKey({});clear();assert.equal(await paste({plain:rawHtml}),true);assert.equal(htmlRequests,1,'Stale shortcut must not affect a later rich paste');
+}
+reset();plainKey({});runInContext('busy=true',ctx);assert.equal(await paste({plain:rawHtml}),true);runInContext('busy=false',ctx);assert.equal(await paste({plain:rawHtml}),true);assert.equal(htmlRequests,1,'Busy paste consumes the intent');
+for(const composition of [{isComposing:true},{keyCode:229}]){reset();plainKey(composition);assert.equal(await paste({plain:rawHtml}),true);assert.equal(htmlRequests,1,'IME composition must not arm the shortcut');}
+reset();plainKey({});runInContext('current={id:"other-post"}',ctx);assert.equal(await paste({plain:rawHtml}),true);assert.equal(htmlRequests,1,'A different post cannot inherit paste intent');
+runInContext('current={id:"synthetic-post"}',ctx);
 console.log('PASS editor clipboard images and HTML source paste: cursor/order/ownership upload/retry/input preservation/rich-text fallback');
