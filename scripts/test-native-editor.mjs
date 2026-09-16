@@ -236,6 +236,22 @@ ok(ui.includes('figure[data-ke-type="opengraph"]>a'));
 ok(ui.includes('.html-editor .og-title,.html-editor .se-oglink-title'));
 ok(ui.includes('-webkit-line-clamp:2'));
 ok(ui.includes('-webkit-line-clamp:3'));
+// Raw imported players can have hundreds of menu lines inside a fixed-height
+// box. Scope their display fallback to source-less legacy players, preserving
+// captions, ordinary video, playable legacy video, and existing fallback text.
+const legacyPlayerRule = uiDocument('style').text().match(/([^{}\n]+)\{display:block;width:100%!important;max-width:100%;height:auto!important;min-height:0;overflow:hidden[^}]*\}/);
+ok(legacyPlayerRule);
+const legacyPlayerFixture = load(`<div class="html-editor"><div class="naver-content">
+  <div id="old" class="_naverVideo" style="height:438px"><video class="webplayer-internal-video"></video><div>old menu</div></div>
+  <div id="prism" class="prismplayer-area" style="height:498px"><div class="pzp"><video class="webplayer-internal-video"></video><div>old menu</div></div></div>
+  <p id="caption">authored caption</p>
+  <div id="playable" class="_naverVideo"><video class="webplayer-internal-video" src="/movie.mp4"></video></div>
+  <div id="source" class="prismplayer-area"><video class="webplayer-internal-video"><source src="/movie.mp4"></video></div>
+  <div id="fallback" class="_naverVideo"><video class="webplayer-internal-video"></video><div class="naver-video-fallback">existing notice</div></div>
+  <video id="ordinary" src="/movie.mp4"></video>
+</div></div><div class="prose"><div class="naver-content"><div class="_naverVideo"><video class="webplayer-internal-video"></video></div></div></div>`);
+equal(legacyPlayerFixture(legacyPlayerRule[1]).map((_, node) => node.attribs.id).get().join(','), 'old,prism');
+equal(legacyPlayerFixture('#caption').text(), 'authored caption');
 ok(uiScript.includes("node.closest('figure[data-ke-type=\"opengraph\"],.se_component.se_oglink,.se-component.se-oglink')"));
 ok(uiScript.includes("node.closest('figure.imageblock,.se_component.se_image,.se-component.se-image')"));
 ok(uiScript.includes("event.key==='Delete'||event.key==='Backspace'"));
