@@ -15,7 +15,7 @@
 
 가져온 최초 1–596번의 순번 원장은 `migration/private/sequence/global-sequence-v1.json`에만 둔다. 디렉터리는 mode 700, 파일은 mode 600인 단일 regular file이어야 하며 symlink·hardlink를 거부하고 동일 디렉터리 임시 파일을 거쳐 atomic rename한다. 원장 entry는 `globalSequence`, `source`, `sourceId`, `visibility`, `publishedAt`, `status`만 허용하고 제목·본문·HTML을 넣지 않는다. 이 역사 원장은 웹 편집기 글의 번호를 배정하지 않는다.
 
-597번 이후 웹 편집기 글은 D1의 `native_posts`가 본문·공개 상태의 권위 자료이고 `native_sequence_claims`가 순번의 유일한 배정자다. migration은 기존 범위의 마지막 번호 596만 seed하고, 첫 발행 transaction부터 자동 증가값을 post ID에 한 번만 결속한다. 임시 글은 번호를 소비하지 않으며 동시에 발행해도 같은 번호가 생기지 않는다. 발행된 글의 제목·본문·카테고리·태그 수정은 같은 번호에서 즉시 반영된다.
+597번 이후 웹 편집기 글은 D1의 `native_posts`가 본문·공개 상태의 권위 자료이고 `native_sequence_claims`가 순번의 유일한 배정자다. migration은 기존 범위의 마지막 번호 596만 seed하고, 첫 발행 transaction부터 자동 증가값을 post ID에 한 번만 결속한다. 임시 글은 번호를 소비하지 않으며 동시에 발행해도 같은 번호가 생기지 않는다. 발행된 글의 제목·본문·카테고리·태그 수정은 작업본에 저장되며, 명시적으로 공개 반영하면 같은 번호의 공개 글에 반영된다. 작업본 자동저장만으로 공개 글을 바꾸지 않는다.
 
 빌드는 `src/data/public-sequence-v1.json`만 읽는다. 이 projection은 공개 active 글에 한해 다음 다섯 필드만 포함한다.
 
@@ -71,7 +71,7 @@ projection에는 비공개 identity·날짜·순번 대응, `nextSequence`, 전�
 
 옛 숫자를 새 순번으로 복사하거나 비슷한 글로 추정 연결하지 않는다. 로컬 정적 빌드의 alias 349개는 본문 복제 없이 `noindex, nofollow`, 최종 absolute canonical, 즉시 meta refresh, `location.replace`, 일반 안내와 최종 링크만 가진다. alias는 검색, RSS, sitemap에서 제외한다.
 
-`docs/EDGE_REDIRECTS_V1.json`은 같은 **현재** 공개 projection으로 `npm run edge-redirects:generate`를 실행해 만드는 provider-neutral 308 manifest다. 이는 향후 호스팅 승인 뒤 edge 설정 입력으로 쓸 계약 자료이며 현재 provider 설정, 배포, DNS를 변경하지 않는다. authoritative sequence transaction이 완료되기 전의 projection이나 edge manifest를 release 대상으로 복사하지 않는다.
+`docs/EDGE_REDIRECTS_V1.json`은 같은 **현재** 공개 projection으로 `npm run edge-redirects:generate`를 실행해 만드는 provider-neutral 308 manifest다. Worker와 redirect 설정은 이 원본을 사용하며, 파일 생성 자체는 provider 설정·배포·DNS를 변경하지 않는다. authoritative sequence transaction이 완료되기 전의 projection이나 edge manifest를 release 대상으로 복사하지 않는다. 운영 반영 상태와 승인 범위는 [공식 상태](../PROJECT_STATE.md)를 따른다.
 
 ## 4. 공개 본문 링크 변환
 
@@ -117,14 +117,16 @@ projection에는 비공개 identity·날짜·순번 대응, `nextSequence`, 전�
 - Tistory Markdown 의미와 공개 media 순서·SHA, 기존 taxonomy·video·privacy 계약
 - genesis baseline에서는 sitemap URL 1,054와 물리 HTML 1,404(정식·일반 페이지·404 + alias 349). 이후 합법적인 현재 projection에서는 같은 산식으로 동적 계산
 
-## 8. 호스팅 승인 뒤 edge 체크리스트
+## 8. 주소·edge 설정 변경 시 확인할 계약
 
-- [ ] `docs/EDGE_REDIRECTS_V1.json` 349개를 provider 설정으로 변환하고 308 exact mapping을 검증한다.
-- [ ] `http://dwnc.me/*` → `https://dwnc.me/*`
-- [ ] `http(s)://www.dwnc.me/*` → `https://dwnc.me/*`
-- [ ] canonical trailing slash와 `/index.html`을 한 번에 제거한다.
-- [ ] GET/HEAD 모두 chain·loop 없이 한 hop으로 끝나는지 확인한다.
-- [ ] query·fragment 제거 정책과 cache behavior를 확인한다.
-- [ ] alias가 검색·RSS·sitemap에 들어가지 않는지 재검증한다.
+최초 호스팅 연결 대기는 종료됐다. 현재 운영 반영 상태는 [공식 상태](../PROJECT_STATE.md), 최초 운영 전환 근거는 [완료 요구사항](REQUIREMENTS_ARCHIVE.md)을 따른다. 아래는 주소·edge 설정을 변경할 때 확인할 조건이며, 현재의 미완료 작업 목록이나 모든 경로의 검증 완료 선언이 아니다.
 
-배포, DNS, traffic, provider edge 설정은 사용자의 별도 승인 전 수행하지 않는다.
+- `docs/EDGE_REDIRECTS_V1.json`의 기존 alias 349개와 provider 설정의 308 exact mapping을 검증한다.
+- `http://dwnc.me/*` → `https://dwnc.me/*` 이동을 유지한다.
+- `http(s)://www.dwnc.me/*` → `https://dwnc.me/*` 이동을 유지한다.
+- canonical trailing slash와 `/index.html`을 한 번에 제거한다.
+- 변경한 각 경로의 GET/HEAD가 chain·loop 없이 한 hop으로 끝나는지 확인한다.
+- HTTP·www→HTTPS apex 이동은 기존 path·query를 유지하고, 옛 글 alias→canonical 이동은 query를 전달하지 않는 구분을 유지한다. 경로별 query·fragment 처리와 cache behavior를 확인한다.
+- alias가 검색·RSS·sitemap에 들어가지 않는지 재검증한다.
+
+배포·DNS·traffic·provider edge 설정 변경은 승인된 범위에서만 수행한다. 기존 승인 범위를 벗어나는 변경은 별도 승인을 받는다.

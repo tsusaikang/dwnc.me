@@ -8,7 +8,7 @@
 2. [PROJECT_STATE.md](PROJECT_STATE.md): 현재 목표·실제 상태·다음 행동.
 3. [현재 요구사항](docs/REQUIREMENTS.md): 유효한 미완료 항목만 관리한다. 완료 항목은 [요구사항 이력](docs/REQUIREMENTS_ARCHIVE.md)으로 옮기고 기본 읽기 대상에서 제외한다.
 
-미디어·배포 작업에 필요할 때 [미디어 계약](docs/MEDIA_SERVING_CONTRACT.md)을 읽고, 해당 계약에서 필요한 상세 운영 규격으로 이동한다. 활성 상세 요구사항은 현재 원장에서 연결한다. 과거 수치·인증·배포 과정은 [미디어 운영 이력](docs/history/MEDIA_SERVING_HISTORY_20260909_234338.md) 등 해당 이력이 필요할 때만 조회한다. README에 현재 상태나 완료 과정을 중복 누적하지 않는다.
+주소 작업은 [주소 계약](docs/URL_CONTRACT.md), 미디어 작업은 [미디어 계약](docs/MEDIA_SERVING_CONTRACT.md), Git 자동 배포는 [배포 안내](docs/GIT_DELIVERY_20260910_142007.md)에서 시작한다. 필요한 상세 운영 규격은 각 계약에서, 활성 상세 요구사항은 현재 원장에서 연결한다. 과거 수치·인증·배포 과정은 [미디어 운영 이력](docs/history/MEDIA_SERVING_HISTORY_20260909_234338.md) 등 해당 이력이 필요할 때만 조회한다. README에 현재 상태나 완료 과정을 중복 누적하지 않는다.
 
 ## 로컬 미리보기
 
