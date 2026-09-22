@@ -93,6 +93,7 @@ export const IMPORTED_PRESENTATION_CSS = String.raw`
 .prose pre{overflow-x:auto;white-space:pre;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .prose code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .prose table{max-width:100%;border-collapse:collapse;display:block;overflow-x:auto}
+:is(.prose,.html-editor) table.dwnc-table-positioned{display:block!important;width:fit-content;max-width:100%;overflow-x:auto;float:none!important}
 .prose :is(th,td){padding:10px;border:1px solid var(--line,#deded9)}
 .prose :is(ul,ol){padding-inline-start:1.5em}
 .prose ul{list-style:disc}.prose ol{list-style:decimal}
