@@ -107,6 +107,12 @@ async function writeRunnerOutput(stream, bytes, deadlineEpochMs) {
       if (destroy) {
         try { stream.destroy?.(); } catch { /* best effort */ }
       }
+      if (code === 'CLOUDFLARE_E_SMOKE_RUNNER_TIMEOUT') {
+        // Settle before the outer deadline can win the race. Deferring this to
+        // setImmediate leaves the output buffer and listeners alive on a busy loop.
+        finish(runnerOutputError(code));
+        return;
+      }
       // Node writable streams can emit `error` immediately after invoking a failed
       // write callback. Keep the listener through that turn so the error is never unhandled.
       deferredFailure = setImmediate(() => finish(runnerOutputError(code)));

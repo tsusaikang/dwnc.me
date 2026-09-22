@@ -427,6 +427,10 @@ try {
     write(chunk) {
       hangingOutputChunk = chunk;
       pendingOutputWrites += 1;
+      // Both deadlines become due before the deferred failure callback runs,
+      // as can happen when a shared CI worker pauses the event loop.
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0,
+        shortOutputRunnerLimits.totalTimeoutMs);
     },
     destroy(_error, callback) {
       pendingOutputWrites = 0;
