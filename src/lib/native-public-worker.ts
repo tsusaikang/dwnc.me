@@ -1,4 +1,5 @@
 import { renderArchiveRow, renderRecentJournal } from './post-listing.ts';
+import { PUBLIC_ADMIN_ENTRY_HTML } from './public-admin-links.ts';
 import { orderedCategoryPosts, renderPostCategoryPagination } from './post-category-pagination.ts';
 import { categoryDisplayId, categoryDisplayLabel, categoryDisplayNode, categoryDisplayNodes } from './category-display.ts';
 import { eligiblePostView, PostViewStatistics } from './post-view-statistics.ts';
@@ -156,7 +157,7 @@ function siteNavigation(settings: CmsSettings, canonical: string) {
   const categoryActive = pathname === '/category' || pathname.startsWith('/category/');
   const categoryMenu = (label: string) => `<span class="site-nav__category${categoryActive ? ' is-active' : ''}"><a href="/category"${pathname === '/category' ? ' aria-current="page"' : ''}>${escapeHtml(label)}</a><button type="button" data-category-open aria-controls="category-drawer" aria-expanded="false" aria-haspopup="dialog" aria-label="전체 카테고리 열기"><span aria-hidden="true">⌄</span></button></span>`;
   const menu = settings.menu.map((item) => item.path === '/category' ? categoryMenu('카테고리') : `<a href="${escapeHtml(item.path)}"${new URL(item.path, canonical).pathname === pathname ? ' aria-current="page"' : ''}>${escapeHtml(item.label)}</a>`).join('');
-  return menu + (settings.menu.some((item) => item.path === '/category') ? '' : categoryMenu('카테고리')) + '<button class="search-trigger" type="button" data-search-open aria-label="글 검색 열기"><span>찾기</span></button>';
+  return menu + (settings.menu.some((item) => item.path === '/category') ? '' : categoryMenu('카테고리')) + '<button class="search-trigger" type="button" data-search-open aria-label="글 검색 열기"><span>찾기</span></button>' + PUBLIC_ADMIN_ENTRY_HTML;
 }
 function categoryTree(categories: CmsCategory[], current?: string) {
   const currentId = current ? categoryDisplayId(current) : undefined;

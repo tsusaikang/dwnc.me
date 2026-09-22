@@ -1,5 +1,6 @@
 ---
 import CategoryDrawer from './CategoryDrawer.astro';
+import { PUBLIC_ADMIN_ENTRY_HTML } from '../lib/public-admin-links';
 
 interface Props {
   activeCategoryId?: string;
@@ -53,6 +54,7 @@ const isCurrent = (href: string) => {
       <button class="search-trigger" type="button" data-search-open aria-label="글 검색 열기">
         <span>찾기</span>
       </button>
+      <Fragment set:html={PUBLIC_ADMIN_ENTRY_HTML} />
     </nav>
     <p class="site-header__note">개인 기록</p>
   </div>

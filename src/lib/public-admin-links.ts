@@ -1,4 +1,5 @@
 const ADMIN_ORIGIN = 'https://admin.dwnc.me';
+export const PUBLIC_ADMIN_ENTRY_HTML = `<a class="site-admin-entry" data-public-admin-entry href="${ADMIN_ORIGIN}/#view=posts" target="_blank" rel="noopener noreferrer" aria-label="관리자 로그인 (새 탭)">관리자 로그인 ↗</a>`;
 const EDIT_PATH = /^\/(?:posts\/[1-9]\d*|pages\/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$/u;
 
 export function editablePublicPath(value: string, origin: string): string | null {
@@ -57,6 +58,11 @@ export function mountPublicAdminLinks() {
   const schedule = () => { if (authorized && !frame) frame = requestAnimationFrame(decorate); };
   const setAuthorized = (value: boolean) => {
     authorized = value; toolbar.hidden = !value;
+    for (const entry of document.querySelectorAll<HTMLAnchorElement>('[data-public-admin-entry]')) {
+      const label = value ? '관리자 화면' : '관리자 로그인';
+      if (entry.textContent !== `${label} ↗`) entry.textContent = `${label} ↗`;
+      entry.setAttribute('aria-label', `${label} (새 탭)`);
+    }
     for (const link of document.querySelectorAll<HTMLAnchorElement>('.public-edit-link')) link.hidden = !value;
     schedule();
   };

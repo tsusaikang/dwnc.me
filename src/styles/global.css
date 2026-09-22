@@ -3003,7 +3003,7 @@
   word-break: normal;
 }
 
-/* Header width contract: dwnc.me / 모든 글 / 카테고리 / 소개 / 찾기 stays visible at 390px. */
+/* Compact reading navigation; the persistent admin entry uses a separate header row. */
 @media (max-width: 640px) {
   .site-header__inner {
     gap: 9px;
@@ -3253,5 +3253,62 @@
       width: 88px;
       height: 66px;
     }
+  }
+}
+
+/* Keep the login entry visible independently of authenticated editor tools. */
+.site-nav > a.site-admin-entry {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin-top: 8px;
+  padding-left: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: nowrap;
+  color: var(--ink-soft);
+}
+
+.site-nav > a.site-admin-entry:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (max-width: 900px) {
+  .site-nav > a.site-admin-entry {
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .site-header__inner {
+    position: relative;
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+
+  .site-header__inner > .brand {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    margin-right: 130px;
+  }
+
+  .site-nav {
+    flex: 1 0 100%;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 2px 9px;
+    margin: 0;
+    overflow: visible;
+  }
+
+  .site-nav > a.site-admin-entry {
+    position: absolute;
+    top: 12px;
+    right: 13px;
+    display: inline-flex;
+    padding: 7px 0;
+    font-size: 0.76rem;
   }
 }
