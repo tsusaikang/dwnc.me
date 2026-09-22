@@ -818,7 +818,6 @@
     margin-top: 9px;
     color: var(--ink-soft);
     font-size: 0.78rem;
-    text-align: center;
   }
 
   .naver-content :is(.se-oglink-info, .se_link_preview, .og .box) {
@@ -866,7 +865,6 @@
     margin-top: 10px;
     color: var(--ink-soft);
     font-size: 0.78rem;
-    text-align: center;
   }
 
   .prose blockquote {
@@ -1929,7 +1927,6 @@
     font-family: var(--sans);
     font-size: 0.73rem;
     line-height: 1.55;
-    text-align: left;
   }
 
   .naver-content :is(span, p, div) {

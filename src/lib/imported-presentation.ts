@@ -87,6 +87,13 @@ export const IMPORTED_PRESENTATION_CSS = String.raw`
 @font-face{font-family:NanumBarunGothic;src:url('/fonts/nanum/NanumBarunGothicBold.woff') format('woff');font-weight:700;font-style:normal;font-display:swap}
 .prose,.html-editor{--dwnc-body-font:var(--serif,"Iowan Old Style","Noto Serif KR","Nanum Myeongjo","AppleMyungjo",Batang,Georgia,serif);font-family:var(--dwnc-body-font)}
 .prose{line-height:1.98;overflow-wrap:break-word}
+/* Captions own their default alignment; photo placement and surrounding prose
+   do not supply it. Inline styles and imported explicit alignment still win. */
+:is(.prose,.html-editor) :where(figcaption,.se-caption,.se_mediaCaption){text-align:center}
+:is(.prose,.html-editor) :where(figcaption,.se-caption,.se_mediaCaption):is([align="left" i],.alignLeft,.se_align-left,.se-text-paragraph-align-left){text-align:left}
+:is(.prose,.html-editor) :where(figcaption,.se-caption,.se_mediaCaption):is([align="center" i],.alignCenter,.se_align-center,.se-text-paragraph-align-center){text-align:center}
+:is(.prose,.html-editor) :where(figcaption,.se-caption,.se_mediaCaption):is([align="right" i],.alignRight,.se_align-right,.se-text-paragraph-align-right){text-align:right}
+:is(.prose,.html-editor) :where(figcaption,.se-caption,.se_mediaCaption):is([align="justify" i],.se_align-justify,.se-text-paragraph-align-justify){text-align:justify}
 .prose :is(strong,b){font-family:inherit}
 .prose :is(img,video,iframe,svg){max-width:100%;box-sizing:border-box}
 .prose :is(img,video){height:auto}
@@ -116,10 +123,10 @@ export const IMPORTED_PRESENTATION_CSS = String.raw`
 :is(.prose,.html-editor) .naver-content .se_ff_nanumbarungothic{font-family:NanumBarunGothic,"나눔바른고딕",sans-serif}
 :is(.prose,.html-editor) .naver-content .se_ff_nanummyeongjo{font-family:NanumMyeongjo,"나눔명조",serif}
 :is(.prose,.html-editor) .naver-content .se_ff_sans-serif{font-family:sans-serif}
-.prose .naver-content :is(.se_align-left,.se-text-paragraph-align-left){text-align:left}
-.prose .naver-content :is(.se_align-center,.se-text-paragraph-align-center){text-align:center}
-.prose .naver-content :is(.se_align-right,.se-text-paragraph-align-right){text-align:right}
-.prose .naver-content :is(.se_align-justify,.se-text-paragraph-align-justify){text-align:justify}
+:is(.prose,.html-editor) .naver-content :is(.se_align-left,.se-text-paragraph-align-left){text-align:left}
+:is(.prose,.html-editor) .naver-content :is(.se_align-center,.se-text-paragraph-align-center){text-align:center}
+:is(.prose,.html-editor) .naver-content :is(.se_align-right,.se-text-paragraph-align-right){text-align:right}
+:is(.prose,.html-editor) .naver-content :is(.se_align-justify,.se-text-paragraph-align-justify){text-align:justify}
 :is(.prose,.html-editor) .naver-content .se-ff-nanumgothic{font-family:NanumGothic,"나눔고딕",sans-serif}
 :is(.prose,.html-editor) .naver-content .se-fs-fs16{font-size:calc(var(--dwnc-body-size)*1.066666667)}
 :is(.prose,.html-editor) .naver-content .se-fs-fs19{font-size:calc(var(--dwnc-body-size)*1.266666667)}
@@ -131,7 +138,7 @@ export const IMPORTED_PRESENTATION_CSS = String.raw`
 .prose .naver-content .se_imageStripView>.se_mediaArea{display:flex;flex-wrap:nowrap;align-items:flex-start;gap:4px;min-width:0;width:100%}
 .prose .naver-content .se_imageStripView>.se_mediaArea>.se_imageStripArea{flex:0 1 auto;min-width:0}
 .prose .naver-content :is(.se-imageStrip-container,.se-imageGroup-container,.se_imageStripView) img{display:block;width:100%;height:auto}
-.prose .naver-content :is(.se-caption,.se_mediaCaption){margin-top:9px;font-size:13px;line-height:1.5;text-align:center;color:var(--ink-soft,#666)}
+.prose .naver-content :is(.se-caption,.se_mediaCaption){margin-top:9px;font-size:13px;line-height:1.5;color:var(--ink-soft,#666)}
 .prose .naver-content :is(.se_quote,.se_quotation,.se-quote){margin:1.5em 0;padding:1em 1.2em;border-inline-start:3px solid #aaa}
 .prose .naver-content :is(.se_quote,.se_quotation,.se-quote) blockquote{font-family:inherit;font-size:inherit;color:inherit;margin:0;padding:0;border:0}
 .prose .naver-content :is(.se_horizontalLine,.se-horizontalLine){margin:1.5em auto;max-width:100%}
@@ -141,7 +148,7 @@ export const IMPORTED_PRESENTATION_CSS = String.raw`
 .prose .legacy-content .alignRight{margin-inline:auto 0;text-align:right}
 .prose .legacy-content :is(.imageblock,.imageslideblock){max-width:100%}
 .prose .legacy-content :is(.imageblock,.image-container) img{display:block;margin-inline:auto}
-.prose .legacy-content figcaption{font-size:13px;line-height:1.5;text-align:center}
+.prose .legacy-content figcaption{font-size:13px;line-height:1.5}
 .prose .legacy-content blockquote[data-ke-style="style1"]{position:relative;border:0;margin:1.5em 0;padding:34px 0 0;text-align:center;font-family:inherit;font-size:20px;font-style:normal;line-height:30.6667px;color:#333}
 .prose .legacy-content blockquote[data-ke-style="style1"]:before{content:"“";position:absolute;top:0;inset-inline:0;text-align:center;font:36px/34px Georgia,serif;color:#777}
 .prose .legacy-content blockquote[data-ke-style="style2"]{margin:1.5em 0;padding:.8em 1.2em;border-inline-start:3px solid #999;font-family:inherit;font-size:inherit;color:inherit}
