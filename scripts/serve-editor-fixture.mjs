@@ -129,6 +129,7 @@ const server = createServer(async (incoming, outgoing) => {
     let response;
     if (url.pathname === '/api/session' && incoming.headers.origin === 'http://127.0.0.1:4324') response = Response.json({authenticated: fixtureAdmin}, {headers:{'access-control-allow-origin':'http://127.0.0.1:4324','access-control-allow-credentials':'true','cache-control':'no-store','vary':'Origin'}});
     else if (fontFiles.has(url.pathname)) response = new Response(await readFile(new URL('../public'+url.pathname,import.meta.url)),{headers:{'content-type':url.pathname.endsWith('.ttf')?'font/ttf':'font/woff'}});
+    else if (url.pathname === '/__fixture/image-upload') response = new Response(await (await import('./fixtures/image-upload-browser.mjs')).imageUploadBrowserHtml(), { headers: { 'content-type': 'text/html; charset=utf-8' } });
     else if (url.pathname === '/__fixture') response = new Response(controls, { headers: { 'content-type': 'text/html; charset=utf-8' } });
     else if (url.pathname === '/__fixture/state') response = Response.json({ mode, counts, admin: await store.listForAdmin(), published: (await store.listPublished()).map(({ id, title, revision, bodyMarkdown }) => ({ id, title, revision, bodyMarkdown })) });
     else if (url.pathname === '/__fixture/public') {
