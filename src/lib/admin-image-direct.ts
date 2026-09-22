@@ -6,6 +6,7 @@ export const imageDirectToolsHtml = `<div id="directImageTools" class="direct-im
 export const imageDirectOverlayHtml = `<div id="photoDropIndicator" class="photo-drop-indicator" hidden><span id="photoDropLabel"></span></div><div id="photoTextHint" class="photo-text-hint" aria-hidden="true" hidden>＋ 글 쓰기</div>`;
 
 export const imageDirectCss = `
+.html-editor{display:flow-root;padding-block:18px}
 .image-tools{max-width:min(660px,calc(100vw - 24px));gap:6px;background:#fff;border-color:#cbd4df;padding:8px}
 .image-tools button{background:#fff;color:#364357;padding:7px 9px;font-size:12px}.image-tools button:hover{background:#edf3fa}.image-tools #deleteImage{color:#a42929;background:#fff}.image-tools #setSelectedCover{background:#fff;color:#1769d2}.image-tools__label{display:none}
 .direct-image-tools{display:flex;align-items:center;flex-wrap:wrap;gap:5px;width:100%;border-bottom:1px solid #e8edf3;padding-bottom:6px}.photo-align-tools{display:flex;gap:1px}.image-tools [data-photo-align][aria-pressed="true"]{background:#e8f1ff;color:#145bac;border-color:#8bb5ee}.direct-image-tools select{width:auto;max-width:145px;padding:6px;font-size:12px}.direct-photo-hint{flex-basis:100%;font-size:11px;line-height:1.5;color:#647184}.image-tools #dragSelectedPhoto{touch-action:none;cursor:grab;color:#175fae}.html-editor img{cursor:grab}.html-editor figcaption{cursor:text}
@@ -61,7 +62,7 @@ function enterPhotoText(target){
   clearMediaSelection();uploadRange=null;formatRange=null;pendingFontSpans=null;pastedImageNodes=null;
   body.focus({preventScroll:true});const range=document.createRange();range.selectNodeContents(paragraph);range.collapse(true);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);captureFormatRange();updateFormatState();
   $('photoTextHint').hidden=true;
-  if(!target.paragraph){schedule();status('사진 사이에 글을 쓸 수 있습니다. 작업본에 자동저장됩니다.')}
+  if(!target.paragraph){schedule();status('선택한 사진 앞뒤 위치에 글을 쓸 수 있습니다. 작업본에 자동저장됩니다.')}
   return true;
 }
 function hidePhotoTextHint(){ $('photoTextHint').hidden=true }

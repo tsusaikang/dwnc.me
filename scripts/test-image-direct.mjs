@@ -152,4 +152,26 @@ listeners.get('bodyHtml:pointerdown')(clickGap);listeners.get('bodyHtml:pointerm
 run('busy=true');assert.equal(gapTarget(300,350),null);run('busy=false;editorComposing=true');assert.equal(gapTarget(300,350),null);run('editorComposing=false');
 assert.equal(group('b','a'),true);await tick();const row=body.querySelector('.dwnc-image-layout');box(row,130,330);assert.equal(gapTarget(300,250,row),null,'A grouped row interior is not a paragraph gap');
 context.selected=image('a');run('startDirectPhotoDrag(selected)');assert.equal(gapTarget(300,350),null,'Photo dragging disables paragraph insertion');run('stopDirectPhotoDrag()');
+// All boundaries use the same insertion path, including a single photo and an
+// intact grouped row. The real fixture additionally verifies that editor CSS
+// keeps the leading/trailing margin inside the editable element's hit area.
+function clickTextMargin(y,node=body){const event={...clickGap,clientY:y,target:node};listeners.get('bodyHtml:pointerdown')(event);listeners.get('bodyHtml:click')(event);return event}
+for(const kind of ['single','consecutive','group']){
+  body.innerHTML=photo('a')+(kind==='single'?'':photo('b'));run('resetEditorHistory()');
+  if(kind==='group'){assert.equal(group('b','a'),true);await tick()}
+  const pristine=checkpoint(),imageOrder=order();
+  for(const edge of ['before','after']){
+    body.innerHTML=pristine;run('resetEditorHistory()');
+    const roots=body.children;roots.forEach((node,index)=>box(node,136+240*index,336+240*index));
+    const y=edge==='before'?118:roots.at(-1).getBoundingClientRect().bottom+18;
+    assert.equal(clickTextMargin(y).stopped,true,kind+' '+edge+' must accept the real click path');await tick();
+    const paragraph=edge==='before'?body.children[0]:body.children.at(-1);
+    assert.equal(paragraph.outerHTML,'<p><br></p>');assert.equal(caretNode,paragraph);assert.equal(order(),imageOrder);
+    assert.equal(checkpoint(),edge==='before'?'<p><br></p>'+pristine:pristine+'<p><br></p>');
+    const inserted=checkpoint();box(paragraph,y-10,y+10);clickTextMargin(y,paragraph);await tick();assert.equal(checkpoint(),inserted,kind+' '+edge+' empty paragraph is reused');
+    run("editorHistoryCommand('undo')");assert.equal(checkpoint(),pristine);run("editorHistoryCommand('redo')");assert.equal(checkpoint(),inserted);
+    const textParagraph=edge==='before'?body.children[0]:body.children.at(-1);textParagraph.innerHTML='Boundary <strong>text</strong>';run('schedule()');await tick();
+    const written=checkpoint();for(const sanitize of [sanitizeNativeHtml,sanitizeLegacyHtml]){const saved=sanitize(written),reopened=load(saved);assert.equal(reopened('img').length,kind==='single'?1:2);assert.equal(reopened('figcaption em').length,kind==='single'?1:2);assert.ok(saved.includes('<p>Boundary <strong>text</strong></p>'));assert.equal(reopened('.dwnc-image-cols-2').length,kind==='group'?1:0);assert.ok(!saved.includes('photoTextHint'))}
+  }
+}
 console.log(JSON.stringify({suite:'image-direct',status:'PASS',behavior:'move/group/reorder/split, cap at three, captions and text preserved, shared undo/redo, sanitizer reopen, no-upscale, photo margin text insertion/reuse/caret and pointer exclusions'}));
