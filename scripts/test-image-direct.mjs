@@ -11,7 +11,7 @@ import { sanitizeNativeHtml, sanitizeLegacyHtml } from '../src/lib/native-conten
 // and pointer input are exercised in serve-editor-fixture.mjs.
 const $html=load('<div id="bodyHtml"></div><div id="imageTools">'+imageDirectToolsHtml+'</div>'+imageDirectOverlayHtml);
 const wrappers=new WeakMap(),listeners=new Map(),widths=new Map();
-let hit=null;
+let hit=null,caretNode=null;
 class Element {
   constructor(node){this.node=node;this.dataset={};this.hidden=false;this.value='';this.rect={left:0,top:0,right:800,bottom:100,width:800,height:100};this.style={getPropertyValue:name=>this.styles()[name]?.replace(/\s*!important$/,'' )||'',getPropertyPriority:name=>/!important$/.test(this.styles()[name]||'')?'important':'',setProperty:(name,value,priority)=>{const styles=this.styles();styles[name]=value+(priority?' !important':'');this.writeStyles(styles)},removeProperty:name=>{const styles=this.styles();delete styles[name];this.writeStyles(styles)}};this.classList={contains:name=>(this.node.attribs.class||'').split(/\s+/).includes(name),add:(...names)=>this.node.attribs.class=[...new Set((this.node.attribs.class||'').split(/\s+/).filter(Boolean).concat(names))].join(' '),remove:(...names)=>this.node.attribs.class=(this.node.attribs.class||'').split(/\s+/).filter(name=>!names.includes(name)).join(' ')};}
   styles(){return Object.fromEntries((this.node.attribs.style||'').split(';').filter(value=>value.includes(':')).map(value=>{const index=value.indexOf(':');return[value.slice(0,index).trim(),value.slice(index+1).trim()]}))}
@@ -46,7 +46,7 @@ class Element {
 }
 function wrap(node){if(!node)return null;if(!wrappers.has(node))wrappers.set(node,new Element(node));return wrappers.get(node)}
 const field=id=>wrap($html('#'+id)[0]),body=field('bodyHtml');
-const document={createElement:tag=>wrap($html('<'+tag+'>')[0]),createRange:()=>({selectNodeContents(){},collapse(){}}),elementFromPoint:()=>hit,addEventListener(name,fn){listeners.set('document:'+name,fn)}};
+const document={createElement:tag=>wrap($html('<'+tag+'>')[0]),createRange:()=>({selectNodeContents(node){caretNode=node},collapse(){}}),elementFromPoint:()=>hit,addEventListener(name,fn){listeners.set('document:'+name,fn)}};
 const context=vm.createContext({document,Element,$:field,window:{getSelection:()=>({removeAllRanges(){},addRange(){}}),addEventListener(){},requestAnimationFrame:()=>1,cancelAnimationFrame(){},innerHeight:900},Promise,Date,JSON,console});
 vm.runInContext(`let current={id:'synthetic-photo'},busy=false,selectedMedia=null,uploadRange=null,formatRange=null,pendingFontSpans=null,pastedImageNodes=null;function status(message){lastStatus=message}let lastStatus='';function bodyRange(){return null}function captureFormatRange(){}function updateFormatState(){}function positionMediaSelection(){}function clearMediaSelection(){selectedMedia=null}function selectMedia(image){selectedMedia={image};}function schedule(){rememberEditorChange()}`,context);
 vm.runInContext(editorHistoryScript,context);
@@ -117,4 +117,39 @@ const handle=field('dragSelectedPhoto');let prevented=0;
 const pointer={button:0,pointerId:11,currentTarget:handle,clientX:700,clientY:340,preventDefault(){prevented++}};
 listeners.get('dragSelectedPhoto:pointerdown')(pointer);assert.equal(handle.captured,11);assert.equal(field('imageTools').hidden,true);
 listeners.get('document:pointermove')(pointer);listeners.get('document:pointerup')(pointer);await tick();assert.equal(handle.captured,null);assert.equal(body.querySelector('.dwnc-image-cols-2').children.length,2);assert.equal(field('photoDropIndicator').hidden,true);assert.equal(prevented,3);
-console.log(JSON.stringify({suite:'image-direct',status:'PASS',behavior:'move/group/reorder/split, cap at three, separate captions and intervening text preserved, shared undo/redo, sanitizer reopen, no-upscale after split, pointer hit zones'}));
+// Consecutive upload figures have no text block between them. Only their outer
+// vertical margins accept a paragraph; an image, caption or row gutter does not.
+body.innerHTML=photo('a')+photo('b');run('resetEditorHistory()');
+body.rect={left:10,right:810,top:100,bottom:900,width:800,height:800};
+function box(node,top,bottom){node.rect={left:20,right:720,top,bottom,width:700,height:bottom-top}}
+box(body.children[0],130,330);box(body.children[1],370,570);
+context.hit=body;
+const gapTarget=(x,y,node=body)=>{context.hit=node;return run(`directPhotoTextTarget(${x},${y},hit)`)};
+assert.ok(gapTarget(300,115),'First photo top margin is writable');
+assert.ok(gapTarget(300,350),'Adjacent photo margin is writable');
+assert.ok(gapTarget(300,590),'Last photo bottom margin is writable');
+assert.equal(gapTarget(300,800),null,'A distant blank page area is not a photo gap');
+assert.equal(gapTarget(300,200,image('a')),null);
+assert.equal(gapTarget(300,320,body.querySelector('figcaption em')),null);
+assert.equal(gapTarget(800,200),null,'Side whitespace beside a photo must not create a paragraph');
+assert.equal(gapTarget(5,350),null);
+const photosBefore=checkpoint();context.target=gapTarget(300,350);
+const clickGap={button:0,clientX:300,clientY:350,target:body,preventDefault(){this.prevented=true},stopImmediatePropagation(){this.stopped=true}};
+listeners.get('bodyHtml:pointerdown')(clickGap);listeners.get('bodyHtml:click')(clickGap);await tick();
+assert.equal(clickGap.prevented,true);assert.equal(clickGap.stopped,true);
+assert.equal(body.children[1].outerHTML,'<p><br></p>');assert.equal(caretNode,body.children[1]);assert.equal(order(),'ab');
+const gapInserted=checkpoint();assert.equal(gapInserted,photo('a')+'<p><br></p>'+photo('b'));
+box(body.children[1],338,362);
+context.target=gapTarget(300,350,body.children[1]);assert.equal(context.target.paragraph,body.children[1]);assert.equal(run('enterPhotoText(target)'),true);await tick();assert.equal(checkpoint(),gapInserted,'Reentering an empty paragraph must not duplicate it');
+context.target=gapTarget(300,365);assert.equal(context.target.paragraph,body.children[1]);run('enterPhotoText(target)');assert.equal(checkpoint(),gapInserted,'Clicking next to an existing empty paragraph reuses it');
+run("editorHistoryCommand('undo')");assert.equal(checkpoint(),photosBefore);run("editorHistoryCommand('redo')");assert.equal(checkpoint(),gapInserted);
+body.children[1].innerHTML='Between <strong>photos</strong>';run('schedule()');await tick();
+const withText=checkpoint();assert.equal(gapTarget(300,350,body.children[1]),null,'Existing text editing is left to the browser');
+run("editorHistoryCommand('undo')");assert.equal(checkpoint(),gapInserted);run("editorHistoryCommand('redo')");assert.equal(checkpoint(),withText);
+for(const sanitize of [sanitizeNativeHtml,sanitizeLegacyHtml]){const clean=sanitize(withText);assert.ok(clean.includes('<p>Between <strong>photos</strong></p>'));assert.equal(load(clean)('img').length,2);assert.equal(load(clean)('figcaption em').length,2);assert.ok(!clean.includes('photo-text-hint'));assert.equal(sanitize(clean),clean)}
+body.innerHTML=photosBefore;run('resetEditorHistory()');box(body.children[0],130,330);box(body.children[1],370,570);
+listeners.get('bodyHtml:pointerdown')(clickGap);listeners.get('bodyHtml:pointermove')({...clickGap,buttons:1,clientY:380});listeners.get('bodyHtml:click')(clickGap);assert.equal(checkpoint(),photosBefore,'Dragging from a margin must not insert text');
+run('busy=true');assert.equal(gapTarget(300,350),null);run('busy=false;editorComposing=true');assert.equal(gapTarget(300,350),null);run('editorComposing=false');
+assert.equal(group('b','a'),true);await tick();const row=body.querySelector('.dwnc-image-layout');box(row,130,330);assert.equal(gapTarget(300,250,row),null,'A grouped row interior is not a paragraph gap');
+context.selected=image('a');run('startDirectPhotoDrag(selected)');assert.equal(gapTarget(300,350),null,'Photo dragging disables paragraph insertion');run('stopDirectPhotoDrag()');
+console.log(JSON.stringify({suite:'image-direct',status:'PASS',behavior:'move/group/reorder/split, cap at three, captions and text preserved, shared undo/redo, sanitizer reopen, no-upscale, photo margin text insertion/reuse/caret and pointer exclusions'}));

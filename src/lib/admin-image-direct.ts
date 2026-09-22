@@ -3,18 +3,79 @@
 // shared with normal text editing.
 export const imageDirectToolsHtml = `<div id="directImageTools" class="direct-image-tools" hidden><button id="dragSelectedPhoto" type="button" title="끌어서 이동 · 방향키로 위치 이동" aria-label="선택 사진 이동">↕ 이동</button><div class="photo-align-tools" role="group" aria-label="사진 정렬"><button type="button" data-photo-align="left" aria-label="사진 왼쪽 정렬">왼쪽</button><button type="button" data-photo-align="center" aria-label="사진 가운데 정렬">가운데</button><button type="button" data-photo-align="right" aria-label="사진 오른쪽 정렬">오른쪽</button></div><label class="sr-only" for="directPhotoSize">사진 크기</label><select id="directPhotoSize" aria-describedby="directPhotoHint"><option value="original">100% 원본</option><option value="paragraph">문단 폭</option><option value="full">전체 폭</option></select><button id="splitSelectedPhoto" type="button" hidden>한 장 빼내기</button><span id="directPhotoHint" class="direct-photo-hint"></span></div>`;
 
-export const imageDirectOverlayHtml = `<div id="photoDropIndicator" class="photo-drop-indicator" hidden><span id="photoDropLabel"></span></div>`;
+export const imageDirectOverlayHtml = `<div id="photoDropIndicator" class="photo-drop-indicator" hidden><span id="photoDropLabel"></span></div><div id="photoTextHint" class="photo-text-hint" aria-hidden="true" hidden>＋ 글 쓰기</div>`;
 
 export const imageDirectCss = `
 .image-tools{max-width:min(660px,calc(100vw - 24px));gap:6px;background:#fff;border-color:#cbd4df;padding:8px}
 .image-tools button{background:#fff;color:#364357;padding:7px 9px;font-size:12px}.image-tools button:hover{background:#edf3fa}.image-tools #deleteImage{color:#a42929;background:#fff}.image-tools #setSelectedCover{background:#fff;color:#1769d2}.image-tools__label{display:none}
 .direct-image-tools{display:flex;align-items:center;flex-wrap:wrap;gap:5px;width:100%;border-bottom:1px solid #e8edf3;padding-bottom:6px}.photo-align-tools{display:flex;gap:1px}.image-tools [data-photo-align][aria-pressed="true"]{background:#e8f1ff;color:#145bac;border-color:#8bb5ee}.direct-image-tools select{width:auto;max-width:145px;padding:6px;font-size:12px}.direct-photo-hint{flex-basis:100%;font-size:11px;line-height:1.5;color:#647184}.image-tools #dragSelectedPhoto{touch-action:none;cursor:grab;color:#175fae}.html-editor img{cursor:grab}.html-editor figcaption{cursor:text}
 .photo-drop-indicator{position:fixed;z-index:70;pointer-events:none;background:#1769d2;border-radius:2px;box-shadow:0 0 0 2px #ffffffd9}.photo-drop-indicator span{position:absolute;left:6px;top:7px;white-space:nowrap;border-radius:4px;background:#1769d2;color:#fff;font:12px/1.4 system-ui;padding:4px 7px;box-shadow:0 2px 8px #0002}.photo-drop-indicator[data-mode="group"] span{top:-28px;left:0}.photo-drop-indicator[data-mode="blocked"]{background:#a43434}.photo-drop-indicator[data-mode="blocked"] span{background:#a43434}
+.photo-text-hint{position:fixed;z-index:65;pointer-events:none;transform:translateY(-50%);border:1px solid #bfd2ec;border-radius:4px;background:#f5f9ff;color:#285c9a;padding:2px 7px;font:12px/1.4 system-ui;white-space:nowrap}
 @media(max-width:480px){.image-tools{padding:6px;gap:4px}.image-tools button{padding:7px;font-size:11px}.direct-image-tools select{max-width:118px}.direct-photo-hint{font-size:10px}}
 `;
 
 export const imageDirectScript = String.raw`
 let photoDrag=null,photoScrollFrame=null,photoPointer=null,photoCapture=null;
+let photoTextPointer=null;
+function emptyPhotoParagraph(node){return!!node&&node.tagName==='P'&&!node.textContent.replace(/[\s\u200b]/g,'')&&!node.querySelector('img,video,audio,iframe,table,hr,input,button,svg,canvas')}
+function photoTextBlock(node){const image=node?.matches('img')?node:node?.querySelector('img'),unit=directPhotoUnit(image);return!!unit&&unit.root===node}
+function directPhotoTextTarget(x,y,hit){
+  const body=$('bodyHtml');
+  if(busy||!current||editorComposing||photoDrag||!hit||!body.contains(hit))return null;
+  // Only outer whitespace is a target. Captions, group gutters and inline
+  // images remain part of their existing editable/selectable content.
+  if(hit.closest('figure,.dwnc-image-layout,.dwnc-image-item,figcaption,img,a,table,ul,ol,blockquote,pre,h1,h2,h3,h4,h5,h6'))return null;
+  const paragraph=hit.closest('p');
+  if(paragraph&&!emptyPhotoParagraph(paragraph))return null;
+  const parent=paragraph?paragraph.parentElement:hit;
+  if(parent!==body&&!parent.matches('div,section,article'))return null;
+  if(parent.closest('[contenteditable="false"],.se_component.se_image,.se-component.se-image,[data-ke-type="opengraph"],.se_component.se_oglink,.se-component.se-oglink'))return null;
+  if(Array.from(parent.childNodes).some(node=>node.nodeType===3&&node.textContent.trim()))return null;
+  const bounds=parent.getBoundingClientRect();
+  if(x<bounds.left||x>bounds.right||y<bounds.top||y>bounds.bottom)return null;
+  const blocks=Array.from(parent.children).filter(node=>node.getBoundingClientRect().height>0);
+  let before=null,previous=null,reuse=paragraph;
+  if(paragraph){const index=blocks.indexOf(paragraph);previous=blocks[index-1]||null;before=blocks[index+1]||null}
+  else{
+    for(const block of blocks){const box=block.getBoundingClientRect();if(y>=box.top&&y<=box.bottom)return null;if(box.bottom<y)previous=block;else if(box.top>y){before=block;break}}
+    if(emptyPhotoParagraph(previous))reuse=previous;
+    else if(emptyPhotoParagraph(before))reuse=before;
+    if(reuse){const index=blocks.indexOf(reuse);previous=blocks[index-1]||null;before=blocks[index+1]||null}
+  }
+  if(!photoTextBlock(previous)&&!photoTextBlock(before))return null;
+  // At an outer edge, only offer the nearby margin, never a whole empty page.
+  const top=previous?.getBoundingClientRect().bottom??bounds.top,bottom=before?.getBoundingClientRect().top??bounds.bottom;
+  if(!reuse&&(y-top>40&&bottom-y>40))return null;
+  const hintTop=reuse?reuse.getBoundingClientRect().top+reuse.getBoundingClientRect().height/2:!before?top+Math.min(16,(bottom-top)/2):!previous?bottom-Math.min(16,(bottom-top)/2):(top+bottom)/2;
+  return{parent,before,paragraph:reuse,left:bounds.left+8,top:hintTop};
+}
+function enterPhotoText(target){
+  const body=$('bodyHtml');if(!target||busy||!current||editorComposing||photoDrag||!body.contains(target.parent))return false;
+  let paragraph=target.paragraph;
+  if(paragraph&&(!body.contains(paragraph)||!emptyPhotoParagraph(paragraph)))return false;
+  if(!paragraph){
+    if(target.before&&target.before.parentNode!==target.parent)return false;
+    commitEditorHistory();captureEditorBefore();editorTyping=null;
+    paragraph=document.createElement('p');paragraph.append(document.createElement('br'));target.parent.insertBefore(paragraph,target.before);
+  }
+  clearMediaSelection();uploadRange=null;formatRange=null;pendingFontSpans=null;pastedImageNodes=null;
+  body.focus({preventScroll:true});const range=document.createRange();range.selectNodeContents(paragraph);range.collapse(true);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);captureFormatRange();updateFormatState();
+  $('photoTextHint').hidden=true;
+  if(!target.paragraph){schedule();status('사진 사이에 글을 쓸 수 있습니다. 작업본에 자동저장됩니다.')}
+  return true;
+}
+function hidePhotoTextHint(){ $('photoTextHint').hidden=true }
+$('bodyHtml').addEventListener('pointerdown',event=>{photoTextPointer=event.button===0&&!event.shiftKey&&!event.ctrlKey&&!event.metaKey&&!event.altKey?{x:event.clientX,y:event.clientY,target:directPhotoTextTarget(event.clientX,event.clientY,event.target instanceof Element?event.target:null)}:null});
+$('bodyHtml').addEventListener('pointermove',event=>{
+  if(photoTextPointer&&Math.hypot(event.clientX-photoTextPointer.x,event.clientY-photoTextPointer.y)>6)photoTextPointer=null;
+  const target=event.buttons?null:directPhotoTextTarget(event.clientX,event.clientY,event.target instanceof Element?event.target:null),hint=$('photoTextHint');hint.hidden=!target;if(target){hint.style.left=target.left+'px';hint.style.top=target.top+'px'}
+});
+$('bodyHtml').addEventListener('click',event=>{const pointer=photoTextPointer;photoTextPointer=null;hidePhotoTextHint();if(!pointer?.target||event.button!==0||Math.hypot(event.clientX-pointer.x,event.clientY-pointer.y)>6)return;const target=directPhotoTextTarget(event.clientX,event.clientY,event.target instanceof Element?event.target:null);if(target&&enterPhotoText(target)){event.preventDefault();event.stopImmediatePropagation()}},true);
+$('bodyHtml').addEventListener('pointercancel',()=>{photoTextPointer=null;hidePhotoTextHint()});
+$('bodyHtml').addEventListener('pointerleave',hidePhotoTextHint);
+$('bodyHtml').addEventListener('input',hidePhotoTextHint);
+window.addEventListener('scroll',hidePhotoTextHint,true);
+window.addEventListener('resize',hidePhotoTextHint);
 function directPhotoUnit(image){
   const body=$('bodyHtml');
   if(!image||!body.contains(image)||image.tagName!=='IMG'||image.closest('[data-ke-type="opengraph"],.se_component.se_oglink,.se-component.se-oglink'))return null;
@@ -126,7 +187,7 @@ function scrollDirectPhotoDrag(){
   if(y<top||y>bottom){window.scrollBy(0,y<top?-12:12);showDirectPhotoDrop(photoDrag.x,y)}
   photoScrollFrame=window.requestAnimationFrame(scrollDirectPhotoDrag);
 }
-function startDirectPhotoDrag(image,hideTools=true){if(busy||!current||editorComposing||!directPhotoUnit(image))return false;stopDirectPhotoDrag();selectMedia(image);photoDrag={image,owner:current.id,target:null,x:0,y:window.innerHeight/2};if(hideTools)$('imageTools').hidden=true;status('문단 사이 가로선에 놓으면 이동·분리, 사진 옆 세로선에 놓으면 묶기·순서 변경');photoScrollFrame=window.requestAnimationFrame(scrollDirectPhotoDrag);return true}
+function startDirectPhotoDrag(image,hideTools=true){if(busy||!current||editorComposing||!directPhotoUnit(image))return false;stopDirectPhotoDrag();hidePhotoTextHint();selectMedia(image);photoDrag={image,owner:current.id,target:null,x:0,y:window.innerHeight/2};if(hideTools)$('imageTools').hidden=true;status('문단 사이 가로선에 놓으면 이동·분리, 사진 옆 세로선에 놓으면 묶기·순서 변경');photoScrollFrame=window.requestAnimationFrame(scrollDirectPhotoDrag);return true}
 function finishDirectPhotoDrop(){const drag=photoDrag;stopDirectPhotoDrag();if(drag?.owner===current?.id&&$('bodyHtml').contains(drag.image)){if(!moveDirectPhoto(drag.image,drag.target)){selectMedia(drag.image);status(drag.target?.type==='blocked'?drag.target.label:'사진 위치를 바꾸지 않았습니다.')}}}
 $('bodyHtml').addEventListener('dragstart',event=>{const image=event.target instanceof Element?event.target.closest('img'):null;if(!startDirectPhotoDrag(image))return;event.stopPropagation();event.dataTransfer.effectAllowed='move';event.dataTransfer.clearData();event.dataTransfer.setData('text/plain','');event.dataTransfer.setData('application/x-dwnc-photo','photo')});
 document.addEventListener('dragover',event=>{if(!photoDrag)return;event.preventDefault();showDirectPhotoDrop(event.clientX,event.clientY);if(event.dataTransfer)event.dataTransfer.dropEffect=photoDrag.target&&photoDrag.target.type!=='blocked'?'move':'none'});

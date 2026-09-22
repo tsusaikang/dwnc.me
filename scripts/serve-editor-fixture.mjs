@@ -70,7 +70,7 @@ if (process.env.DWNC_PHOTO_FIXTURE_DIR) {
     await store.addMedia({id,postId:draft.id,publicPath:path,objectKey:path.slice(1),sha256,bytes:bytes.length,mime:'image/png',alt:'합성 사진 '+name,createdAt:new Date().toISOString()});
     photos.push('<figure class="imageblock alignCenter"><a href="https://example.test/photo-'+name+'"><img src="'+path+'" alt="합성 사진 '+name+'"></a><figcaption><em>보존할 설명 '+name+'</em></figcaption></figure>');
   }
-  await store.update(draft.id,draft.revision,{title:'사진 직접 조작 합성 시험',description:'CORE-014 로컬 시험',bodyFormat:'html',bodyMarkdown:'<h2>사진 조작 시험</h2><p>첫 문단의 <strong>굵은 글씨</strong>를 보존합니다.</p>'+photos[0]+'<p>사진 사이 문단의 <em>기울임</em>을 보존합니다.</p>'+photos[1]+'<p>두 번째 사진 뒤 문단입니다.</p>'+photos[2]+'<table><tbody><tr><td>보존할 표</td><td>합성 자료</td></tr></tbody></table>'+photos[3]+'<p>끝 문단입니다.</p>',categoryId:'daily',tags:[],coverMediaId:null});
+  await store.update(draft.id,draft.revision,{title:'사진 직접 조작 합성 시험',description:'CORE-014 로컬 시험',bodyFormat:'html',bodyMarkdown:process.env.DWNC_PHOTO_GAPS_FIXTURE==='1'?photos.join(''):'<h2>사진 조작 시험</h2><p>첫 문단의 <strong>굵은 글씨</strong>를 보존합니다.</p>'+photos[0]+'<p>사진 사이 문단의 <em>기울임</em>을 보존합니다.</p>'+photos[1]+'<p>두 번째 사진 뒤 문단입니다.</p>'+photos[2]+'<table><tbody><tr><td>보존할 표</td><td>합성 자료</td></tr></tbody></table>'+photos[3]+'<p>끝 문단입니다.</p>',categoryId:'daily',tags:[],coverMediaId:null});
 }
 // Optional category scenario; both original IDs stay in the local in-memory store.
 if (process.env.DWNC_CATEGORY_FIXTURE === '1') {

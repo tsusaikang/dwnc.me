@@ -96,7 +96,30 @@ const field = (id) => elements.get(id);
 assert.equal(field('postsPanel').hidden, false);
 assert.equal(field('editorView').hidden, true);
 let postButton = field('posts').querySelectorAll('button').find((button) => button.dataset.postId === draft.id);
-assert.match(postButton.children[0].textContent,/생성일 .+ · 수정일 /u);
+assert.equal(postButton.children[0].className,'post-list-title');
+assert.equal(postButton.children[0].textContent,'원래 제목');
+assert.deepEqual(postButton.children[1].children.map(item=>item.textContent),['#597','글','공개']);
+assert.equal(postButton.children[1].children.at(-1).className,'post-list-status');
+assert.match(postButton.children.at(-1).textContent,/생성일 .+ · 수정일 /u);
+// A title that starts with a status word must remain a title, across every
+// publication state and for unnumbered drafts. These are synthetic UI rows.
+context.listRow=new Element();
+for(const [post,expected] of [
+  [{kind:'post',status:'published',visibility:'public',globalSequence:600},['#600','글','공개']],
+  [{kind:'page',status:'published',visibility:'private',globalSequence:601},['#601','페이지','비공개']],
+  [{kind:'notice',status:'published',visibility:'protected',globalSequence:602},['#602','공지','보호']],
+  [{kind:'post',status:'published',visibility:'scheduled',scheduledAt:'2099-01-01T00:00:00Z',globalSequence:603},['#603','글','예약']],
+  [{kind:'post',status:'published',visibility:'scheduled',scheduledAt:'2000-01-01T00:00:00Z',globalSequence:603},['#603','글','공개']],
+  [{kind:'post',status:'draft',globalSequence:null},['글','작업본']],
+]){
+  context.listPost={...post,title:'공개 화성 탐사 <합성 제목>',categoryId:'daily',categoryLabel:'일상'};
+  runInContext('renderPostListItem(listRow,listPost)',context);
+  assert.equal(context.listRow.children[0].textContent,'공개 화성 탐사 <합성 제목>');
+  assert.equal(context.listRow.children[0].children.length,0);
+  assert.deepEqual(context.listRow.children[1].children.map(item=>item.textContent),expected);
+  assert.match(context.listRow['aria-label'],/^공개 화성 탐사 <합성 제목> · /u);
+}
+delete context.listRow;delete context.listPost;
 for(const dates of [{createdAt:'not-a-date',updatedAt:'invalid'},{createdAt:null,updatedAt:undefined},{createdAt:'',updatedAt:''}]){
   context.summaryDates=dates;
   assert.match(runInContext('postSummaryText({...summaryDates,categoryId:"daily",categoryLabel:"일상",status:"draft"})',context),/생성일 — · 수정일 —/u);
@@ -159,6 +182,11 @@ assert.equal((await store.getPublishedBySequence(597)).title, '원래 제목');
 assert.match(field('saveStatus').textContent, /공개 반영을 기다리는/u);
 assert.match(field('lastSaved').textContent, /마지막 저장 성공/u);
 assert.match(postButton.children.at(-1).textContent,/생성일 .+ · 수정일 /u);
+assert.equal(postButton.children.length,3,'Saving replaces the row content without duplicating metadata');
+assert.equal(postButton.children[0].textContent,'자동저장 작업본');
+assert.deepEqual(postButton.children[1].children.map(item=>item.textContent),['#597','글','공개']);
+assert.match(postButton.children.at(-1).textContent,/공개하지 않은 변경/u);
+assert.match(postButton['aria-label'],/^자동저장 작업본 · #597 · 글 · 공개 · /u);
 
 // Preview saves the current work first, stays isolated from publication, and
 // closes back to the editor without replacing its content or reading it again.
