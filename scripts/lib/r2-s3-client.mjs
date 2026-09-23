@@ -148,7 +148,7 @@ export function signR2S3Request({
   validateR2AccountId(accountId);
   validateR2AccessKeyId(accessKeyId);
   validateR2SecretAccessKey(secretAccessKey);
-  if (!SAFE_BUCKET.test(bucket ?? '') || !['GET', 'HEAD', 'PUT'].includes(method)
+  if (!SAFE_BUCKET.test(bucket ?? '') || !['GET', 'HEAD', 'PUT', 'DELETE'].includes(method)
     || typeof key !== 'string' || key.startsWith('/') || key.includes('..') || key.includes('\\')
     || !/^[a-f0-9]{64}$/u.test(payloadSha256)) fail('MEDIA_E_R2_CONFIG');
   const endpoint = `https://${accountId}.r2.cloudflarestorage.com`;
