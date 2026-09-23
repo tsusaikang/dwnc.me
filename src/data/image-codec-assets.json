@@ -1,0 +1,8 @@
+{
+  "hdr-worker.js": "text/javascript",
+  "hdr-codec.js": "text/javascript",
+  "hdr-codec.wasm": "application/wasm",
+  "LICENSE-libultrahdr.txt": "text/plain",
+  "LICENSE-libjpeg-turbo.txt": "text/plain",
+  "NOTICE.txt": "text/plain"
+}

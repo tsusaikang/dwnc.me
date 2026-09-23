@@ -128,8 +128,9 @@ const server = createServer(async (incoming, outgoing) => {
     const url = new URL(incoming.url, 'http://127.0.0.1:4322');
     let response;
     if (url.pathname === '/api/session' && incoming.headers.origin === 'http://127.0.0.1:4324') response = Response.json({authenticated: fixtureAdmin}, {headers:{'access-control-allow-origin':'http://127.0.0.1:4324','access-control-allow-credentials':'true','cache-control':'no-store','vary':'Origin'}});
+    else if (['/image-codecs/hdr-worker.js','/image-codecs/hdr-codec.js','/image-codecs/hdr-codec.wasm'].includes(url.pathname)) response = new Response(await readFile(new URL('../public'+url.pathname,import.meta.url)),{headers:{'content-type':url.pathname.endsWith('.wasm')?'application/wasm':'text/javascript; charset=utf-8','cache-control':'no-store'}});
     else if (fontFiles.has(url.pathname)) response = new Response(await readFile(new URL('../public'+url.pathname,import.meta.url)),{headers:{'content-type':url.pathname.endsWith('.ttf')?'font/ttf':'font/woff'}});
-    else if (url.pathname === '/__fixture/image-upload') response = new Response(await (await import('./fixtures/image-upload-browser.mjs')).imageUploadBrowserHtml(), { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    else if (url.pathname === '/__fixture/image-upload') response = new Response(await (await import('./fixtures/image-upload-browser.mjs')).imageUploadBrowserHtml(), { headers: { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
     else if (url.pathname === '/__fixture') response = new Response(controls, { headers: { 'content-type': 'text/html; charset=utf-8' } });
     else if (url.pathname === '/__fixture/state') response = Response.json({ mode, counts, admin: await store.listForAdmin(), published: (await store.listPublished()).map(({ id, title, revision, bodyMarkdown }) => ({ id, title, revision, bodyMarkdown })) });
     else if (url.pathname === '/__fixture/public') {

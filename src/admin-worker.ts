@@ -10,6 +10,7 @@ import { adminHtml } from './lib/admin-ui.ts';
 import edgeRedirectManifest from '../docs/EDGE_REDIRECTS_V1.json' with { type: 'json' };
 import mediaManifest from './data/public-media-r2-v1.json' with { type: 'json' };
 import publicRequestSurface from './data/public-request-surface-v1.json' with { type: 'json' };
+import imageCodecAssets from './data/image-codec-assets.json' with { type: 'json' };
 import {
   IMPORTED_MEDIA_PATH_PATTERN, NATIVE_MEDIA_PATH_PATTERN, NATIVE_POST_ID_PATTERN,
 } from './lib/native-content.ts';
@@ -36,6 +37,7 @@ const MIME_EXTENSIONS = new Map([
   ['image/png', 'png'], ['image/webp', 'webp'],
 ]);
 const FONT_PATHS = new Set(['NanumGothic.woff', 'NanumGothicBold.ttf', 'NanumMyeongjo.woff', 'NanumMyeongjoBold.woff', 'NanumBarunGothic.woff', 'NanumBarunGothicBold.woff'].map((name) => `/fonts/nanum/${name}`));
+const IMAGE_CODEC_PATHS = new Map(Object.entries(imageCodecAssets).map(([name, mime]) => [`/image-codecs/${name}`, mime]));
 const MAX_JSON_BYTES = 1_100_000;
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
 const LEGACY_POST_ID_PATTERN = /^legacy-([1-9]\d{0,2})$/u;
@@ -85,7 +87,29 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
   if (url.hash || (url.search && !(request.method === 'GET' && ['/api/posts','/api/statistics','/api/posts/resolve'].includes(url.pathname))) || !sameOrigin(request)) return json({ error: '요청을 처리할 수 없습니다.' }, 403);
   const store = new NativePostStore(env.NATIVE_DB);
   if (request.method === 'GET' && url.pathname === '/') {
-    return new Response(adminHtml(identityEmail), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
+    return new Response(adminHtml(identityEmail), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
+  }
+  const codecMime = IMAGE_CODEC_PATHS.get(url.pathname);
+  if (codecMime) {
+    if (!['GET', 'HEAD'].includes(request.method)) return new Response(null, { status: 405, headers: { allow: 'GET, HEAD', 'cache-control': 'no-store' } });
+    // Only reviewed public code and licence assets cross this fixed origin.
+    // Do not forward cookies, Access assertions, request headers, or redirects.
+    let response: Response;
+    try { response = await fetch(`https://dwnc.me${url.pathname}`, { method: request.method, redirect: 'error', signal: AbortSignal.timeout(15000) }); }
+    catch { return json({ error: '사진 처리 도구를 불러오지 못했습니다.' }, 502); }
+    const upstreamMime = response.headers.get('content-type')?.split(';', 1)[0].toLowerCase();
+    const compatibleMime = upstreamMime === codecMime || codecMime === 'text/javascript' && upstreamMime === 'application/javascript';
+    if (response.status !== 200 || !compatibleMime) {
+      try { await response.body?.cancel(); } catch {}
+      return json({ error: '사진 처리 도구를 불러오지 못했습니다.' }, 502);
+    }
+    const headers = new Headers({
+      'content-type': codecMime,
+      'cache-control': 'private, max-age=0, must-revalidate',
+      'x-content-type-options': 'nosniff',
+      'content-security-policy': "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; connect-src 'self'; worker-src 'self'",
+    });
+    return new Response(request.method === 'HEAD' ? null : response.body, { headers });
   }
   if (FONT_PATHS.has(url.pathname) && ['GET','HEAD'].includes(request.method)) {
     // Fonts are published application assets. Never forward the author's Access

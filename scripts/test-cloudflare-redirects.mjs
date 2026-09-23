@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import {
   loadCloudflareRedirectInputs,
   renderCloudflareRedirects,
   validateEdgeRedirectManifest,
 } from './lib/cloudflare-redirects.mjs';
-import { publicRequestSurfaceFromRelativeFiles } from './lib/cloudflare-surface.mjs';
+import { publicRequestSurfaceFromRelativeFiles, loadTrackedPublicRequestSurface } from './lib/cloudflare-surface.mjs';
+import imageCodecAssets from '../src/data/image-codec-assets.json' with { type: 'json' };
 
 const ROOT = process.cwd();
 const { manifest, projection } = await loadCloudflareRedirectInputs(ROOT);
@@ -41,5 +43,13 @@ equal(surface.pathCount, 3);
 equal(surface.allowedPathHashes.length, 3);
 equal(surface.surfaceSha256,
   '99d3e89013e4cd740570f4a20061892c67217e99f40103953d493de1f7c87f1f');
+
+// The admin proxy can load the reviewed codec and licence assets from the
+// public worker only when every exact asset is also in its request allowlist.
+const trackedSurface = await loadTrackedPublicRequestSurface(ROOT);
+for (const name of Object.keys(imageCodecAssets)) {
+  const hash = createHash('sha256').update(`/image-codecs/${name}`).digest('hex');
+  equal(trackedSurface.allowedPathHashes.includes(hash), true);
+}
 
 console.log(JSON.stringify({ suite: 'cloudflare-redirects', assertions, status: 'PASS' }, null, 2));

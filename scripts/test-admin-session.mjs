@@ -5,6 +5,7 @@ import { NativePostStore } from '../src/lib/native-post-store.ts';
 import { CmsConfigurationStore } from '../src/lib/cms-configuration.ts';
 import { verifyAccessIdentity, clearAccessKeyCacheForTests } from '../src/lib/access-auth.ts';
 import worker from '../src/admin-worker.ts';
+import imageCodecAssets from '../src/data/image-codec-assets.json' with { type: 'json' };
 const db=await createEditorDatabase();seedLegacy(db);
 const store=new NativePostStore(db), category=(await new CmsConfigurationStore(db).categories()).value[0];
 const make=async(kind)=>{let p=await store.createDraft(category,kind);p=await store.update(p.id,p.revision,{...p,title:'Synthetic deep link',bodyFormat:'html',bodyMarkdown:'<p>Published fixture</p>'});p=await store.publish(p.id,p.revision);return store.update(p.id,p.revision,{...p,title:'Unsaved publication fixture',bodyMarkdown:'<p>Working copy fixture</p>'});};
@@ -43,5 +44,41 @@ assert.deepEqual(db.sqlite.prepare('SELECT * FROM editor_working_copies ORDER BY
 const convert=(headers={},body={html:'<p>붙여넣기 <strong>서식</strong></p>'})=>request('/api/html-paste',{origin:'https://admin.dwnc.me','content-type':'application/json',...headers},{method:'POST',body:JSON.stringify(body)});
 response=await convert();assert.equal(response.status,200);assert.deepEqual(await response.json(),{html:'<p>붙여넣기 <strong>서식</strong></p>',omitted:false});assert.equal(response.headers.get('cache-control'),'no-store');assert.equal(response.headers.get('access-control-allow-origin'),null);
 assert.equal((await convert({origin:'https://dwnc.me'})).status,403);assert.equal((await convert({'cf-access-jwt-assertion':''})).status,401);assert.equal((await convert({}, {html:'not html'})).status,400);assert.equal((await request('/api/html-paste')).status,404);
+assert.deepEqual(db.sqlite.prepare('SELECT * FROM editor_working_copies ORDER BY post_id').all(),before);
+// The browser codec is an exact same-origin asset proxy, never an auth proxy.
+response=await request('/');
+const editorCsp=response.headers.get('content-security-policy');
+assert.match(editorCsp,/script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'/);
+assert.match(editorCsp,/worker-src 'self'/);
+assert.equal(editorCsp.includes("'unsafe-eval'"),false);
+const originalFetch=globalThis.fetch, codecRequests=[];
+let codecStatus=200,codecMimeOverride=null,codecThrows=false;
+globalThis.fetch=async(url,options)=>{
+  codecRequests.push({url,options});
+  if(codecThrows)throw new Error('synthetic upstream unavailable');
+  const name=new URL(url).pathname.split('/').at(-1);
+  return new Response(options.method==='HEAD'?null:'synthetic codec bytes',{status:codecStatus,headers:{'content-type':codecMimeOverride??imageCodecAssets[name],'set-cookie':'must-not-forward=1','access-control-allow-origin':'*'}});
+};
+try {
+  for(const [name,mime] of Object.entries(imageCodecAssets))for(const method of ['GET','HEAD']){
+    response=await request('/image-codecs/'+name,{cookie:'private-cookie',authorization:'private-token',origin:'https://admin.dwnc.me'},{method});
+    assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),mime);
+    assert.equal(response.headers.get('set-cookie'),null);assert.equal(response.headers.get('access-control-allow-origin'),null);
+    assert.equal(response.headers.get('x-content-type-options'),'nosniff');
+    assert.match(response.headers.get('content-security-policy'),/wasm-unsafe-eval/);
+    assert.equal(await response.text(),method==='HEAD'?'':'synthetic codec bytes');
+    const outgoing=codecRequests.at(-1);assert.equal(outgoing.url,'https://dwnc.me/image-codecs/'+name);assert.equal(outgoing.options.method,method);assert.equal(outgoing.options.headers,undefined);assert.equal(outgoing.options.redirect,'error');
+  }
+  const requested=codecRequests.length;
+  assert.equal((await request('/image-codecs/hdr-codec.wasm?url=https://evil.test')).status,403);
+  assert.equal((await request('/image-codecs/unknown.wasm')).status,404);
+  assert.equal((await request('/image-codecs/%68dr-codec.wasm')).status,404);
+  assert.equal((await request('/image-codecs/hdr-codec.wasm',{'cf-access-jwt-assertion':''})).status,401);
+  response=await request('/image-codecs/hdr-codec.wasm',{origin:'https://admin.dwnc.me'},{method:'POST'});assert.equal(response.status,405);assert.equal(response.headers.get('allow'),'GET, HEAD');
+  assert.equal(codecRequests.length,requested);
+  codecStatus=404;assert.equal((await request('/image-codecs/hdr-codec.wasm')).status,502);
+  codecStatus=200;codecMimeOverride='text/html';assert.equal((await request('/image-codecs/hdr-codec.js')).status,502);
+  codecThrows=true;assert.equal((await request('/image-codecs/hdr-worker.js')).status,502);
+}finally{globalThis.fetch=originalFetch;}
 assert.deepEqual(db.sqlite.prepare('SELECT * FROM editor_working_copies ORDER BY post_id').all(),before);
 console.log(JSON.stringify({suite:'admin-session',status:'PASS',behavior:'strict authenticated boolean only, exact credentialed CORS, fail closed, canonical working-copy resolution, no writes'}));

@@ -1,7 +1,7 @@
 // Browser-only upload preparation, shared by file input and clipboard images.
 // Animation detection uses container records, never a first-frame canvas guess.
 export const imageUploadScript = String.raw`
-const uploadImageMaxBytes=25*1024*1024,uploadImageMaxPixels=16000000,uploadJpegQuality=0.85;
+const uploadImageMaxBytes=25*1024*1024,uploadImageMaxEdge=2560,uploadJpegQuality=0.8;
 function uploadImageError(message){return new Error(message+' 원본 파일은 바뀌지 않았으며 이 사진은 업로드하지 않았습니다.')}
 function inspectUploadImage(bytes,mime){
   const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),text=(at,n)=>String.fromCharCode(...bytes.subarray(at,at+n)),bad=()=>{throw uploadImageError('사진 형식이나 파일 내용이 올바르지 않습니다.')};
@@ -30,7 +30,7 @@ function inspectUploadImage(bytes,mime){
   }
   throw uploadImageError('사진은 AVIF·GIF·JPEG·PNG·WebP 형식만 지원합니다. HEIC 사진은 JPEG로 내보낸 뒤 올려 주세요.');
 }
-function uploadImageDimensions(width,height){const ratio=Math.min(1,Math.sqrt(uploadImageMaxPixels/(width*height)));return{width:Math.max(1,Math.floor(width*ratio)),height:Math.max(1,Math.floor(height*ratio))}}
+function uploadImageDimensions(width,height){const ratio=Math.min(1,uploadImageMaxEdge/Math.max(width,height));return{width:Math.max(1,Math.floor(width*ratio)),height:Math.max(1,Math.floor(height*ratio))}}
 function uploadCanvasBlob(canvas,mime){return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob&&blob.type===mime?resolve(blob):reject(uploadImageError('브라우저에서 사진을 변환하지 못했습니다.')),mime,uploadJpegQuality))}
 async function uploadBitmapHasTransparency(bitmap){
   const tile=document.createElement('canvas');tile.width=Math.min(1024,bitmap.width);tile.height=Math.min(1024,bitmap.height);
@@ -38,11 +38,32 @@ async function uploadBitmapHasTransparency(bitmap){
     for(let y=0;y<bitmap.height;y+=tile.height){for(let x=0;x<bitmap.width;x+=tile.width){const width=Math.min(tile.width,bitmap.width-x),height=Math.min(tile.height,bitmap.height-y);context.clearRect(0,0,tile.width,tile.height);context.drawImage(bitmap,x,y,width,height,0,0,width,height);const pixels=context.getImageData(0,0,width,height).data;for(let i=3;i<pixels.length;i+=4)if(pixels[i]<255)return true}await new Promise(resolve=>setTimeout(resolve,0))}return false;
   }finally{tile.width=tile.height=1}
 }
+async function uploadJpegWithColor(file,bytes){
+  let worker,timer;
+  try{
+    worker=new Worker('/image-codecs/hdr-worker.js',{type:'module'});
+    const result=await new Promise((resolve,reject)=>{
+      timer=setTimeout(()=>reject(new Error('codec timeout')),120000);
+      worker.onerror=()=>reject(new Error('codec load failed'));
+      worker.onmessageerror=()=>reject(new Error('codec message failed'));
+      worker.onmessage=event=>event.data?.ok===true?resolve(event.data):reject(new Error('codec failed'));
+      worker.postMessage({buffer:bytes.buffer,maxEdge:uploadImageMaxEdge,quality:Math.round(uploadJpegQuality*100)},[bytes.buffer]);
+    });
+    const meta=result.metadata,buffer=result.buffer;
+    if(!(buffer instanceof ArrayBuffer)||buffer.byteLength<4||buffer.byteLength>uploadImageMaxBytes||!meta||![meta.width,meta.height,meta.inputWidth,meta.inputHeight].every(value=>Number.isInteger(value)&&value>0)||Math.max(meta.width,meta.height)>Math.min(uploadImageMaxEdge,Math.max(meta.inputWidth,meta.inputHeight)))throw new Error('codec result invalid');
+    inspectUploadImage(new Uint8Array(buffer),'image/jpeg');
+    if(Math.max(meta.inputWidth,meta.inputHeight)<=uploadImageMaxEdge&&buffer.byteLength>=file.size)return file;
+    const stem=(file.name||'image').replace(/\.[^.]*$/u,'')||'image';
+    return new File([buffer],stem+'.jpg',{type:'image/jpeg',lastModified:file.lastModified});
+  }catch{throw uploadImageError('HDR와 색상을 보존하는 사진 처리를 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.');}
+  finally{clearTimeout(timer);worker?.terminate()}
+}
 async function normalizeUploadImage(file){
   if(file.size<1||file.size>uploadImageMaxBytes)throw uploadImageError('사진은 한 장당 25MB 이하만 올릴 수 있습니다.');
   let bitmap,canvas;
   try{
-    const info=inspectUploadImage(new Uint8Array(await file.arrayBuffer()),file.type);if(info.preserve)return file;
+    const bytes=new Uint8Array(await file.arrayBuffer()),info=inspectUploadImage(bytes,file.type);if(info.preserve)return file;
+    if(file.type==='image/jpeg')return await uploadJpegWithColor(file,bytes);
     bitmap=await createImageBitmap(file,{imageOrientation:'from-image'});if(!bitmap.width||!bitmap.height)throw new Error('dimensions');
     const transparent=file.type!=='image/jpeg'&&await uploadBitmapHasTransparency(bitmap),size=uploadImageDimensions(bitmap.width,bitmap.height),resized=size.width!==bitmap.width||size.height!==bitmap.height;
     // Existing transparent PNG pixels need no re-encoding when within the limit.

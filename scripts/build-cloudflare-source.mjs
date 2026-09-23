@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { sanitizedEnvironment } from './lib/cloudflare-process.mjs';
+import imageCodecAssets from '../src/data/image-codec-assets.json' with { type: 'json' };
 
 const ROOT = process.cwd();
 const temporaryPublic = await mkdtemp(path.join(os.tmpdir(), 'dwnc-cloudflare-public-'));
@@ -58,6 +59,14 @@ try {
     const source = path.join(ROOT, 'public/fonts/nanum', name);
     if (!(await lstat(source)).isFile()) throw new Error('CLOUDFLARE_E_FONT_FILE');
     await writeFile(path.join(fontDirectory, name), await readFile(source), { mode: 0o644, flag: 'wx' });
+  }
+  // Fixed reviewed codec files and notices only; never copy an arbitrary folder.
+  const codecDirectory = path.join(temporaryPublic, 'image-codecs');
+  await mkdir(codecDirectory, { recursive: true });
+  for (const name of Object.keys(imageCodecAssets)) {
+    const source = path.join(ROOT, 'public/image-codecs', name);
+    if (!(await lstat(source)).isFile()) throw new Error('CLOUDFLARE_E_IMAGE_CODEC_FILE');
+    await writeFile(path.join(codecDirectory, name), await readFile(source), { mode: 0o644, flag: 'wx' });
   }
   await run(process.execPath, ['scripts/check-runtime.mjs']);
   await run(process.execPath, ['scripts/check-wrangler-pin.mjs', '--require-installed']);
