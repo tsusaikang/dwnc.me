@@ -1,3 +1,4 @@
+import { prepareUrlLinkCards, resolveCardHtml } from './lib/url-link-cards.ts';
 import { categoryDisplayId } from './lib/category-display.ts';
 import { prepareHtmlSourcePaste } from './lib/html-source-paste.ts';
 import { PostViewStatistics } from './lib/post-view-statistics.ts';
@@ -124,13 +125,18 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
   if (url.pathname.startsWith('/media/')) return serveLegacyMedia(request, env, context);
   if (request.method === 'POST' && url.pathname === '/api/html-paste') return json(prepareHtmlSourcePaste((await requestJson(request)).html));
   const config = new CmsConfigurationStore(env.NATIVE_DB);
+  if (request.method === 'POST' && url.pathname === '/api/link-preview') {
+    const body = await requestJson(request);
+    if (typeof body.url !== 'string' || body.url.length > 4096) throw new Error('ADMIN_E_QUERY');
+    return json({html:await resolveCardHtml(body.url,await store.listPublished(false))});
+  }
   if (request.method === 'GET' && url.pathname === '/api/posts/resolve') {
     const paths = url.searchParams.getAll('path');
     if (paths.length !== 1 || [...url.searchParams.keys()].some(key => key !== 'path')
       || !(/^\/posts\/[1-9]\d*$/u.test(paths[0]) || paths[0].startsWith('/pages/') && NATIVE_POST_ID_PATTERN.test(paths[0].slice(7)))) throw new Error('ADMIN_E_QUERY');
     const entry = (await store.listForAdmin()).find(post => post.publicPath === paths[0]);
     const post = entry ? await store.getForAdmin(entry.id) : null;
-    return post ? json({ post }) : json({ error: '찾을 수 없습니다.', code: 'post_not_found' }, 404);
+    return post ? json({ post: {...post, editorHtml: await prepareUrlLinkCards(post.bodyHtml, await store.listPublished(false))} }) : json({ error: '찾을 수 없습니다.', code: 'post_not_found' }, 404);
   }
   if (request.method === 'GET' && url.pathname === '/api/statistics') return json(await new PostViewStatistics(env.NATIVE_DB).summary(url.searchParams));
   if (url.pathname === '/api/categories') {
@@ -189,7 +195,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
   const [, id, action] = match;
   if (request.method === 'GET' && !action) {
     const post = await store.getForAdmin(id);
-    return post ? json({ post }) : json({ error: '찾을 수 없습니다.' }, 404);
+    return post ? json({ post: {...post, editorHtml: await prepareUrlLinkCards(post.bodyHtml, await store.listPublished(false))} }) : json({ error: '찾을 수 없습니다.' }, 404);
   }
   if (request.method === 'DELETE' && !action) {const body=await requestJson(request);return json(await store.deleteEmptyDraft(id,Number(body.expectedRevision)));}
   if (request.method === 'PUT' && !action) {
@@ -200,7 +206,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
     const body = await requestJson(request);
     const post = await store.getForAdmin(id);
     if (!post) return json({ error: '찾을 수 없습니다.' }, 404);
-    const editorHtml = (await store.normalizeInput(body.input, post)).bodyHtml;
+    const editorHtml = await prepareUrlLinkCards((await store.normalizeInput(body.input, post)).bodyHtml,await store.listPublished(false));
     const html = prepareImportedPresentation(editorHtml,post.source&&post.sourceId?{source:post.source,sourceId:post.sourceId}:undefined);
     return json({ html, editorHtml, css: IMPORTED_PRESENTATION_CSS + (html.includes('data-engine-diagram') ? ENGINE_DIAGRAM_CSS : '') });
   }

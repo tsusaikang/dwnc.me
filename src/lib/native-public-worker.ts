@@ -1,3 +1,4 @@
+import { prepareUrlLinkCards } from './url-link-cards.ts';
 import { renderArchiveRow, renderRecentJournal } from './post-listing.ts';
 import { PUBLIC_ADMIN_ENTRY_HTML } from './public-admin-links.ts';
 import { orderedCategoryPosts, renderPostCategoryPagination } from './post-category-pagination.ts';
@@ -245,7 +246,7 @@ async function postDocument(response: Response, post: NativePost, canonical: str
   const index=categoryPosts.findIndex((item)=>item.path===new URL(canonical).pathname), previous=index>=0?categoryPosts[index+1]:null, next=index>0?categoryPosts[index-1]:null;
   const related=renderPostCategoryPagination(posts,post.categoryId,new URL(canonical).pathname,`/category/${encodeURIComponent(category.slug)}`);
   const neighbor=(item:DiscoveryPost|null|undefined,rel:string,label:string)=>item?`<a rel="${rel}" href="${escapeHtml(item.path)}"><span>${label}</span><strong>${escapeHtml(item.title)}</strong><time datetime="${escapeHtml(item.publishedAt)}">${item.date}</time></a>`:'<span></span>';
-  const bodyHtml=prepareImportedPresentation(post.bodyHtml,post.source&&post.sourceId?{source:post.source,sourceId:post.sourceId}:undefined);
+  const bodyHtml=prepareImportedPresentation(await prepareUrlLinkCards(post.bodyHtml,posts),post.source&&post.sourceId?{source:post.source,sourceId:post.sourceId}:undefined);
   const presentation=`<style>${IMPORTED_PRESENTATION_CSS}${bodyHtml.includes('data-engine-diagram')?ENGINE_DIAGRAM_CSS:''}</style>${bodyHtml.includes('data-engine-diagram')?`<script>${ENGINE_DIAGRAM_BOOTSTRAP}</script>`:''}`;
   const images=(post.bodyHtml.match(/<img\b/giu)??[]).length;const photo=images>=8||(images>=4&&post.bodyText.length/images<400)||(images>=1&&images<=3&&post.bodyText.length<120);
   const cover=post.coverPath&&!post.bodyHtml.includes(post.coverPath)?`<img class="post-cover" src="${escapeHtml(post.coverPath)}" alt="${escapeHtml(post.coverAlt)}" decoding="async">`:'';
@@ -410,7 +411,7 @@ export function createNativePublicWorker(staticHandler: StaticHandler) {
         if(cursor===-1){cursor=0;controller.enqueue(encoder.encode(`<?xml version="1.0" encoding="utf-8"?><rss version="2.0"><channel><title>${xmlEscape(settings.title)}</title><description>${xmlEscape(settings.description)}</description><link>https://dwnc.me/</link><language>ko</language>`));return;}
         if(cursor>=selected.length){controller.enqueue(encoder.encode('</channel></rss>'));controller.close();return;}
         const post=selected[cursor++];let description=post.description;
-        if(settings.rssMode==='full'){const detail=await store.getPublishedBySequence(sequenceOf(post.path));if(detail)description=prepareImportedPresentation(detail.bodyHtml,detail.source&&detail.sourceId?{source:detail.source,sourceId:detail.sourceId}:undefined).replace(/(href|src)=(['"])\/(?!\/)/gu,'$1=$2https://dwnc.me/');}
+        if(settings.rssMode==='full'){const detail=await store.getPublishedBySequence(sequenceOf(post.path));if(detail)description=prepareImportedPresentation(await prepareUrlLinkCards(detail.bodyHtml,posts,fetch,false),detail.source&&detail.sourceId?{source:detail.source,sourceId:detail.sourceId}:undefined).replace(/(href|src)=(['"])\/(?!\/)/gu,'$1=$2https://dwnc.me/');}
         controller.enqueue(encoder.encode(`<item><title>${xmlEscape(post.title)}</title><description>${xmlEscape(description)}</description><link>https://dwnc.me${xmlEscape(post.path)}</link><guid isPermaLink="true">https://dwnc.me${xmlEscape(post.path)}</guid><pubDate>${new Date(post.publishedAt).toUTCString()}</pubDate><category>${xmlEscape(post.leafCategory.label)}</category></item>`));
       }});
       return withVersion(new Response(body,{headers:{'content-type':'application/xml; charset=utf-8','cache-control':'no-store'}}),env);

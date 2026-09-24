@@ -199,6 +199,24 @@ equal(saveResponse.status, 200);
 const adminSaved = (await saveResponse.json()).post;
 const publishResponse = await adminWorker.fetch(new Request(`https://admin.example.test/api/posts/${adminDraft.id}/publish`, { method: 'POST', headers: authHeaders, body: JSON.stringify({ expectedRevision: adminSaved.revision }) }), adminEnv);
 equal(publishResponse.status, 200); equal((await publishResponse.json()).post.globalSequence, 597);
+const cardResponse = await adminWorker.fetch(new Request('https://admin.example.test/api/link-preview', {method:'POST',headers:authHeaders,body:JSON.stringify({url:'https://dwnc.me/posts/597'})}),adminEnv);
+equal(cardResponse.status,200);ok((await cardResponse.json()).html.includes(defaultInput.title));
+equal((await adminWorker.fetch(new Request('https://admin.example.test/api/link-preview',{method:'POST',headers:{...authHeaders,origin:'https://evil.example'},body:JSON.stringify({url:'https://dwnc.me/posts/597'})}),adminEnv)).status,403);
+const cardPreview = await adminWorker.fetch(new Request(`https://admin.example.test/api/posts/${adminDraft.id}/preview`,{method:'POST',headers:authHeaders,body:JSON.stringify({input:{...defaultInput,bodyFormat:'html',bodyMarkdown:'<p>https://dwnc.me/posts/597</p>'}})}),adminEnv);
+equal(cardPreview.status,200);const cardPreviewBody=await cardPreview.json();ok(cardPreviewBody.editorHtml.includes('data-ke-type="opengraph"'));ok(cardPreviewBody.html.includes(defaultInput.title));
+// Loading a converted view must not update either saved publication or working copy.
+const originalCardRow=adminDatabase.sqlite.prepare('SELECT * FROM native_posts WHERE id=?').get(adminDraft.id);
+adminDatabase.sqlite.prepare('UPDATE native_posts SET body_html=? WHERE id=?').run('<p>https://dwnc.me/posts/597</p>',adminDraft.id);
+const beforeCardRead=adminDatabase.sqlite.prepare('SELECT * FROM native_posts WHERE id=?').get(adminDraft.id);
+const originalCardWorking=adminDatabase.sqlite.prepare('SELECT * FROM editor_working_copies WHERE post_id=?').get(adminDraft.id);
+adminDatabase.sqlite.prepare('UPDATE editor_working_copies SET body_html=? WHERE post_id=?').run('<p>https://dwnc.me/posts/597</p>',adminDraft.id);
+const beforeCardWorking=adminDatabase.sqlite.prepare('SELECT * FROM editor_working_copies WHERE post_id=?').all(adminDraft.id);
+const cardRead=await adminWorker.fetch(new Request(`https://admin.example.test/api/posts/${adminDraft.id}`,{headers:authHeaders}),adminEnv);
+equal(cardRead.status,200);const cardReadBody=(await cardRead.json()).post;ok(cardReadBody.editorHtml.includes('data-ke-type="opengraph"'));equal(cardReadBody.bodyHtml,'<p>https://dwnc.me/posts/597</p>');
+equal(JSON.stringify(adminDatabase.sqlite.prepare('SELECT * FROM native_posts WHERE id=?').get(adminDraft.id)),JSON.stringify(beforeCardRead));
+equal(JSON.stringify(adminDatabase.sqlite.prepare('SELECT * FROM editor_working_copies WHERE post_id=?').all(adminDraft.id)),JSON.stringify(beforeCardWorking));
+adminDatabase.sqlite.prepare('UPDATE native_posts SET body_html=? WHERE id=?').run(originalCardRow.body_html,adminDraft.id);
+adminDatabase.sqlite.prepare('UPDATE editor_working_copies SET body_html=? WHERE post_id=?').run(originalCardWorking.body_html,adminDraft.id);
 const imageBytes = Buffer.from('image-bytes');
 const imageSha = createHash('sha256').update(imageBytes).digest('hex');
 const beforeRejectedUploads = objects.size;
@@ -373,7 +391,7 @@ equal((await publicWorker(new Request('https://dwnc.me/posts/9999'), publicEnv, 
 
 const home = await (await publicWorker(new Request('https://dwnc.me/'), publicEnv, {})).text();
 ok(home.includes(defaultInput.title));
-equal((home.match(/<li><a href="\/posts\//gu) ?? []).length, 7);
+equal((home.match(/<article class="recent-card(?: recent-card--text)?"/gu) ?? []).length, 8);
 ok(home.includes('/media/tistory/1/cover.jpg')); ok(home.includes('대표')); ok(home.includes('id="home-page-script"'));
 const archive = await (await publicWorker(new Request('https://dwnc.me/archive'), publicEnv, {})).text();
 ok(archive.includes('<h2>2026</h2>')); ok(archive.includes('<h2>2025</h2>'));

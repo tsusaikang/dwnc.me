@@ -170,6 +170,12 @@ export const IMPORTED_PRESENTATION_CSS = String.raw`
 .prose figure[data-ke-type="opengraph"] .og-title{font-weight:700}
 .prose figure[data-ke-type="opengraph"] .og-desc{font-size:14px;line-height:1.5}
 .prose figure[data-ke-type="opengraph"] .og-host{font-size:12px;line-height:1.5}
+/* Native cards use spans as well as imported paragraph markup. Keep each
+   metadata field on its own line in public, preview, and editor surfaces. */
+:is(.prose,.html-editor) figure[data-ke-type="opengraph"] .og-text{display:block;min-width:0;overflow-wrap:anywhere}
+:is(.prose,.html-editor) figure[data-ke-type="opengraph"] :is(.og-title,.og-desc,.og-host){display:block;margin:0;white-space:normal;overflow-wrap:anywhere}
+:is(.prose,.html-editor) figure[data-ke-type="opengraph"] .og-desc:not(:empty){margin-top:8px}
+:is(.prose,.html-editor) figure[data-ke-type="opengraph"] .og-host{margin-top:8px;color:#777}
 .prose figure:is(.alignLeft,.alignCenter,.alignRight){max-width:100%}
 .prose figure.alignCenter{margin-inline:auto}.prose figure.alignLeft{margin-inline:0 auto}.prose figure.alignRight{margin-inline:auto 0}
 ` + BODY_TYPOGRAPHY_CSS + IMAGE_LAYOUT_CSS;

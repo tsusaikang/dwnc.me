@@ -9,6 +9,8 @@ import ts from 'typescript';
 import { NativePostStore } from '../src/lib/native-post-store.ts';
 import { createEditorDatabase, seedLegacy } from './fixtures/editor-database.mjs';
 
+const editorPort=Number(process.env.DWNC_EDITOR_FIXTURE_PORT||4322),publicPort=Number(process.env.DWNC_PUBLIC_FIXTURE_PORT||4324);
+const editorOrigin='http://127.0.0.1:'+editorPort,publicOrigin='http://127.0.0.1:'+publicPort;
 const database = await createEditorDatabase();
 const legacyImage = seedLegacy(database);
 const store = new NativePostStore(database);
@@ -101,7 +103,7 @@ let mode = 'normal';
 let fixtureAdmin = false;
 // Synthetic events exercise the real paste handler without OS clipboard access.
 // Only the browser's default insertion is emulated; app input/history/save handlers run normally.
-const pasteControls = `<aside style="position:fixed;left:12px;bottom:80px;z-index:1000;max-width:460px;padding:8px;background:#fff;border:1px solid #999;font:13px sans-serif"><details><summary>합성 붙여넣기 시험</summary><p>실제 OS 단축키 대신 키·클립보드 이벤트와 브라우저 기본 삽입을 합성합니다.</p><button type="button" data-fixture-paste="image">이미지 붙여넣기 시험</button><button type="button" data-fixture-paste="html">HTML소스 붙여넣기 시험</button><button type="button" data-fixture-paste="source-rich">HTML 문자 · 서식 포함</button><button type="button" data-fixture-paste="source-plain">HTML 문자 · 무서식</button><button type="button" data-fixture-paste="styled-rich">굵은 문장 · 서식 포함</button><button type="button" data-fixture-paste="styled-plain">굵은 문장 · 무서식</button><p id="fixturePasteStatus" role="status"></p></details></aside><script>
+const pasteControls = `<aside style="position:fixed;left:12px;bottom:80px;z-index:1000;max-width:460px;padding:8px;background:#fff;border:1px solid #999;font:13px sans-serif"><details><summary>합성 붙여넣기 시험</summary><p>실제 OS 단축키 대신 키·클립보드 이벤트와 브라우저 기본 삽입을 합성합니다.</p><button type="button" data-fixture-paste="image">이미지 붙여넣기 시험</button><button type="button" data-fixture-paste="html">HTML소스 붙여넣기 시험</button><button type="button" data-fixture-paste="source-rich">HTML 문자 · 서식 포함</button><button type="button" data-fixture-paste="source-plain">HTML 문자 · 무서식</button><button type="button" data-fixture-paste="styled-rich">굵은 문장 · 서식 포함</button><button type="button" data-fixture-paste="styled-plain">굵은 문장 · 무서식</button><button type="button" data-fixture-paste="cards-plain">URL 여러 문단 · 무서식</button><button type="button" data-fixture-paste="cards-rich">URL 여러 문단 · 서식 포함</button><button type="button" data-fixture-paste="one-plain">URL 하나 · 무서식</button><p id="fixturePasteStatus" role="status"></p></details></aside><script>
 document.querySelectorAll('[data-fixture-paste]').forEach(button=>{button.addEventListener('mousedown',event=>event.preventDefault());button.addEventListener('click',()=>{
  const editor=document.getElementById('bodyHtml'),status=document.getElementById('fixturePasteStatus');
  if(!editor||!editor.getClientRects().length){status.textContent='먼저 HTML 글을 열어 주세요.';return;}
@@ -111,6 +113,8 @@ document.querySelectorAll('[data-fixture-paste]').forEach(button=>{button.addEve
  const kind=button.dataset.fixturePaste,plainOnly=kind.endsWith('-plain'),compare=kind.includes('-'),transfer=new DataTransfer();
  if(kind==='image'){const bytes=Uint8Array.from(atob('${imageBytes.toString('base64')}'),value=>value.charCodeAt(0));transfer.items.add(new File([bytes],'synthetic-pasted.png',{type:'image/png'}));}
  else if(kind==='html')transfer.setData('text/plain','<h2>합성 HTML 제목</h2><p>붙여넣은 <strong>굵은 글씨</strong>와 <em>기울임</em>입니다.</p><ul><li>합성 목록 항목</li></ul>');
+ else if(kind==='one-plain')transfer.setData('text/plain','https://dwnc.me/posts/1');
+ else if(kind.startsWith('cards-')){transfer.setData('text/plain','앞 문단\\nhttps://dwnc.me/posts/1\\n참고 https://example.test/inline 문장\\nhttps://example.test/standalone\\n끝 문단');transfer.setData('text/html','<p>앞 문단</p><p><a href="https://dwnc.me/posts/1">https://dwnc.me/posts/1</a></p><p>참고 https://example.test/inline 문장</p><p>https://example.test/standalone</p><p>끝 문단</p>')}
  else if(kind.startsWith('source-')){const source='<p><strong>합성 HTML 문자</strong> https://example.test/plain-paste</p>\\n<p>둘째 문단</p>';transfer.setData('text/plain',source);transfer.setData('text/html','<pre>'+source.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')+'</pre>')}
  else {transfer.setData('text/plain','굵은 합성 문장 https://example.test/styled-paste\\n둘째 문단');transfer.setData('text/html','<p><strong>굵은 합성 문장</strong> https://example.test/styled-paste</p><p>둘째 문단</p>')}
  const keyboard={key:'v',code:'KeyV',metaKey:true,shiftKey:plainOnly,bubbles:true,cancelable:true};
@@ -121,13 +125,13 @@ document.querySelectorAll('[data-fixture-paste]').forEach(button=>{button.addEve
  status.textContent=compare?'합성 '+(plainOnly?'무서식':'서식 포함')+' 붙여넣기를 전달했습니다. 본문·실행 취소·저장을 확인하세요.':event.defaultPrevented?'합성 붙여넣기를 전달했습니다. 본문과 저장 상태를 확인하세요.':'붙여넣기 처리기가 이벤트를 받지 않았습니다.';
 })});</script>`;
 const counts = { saves: 0, publishes: 0 };
-const controls = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>합성 CMS 시험</title><style>body{font:18px sans-serif;max-width:900px;margin:40px auto}a{display:block;margin:18px}</style><h1>로컬 합성 CMS 시험</h1><a href="/" target="editor">관리자 열기</a><a href="http://127.0.0.1:4324/" target="public">실제 공개 처리기로 합성 방문자 화면 확인</a><a href="/__fixture/public" target="public-raw">저장된 공개 사본 확인</a>${[['fail','다음 저장 실패'],['auth','로그인 만료'],['conflict','다른 세션에서 수정'],['slow','다음 저장 3초 지연'],['slow-publish','다음 공개 반영 3초 지연'],['normal','정상으로 전환']].map(([key,label])=>`<a href="/__fixture/action/${key}">${label}</a>`).join('')}<a href="/__fixture/state">현재 합성 데이터</a></html>`;
+const controls = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>합성 CMS 시험</title><style>body{font:18px sans-serif;max-width:900px;margin:40px auto}a{display:block;margin:18px}</style><h1>로컬 합성 CMS 시험</h1><a href="/" target="editor">관리자 열기</a><a href="${publicOrigin}/" target="public">실제 공개 처리기로 합성 방문자 화면 확인</a><a href="/__fixture/public" target="public-raw">저장된 공개 사본 확인</a>${[['fail','다음 저장 실패'],['auth','로그인 만료'],['conflict','다른 세션에서 수정'],['slow','다음 저장 3초 지연'],['slow-publish','다음 공개 반영 3초 지연'],['normal','정상으로 전환']].map(([key,label])=>`<a href="/__fixture/action/${key}">${label}</a>`).join('')}<a href="/__fixture/state">현재 합성 데이터</a></html>`;
 const fontFiles = new Set(['NanumGothic.woff','NanumGothicBold.ttf','NanumMyeongjo.woff','NanumMyeongjoBold.woff','NanumBarunGothic.woff','NanumBarunGothicBold.woff'].map(name=>'/fonts/nanum/'+name));
 const server = createServer(async (incoming, outgoing) => {
   try {
-    const url = new URL(incoming.url, 'http://127.0.0.1:4322');
+    const url = new URL(incoming.url, editorOrigin);
     let response;
-    if (url.pathname === '/api/session' && incoming.headers.origin === 'http://127.0.0.1:4324') response = Response.json({authenticated: fixtureAdmin}, {headers:{'access-control-allow-origin':'http://127.0.0.1:4324','access-control-allow-credentials':'true','cache-control':'no-store','vary':'Origin'}});
+    if (url.pathname === '/api/session' && incoming.headers.origin === publicOrigin) response = Response.json({authenticated: fixtureAdmin}, {headers:{'access-control-allow-origin':publicOrigin,'access-control-allow-credentials':'true','cache-control':'no-store','vary':'Origin'}});
     else if (['/image-codecs/hdr-worker.js','/image-codecs/hdr-codec.js','/image-codecs/hdr-codec.wasm'].includes(url.pathname)) response = new Response(await readFile(new URL('../public'+url.pathname,import.meta.url)),{headers:{'content-type':url.pathname.endsWith('.wasm')?'application/wasm':'text/javascript; charset=utf-8','cache-control':'no-store'}});
     else if (fontFiles.has(url.pathname)) response = new Response(await readFile(new URL('../public'+url.pathname,import.meta.url)),{headers:{'content-type':url.pathname.endsWith('.ttf')?'font/ttf':'font/woff'}});
     else if (url.pathname === '/__fixture/image-upload') response = new Response(await (await import('./fixtures/image-upload-browser.mjs')).imageUploadBrowserHtml(), { headers: { 'content-type': 'text/html; charset=utf-8', 'content-security-policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
@@ -171,15 +175,15 @@ const server = createServer(async (incoming, outgoing) => {
     outgoing.end(Buffer.from(await response.arrayBuffer()));
   } catch { outgoing.writeHead(500); outgoing.end('Synthetic fixture error'); }
 });
-server.listen(4322, '127.0.0.1', () => console.log('Synthetic editor fixture: http://127.0.0.1:4322/__fixture'));
+server.listen(editorPort, '127.0.0.1', () => console.log('Synthetic editor fixture: '+editorOrigin+'/__fixture'));
 
 const publicCss = await readFile(new URL('../src/styles/global.css', import.meta.url), 'utf8');
 // Only this local scenario rewrites the browser origin and session endpoint.
 // Production accepts no localhost origin and the fixture calls no real admin API.
 const adminComponent = await readFile(new URL('../src/components/AdminQuickLinks.astro', import.meta.url), 'utf8');
-const adminMarkup = adminComponent.split('<script>')[0].replaceAll('https://admin.dwnc.me', 'http://127.0.0.1:4322');
+const adminMarkup = adminComponent.split('<script>')[0].replaceAll('https://admin.dwnc.me', editorOrigin);
 const adminCss = adminComponent.match(/<style is:global>([\s\S]*?)<\/style>/u)?.[1] ?? '';
-const adminBrowserSource = (await readFile(new URL('../src/lib/public-admin-links.ts', import.meta.url), 'utf8')).replaceAll('https://admin.dwnc.me','http://127.0.0.1:4322').replaceAll('https://dwnc.me','http://127.0.0.1:4324').replace(/^export /gmu,'');
+const adminBrowserSource = (await readFile(new URL('../src/lib/public-admin-links.ts', import.meta.url), 'utf8')).replaceAll('https://admin.dwnc.me',editorOrigin).replaceAll('https://dwnc.me',publicOrigin).replace(/^export /gmu,'');
 const adminBrowserScript = ts.transpileModule(adminBrowserSource,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText + '\nmountPublicAdminLinks();';
 const syntheticIndex = [{ title: staticArticle.title, description: staticArticle.description, path: '/posts/1', date: '2026.09.01', publishedAt: staticArticle.publishedAt, updatedAt: staticArticle.updatedAt, featured: true, cover: legacyImage, coverAlt: '합성 시험 이미지', categoryId: 'daily', categories: ['일상'], tags: [], categoryPath: ['일상'], leafCategory: { label: '일상', path: '/category/일상' }, searchText: '합성 기존 공개 글 방문자에게 보이는 원래 본문입니다.' }];
 const syntheticShell = (main = '') => `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>합성 공개 화면</title><meta name="description"><link rel="canonical"><meta property="og:title"><meta property="og:description"><meta property="og:url"><meta property="og:site_name"><meta property="og:type"><meta name="twitter:card"><link rel="stylesheet" href="/__fixture/global.css"></head><body><header class="site-header"><div class="site-header__inner"><a class="brand" href="/">dwnc.me</a><nav class="site-nav"></nav><p class="site-header__note">합성 기록</p></div></header><main id="main">${main}</main><dialog id="category-drawer"><nav></nav></dialog><footer class="site-footer"><div class="site-footer__inner shell"><p><a href="/"></a><span></span></p><div class="site-footer__links"><span></span></div></div></footer></body></html>`;
@@ -194,7 +198,7 @@ const publicHandler = createNativePublicWorker(async (request) => {
 });
 const publicServer = createServer(async (incoming, outgoing) => {
   try {
-    const url = new URL(incoming.url, 'http://127.0.0.1:4324');
+    const url = new URL(incoming.url, publicOrigin);
     let response;
     if (url.pathname === '/__fixture/global.css') response = new Response(publicCss, { headers: { 'content-type': 'text/css' } });
     else if (url.pathname === '/__fixture/admin-links.js') response = new Response(adminBrowserScript, {headers:{'content-type':'text/javascript','cache-control':'no-store'}});
@@ -203,11 +207,11 @@ const publicServer = createServer(async (incoming, outgoing) => {
       const buffers = []; for await (const chunk of incoming) buffers.push(chunk);
       const request = new Request(url, { method: incoming.method, headers: new Headers(incoming.headers), ...(!['GET', 'HEAD'].includes(incoming.method) ? { body: Buffer.concat(buffers) } : {}) });
       response = await publicHandler(request, env, { waitUntil() {} });
-      if (response.headers.get('content-type')?.includes('text/html')) response = new Response((await response.text()).replaceAll('https://admin.dwnc.me','http://127.0.0.1:4322'), {status:response.status,headers:response.headers});
+      if (response.headers.get('content-type')?.includes('text/html')) response = new Response((await response.text()).replaceAll('https://admin.dwnc.me',editorOrigin), {status:response.status,headers:response.headers});
     }
     outgoing.writeHead(response.status, Object.fromEntries(response.headers));
     outgoing.end(incoming.method === 'HEAD' ? undefined : Buffer.from(await response.arrayBuffer()));
   } catch { outgoing.writeHead(500); outgoing.end('Synthetic public fixture error'); }
 });
-publicServer.listen(4324, '127.0.0.1', () => console.log('Synthetic public fixture: http://127.0.0.1:4324/'));
+publicServer.listen(publicPort, '127.0.0.1', () => console.log('Synthetic public fixture: '+publicOrigin+'/'));
 for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => { server.close(); publicServer.close(); });
