@@ -81,7 +81,7 @@ try {
     assert.equal(response.headers.get('x-content-type-options'),'nosniff');
     assert.match(response.headers.get('content-security-policy'),/wasm-unsafe-eval/);
     assert.equal(await response.text(),method==='HEAD'?'':'synthetic codec bytes');
-    const outgoing=codecRequests.at(-1);assert.equal(outgoing.url,'https://dwnc.me/image-codecs/'+name);assert.equal(outgoing.options.method,method);assert.equal(outgoing.options.headers,undefined);assert.equal(outgoing.options.redirect,'error');
+    const outgoing=codecRequests.at(-1);assert.equal(outgoing.url,'https://dwnc.me/image-codecs/'+name);assert.equal(outgoing.options.method,method);assert.equal(outgoing.options.headers,undefined);assert.equal(outgoing.options.redirect,'manual');
   }
   const requested=codecRequests.length;
   assert.equal((await request('/image-codecs/hdr-codec.wasm?url=https://evil.test')).status,403);

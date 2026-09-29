@@ -102,7 +102,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
     // A service binding avoids same-zone Worker-to-Worker public fetch restrictions.
     // Do not forward cookies, Access assertions, request headers, or redirects.
     let response: Response;
-    try { response = await env.PUBLIC_SITE.fetch(`https://dwnc.me${url.pathname}`, { method: request.method, redirect: 'error', signal: AbortSignal.timeout(15000) }); }
+    try { response = await env.PUBLIC_SITE.fetch(`https://dwnc.me${url.pathname}`, { method: request.method, redirect: 'manual', signal: AbortSignal.timeout(15000) }); }
     catch { return json({ error: '사진 처리 도구를 불러오지 못했습니다.', code: 'codec_upstream_unavailable' }, 502); }
     const upstreamMime = response.headers.get('content-type')?.split(';', 1)[0].toLowerCase();
     const compatibleMime = upstreamMime === codecMime || codecMime === 'text/javascript' && upstreamMime === 'application/javascript';
@@ -121,7 +121,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
   if (FONT_PATHS.has(url.pathname) && ['GET','HEAD'].includes(request.method)) {
     // Fonts are published application assets. Never forward the author's Access
     // assertion, cookies, origin, or any request-controlled URL/header.
-    const response = await fetch(`https://dwnc.me${url.pathname}`,{method:request.method,redirect:'error',signal:AbortSignal.timeout(10000)});
+    const response = await fetch(`https://dwnc.me${url.pathname}`,{method:request.method,redirect:'manual',signal:AbortSignal.timeout(10000)});
     if (!response.ok) { try { await response.body?.cancel(); } catch {} return json({error:'글꼴을 불러오지 못했습니다.'},502); }
     const headers = new Headers({'content-type':url.pathname.endsWith('.ttf')?'font/ttf':'font/woff','cache-control':'private, max-age=3600','x-content-type-options':'nosniff'});
     return new Response(request.method==='HEAD'?null:response.body,{headers});
