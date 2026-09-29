@@ -51,6 +51,15 @@ const editorCsp=response.headers.get('content-security-policy');
 assert.match(editorCsp,/script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'/);
 assert.match(editorCsp,/worker-src 'self'/);
 assert.equal(editorCsp.includes("'unsafe-eval'"),false);
+response=await request('/image-processing-check');
+assert.equal(response.status,200);
+assert.equal(response.headers.get('content-security-policy'),editorCsp);
+const checkHtml=await response.text();
+assert.match(checkHtml,/사진을 서버로 전송하거나 글을 저장/);
+assert.match(checkHtml,/await normalizeUploadImage\(file\)/);
+assert.equal(checkHtml.includes('/api/'),false);
+assert.equal((await request('/image-processing-check',{'cf-access-jwt-assertion':''})).status,401);
+assert.deepEqual(db.sqlite.prepare('SELECT * FROM editor_working_copies ORDER BY post_id').all(),before);
 const originalFetch=globalThis.fetch, codecRequests=[];
 let codecStatus=200,codecMimeOverride=null,codecThrows=false;
 globalThis.fetch=async(url,options)=>{

@@ -8,6 +8,7 @@ import { serveSiteMedia } from './lib/native-public-worker.ts';
 import { prepareImportedPresentation, IMPORTED_PRESENTATION_CSS, ENGINE_DIAGRAM_CSS } from './lib/imported-presentation.ts';
 import { verifyAccessIdentity, type AccessEnvironment } from './lib/access-auth.ts';
 import { adminHtml } from './lib/admin-ui.ts';
+import { imageProcessingCheckHtml } from './lib/admin-image-processing-check.ts';
 import edgeRedirectManifest from '../docs/EDGE_REDIRECTS_V1.json' with { type: 'json' };
 import mediaManifest from './data/public-media-r2-v1.json' with { type: 'json' };
 import publicRequestSurface from './data/public-request-surface-v1.json' with { type: 'json' };
@@ -89,6 +90,9 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
   const store = new NativePostStore(env.NATIVE_DB);
   if (request.method === 'GET' && url.pathname === '/') {
     return new Response(adminHtml(identityEmail), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
+  }
+  if (request.method === 'GET' && url.pathname === '/image-processing-check') {
+    return new Response(imageProcessingCheckHtml(), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'content-security-policy': "default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'self'" } });
   }
   const codecMime = IMAGE_CODEC_PATHS.get(url.pathname);
   if (codecMime) {

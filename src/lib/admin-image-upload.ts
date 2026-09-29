@@ -44,9 +44,9 @@ async function uploadJpegWithColor(file,bytes){
     worker=new Worker('/image-codecs/hdr-worker.js',{type:'module'});
     const result=await new Promise((resolve,reject)=>{
       timer=setTimeout(()=>reject(new Error('codec timeout')),120000);
-      worker.onerror=()=>reject(new Error('codec load failed'));
+      worker.onerror=(event={})=>reject(new Error('codec load failed: '+(event.message||'worker module load failed')+(event.filename?' ['+event.filename+':'+event.lineno+']':'')));
       worker.onmessageerror=()=>reject(new Error('codec message failed'));
-      worker.onmessage=event=>event.data?.ok===true?resolve(event.data):reject(new Error('codec failed'));
+      worker.onmessage=event=>event.data?.ok===true?resolve(event.data):reject(new Error('codec failed: '+(event.data?.error||'unknown worker error')));
       worker.postMessage({buffer:bytes.buffer,maxEdge:uploadImageMaxEdge,quality:Math.round(uploadJpegQuality*100)},[bytes.buffer]);
     });
     const meta=result.metadata,buffer=result.buffer;
@@ -55,7 +55,7 @@ async function uploadJpegWithColor(file,bytes){
     if(Math.max(meta.inputWidth,meta.inputHeight)<=uploadImageMaxEdge&&buffer.byteLength>=file.size)return file;
     const stem=(file.name||'image').replace(/\.[^.]*$/u,'')||'image';
     return new File([buffer],stem+'.jpg',{type:'image/jpeg',lastModified:file.lastModified});
-  }catch{throw uploadImageError('HDR와 색상을 보존하는 사진 처리를 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.');}
+  }catch(cause){const error=uploadImageError('HDR와 색상을 보존하는 사진 처리를 완료하지 못했습니다. 잠시 후 다시 시도해 주세요.');error.cause=cause;throw error;}
   finally{clearTimeout(timer);worker?.terminate()}
 }
 async function normalizeUploadImage(file){
