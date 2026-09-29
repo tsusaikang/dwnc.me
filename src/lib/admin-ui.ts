@@ -118,7 +118,7 @@ function clearIssue(){blocked=null;retryAction=null;$('saveIssue').hidden=true;r
 function showIssue(error,retry){
   clearTimeout(timer);blocked=error.code==='revision_conflict'?'conflict':error.code||'request_failed';retryAction=retry;$('saveIssue').hidden=false;
   $('issueMessage').textContent=blocked==='conflict'?'다른 탭이나 세션에서 먼저 저장했습니다. 현재 입력 대신 최신 작업본을 불러오거나, 현재 작성본을 유지한 뒤 직접 저장할 수 있습니다.':error.message;
-  const conflict=blocked==='conflict';$('loadLatest').hidden=!conflict;$('keepLocal').hidden=!conflict;$('retrySave').hidden=conflict||blocked==='authentication_required';$('retrySave').textContent='다시 시도';$('loginLink').hidden=conflict;$('resumeLogin').hidden=conflict;renderSaveState();
+  const conflict=blocked==='conflict';$('loadLatest').hidden=!conflict;$('keepLocal').hidden=!conflict;$('retrySave').hidden=conflict||blocked==='authentication_required';$('retrySave').textContent='다시 시도';$('loginLink').hidden=conflict||blocked==='image_processing_failed';$('resumeLogin').hidden=conflict||blocked==='image_processing_failed';renderSaveState();
 }
 async function action(work){if(busy)return;setBusy(true);try{await work()}catch(error){showIssue(error,work)}finally{setBusy(false);renderSaveState()}}
 function values(){return{kind:$('contentKind').value||current?.kind||'post',title:$('title').value,description:$('description').value,bodyFormat:'html',bodyMarkdown:$('bodyHtml').innerHTML,categoryId:$('category').value,tags:$('tags').value.split(',').map(v=>v.trim()).filter(Boolean),coverMediaId:current?.coverMediaId||null,coverPath:current?.coverPath??null,coverAlt:current?.coverAlt||''}}

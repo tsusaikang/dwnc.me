@@ -18,6 +18,7 @@ class CodecWorker {
 
 const context=vm.createContext({Uint8Array,ArrayBuffer,DataView,Math,Number,String,Error,Promise,File,Blob,Worker:CodecWorker,clearTimeout,setTimeout:(callback,delay)=>setTimeout(callback,workerMode==='timeout'&&delay===120000?0:delay),createImageBitmap:async(_file,options)=>{assert.equal(options.imageOrientation,'from-image');decodes++;return{...dimensions,close(){closed++}}},document:{createElement(tag){assert.equal(tag,'canvas');const c={width:0,height:0,getContext(){return{clearRect(){},drawImage(){draws++},getImageData(){return{data:Uint8Array.of(0,0,0,alpha)}}}},toBlob(callback,mime,quality){assert.equal(quality,0.8);callback(encodeFails?null:new Blob([new Uint8Array(encodeBytes)],{type:mime}))}};canvases.push(c);return c}}});
 vm.runInContext(imageUploadScript,context);
+assert.equal(context.uploadImageError('처리 실패').code,'image_processing_failed');
 const inspect=(bytes,mime)=>context.inspectUploadImage(Uint8Array.from(bytes),mime);
 const chunk=(type,data=Buffer.alloc(0))=>{const b=Buffer.alloc(data.length+12);b.writeUInt32BE(data.length);b.write(type,4);data.copy(b,8);return b};
 const png=(extra=[],depth=8,color=6)=>{const ihdr=Buffer.alloc(13);ihdr.writeUInt32BE(2);ihdr.writeUInt32BE(2,4);ihdr[8]=depth;ihdr[9]=color;return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',ihdr),...extra,chunk('IDAT',Buffer.alloc(2000)),chunk('IEND')])};

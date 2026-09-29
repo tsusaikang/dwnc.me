@@ -29,6 +29,12 @@ Processing files sequentially avoids multiple large WASM heaps.
   recognized using upstream ICC handling; the ICC transfer curves must also match
   sRGB (parametric and sampled curves are checked). All original ICC APP2 chunks and EXIF
   orientation are preserved; unrelated camera/debug metadata is not copied.
+- A legacy HDR XMP declaration can survive an exporter that removed the actual
+  gain map. The worker strips only that APP1 segment, in memory, when strict JPEG
+  parsing proves the file is a complete single codestream ending exactly at EOI,
+  without MPF, ISO gain-map metadata or extended XMP. ICC, EXIF and pixel bytes are
+  untouched before the normal SDR path. Appended images, trailing bytes, truncated
+  JPEGs and other HDR contracts are never flattened by this exception.
 - HDR: Google libultrahdr reconstructs the original into linear half-float RGB.
   HDR and SDR receive the same resize filter and pixel-center mapping. API-3
   regenerates the gain map from that resized HDR target and the compressed SDR
@@ -88,3 +94,7 @@ non-sRGB ICC transfer-curve rejection were checked separately.
 
 The editor's ordinary regression suite validates worker transfer, timeout,
 cleanup, no silent SDR fallback, and shared attachment/clipboard integration.
+
+`node scripts/test-jpeg-metadata.mjs` generates non-private JPEGs and exercises
+baseline/progressive scans, thumbnail marker bytes, orphan XMP removal, preserved
+ICC output through the shipped WASM, and rejection of possible HDR payloads.

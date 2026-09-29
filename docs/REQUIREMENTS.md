@@ -1,6 +1,6 @@
 # dwnc.me 현재 요구사항
 
-최종 갱신: 2026-09-25 KST
+최종 갱신: 2026-09-29 KST
 
 현재 유효한 미완료 요구사항만 관리한다. 완료 항목·완료 계획은 [`REQUIREMENTS_ARCHIVE.md`](REQUIREMENTS_ARCHIVE.md)로 옮기며 평소에는 읽지 않는다. 현재 운영 상태는 [`PROJECT_STATE.md`](../PROJECT_STATE.md), 미디어 기술 규칙은 [`MEDIA_SERVING_CONTRACT.md`](MEDIA_SERVING_CONTRACT.md)가 정본이다.
 
@@ -59,6 +59,20 @@
 실행 근거는 [`PROJECT_STATE.md`](../PROJECT_STATE.md), 결함 근거는 [운영자 상황별 점검](운영자_상황별_대응_점검_20260909_223042.md)을 필요한 부분만 조회한다. 과거 완료 이력은 현재판에 반복하지 않는다.
 
 ## 요구사항 원장
+
+### `DWNC-CORE-034` — 실제 HDR 부가 데이터 없는 JPEG 업로드 실패 보완
+- **Status:** `in-progress`
+- **Updated-at:** `2026-09-29`
+- **Plans:** `PLAN-09`
+- **Priority:** `P1`
+- **Acceptance:**
+  - 정상 JPEG 주사진에 legacy HDR 선언만 남고 부가 영상이 없는 사례를 구분해 긴 변2560·품질80·ICC 색상 보존으로 처리한다.
+  - 실제 HDR 데이터가 있거나 손상·지원 불가 HDR인 경우를 SDR로 조용히 변환하지 않는다. 원본 파일과 작성 중 내용을 보존한다.
+  - 사진 처리 실패에서는 불필요한 로그인 복구 버튼을 표시하지 않고 인증·연결 오류의 기존 복구 동작을 유지한다.
+  - 신고 원본의 로컬 재현·수정 후 성공, 관련 회귀 검사와 양쪽 운영 배포를 확인한다.
+- **Evidence:**
+  - 2026-09-29 사용자가 사진 선택 후 HDR/색상 처리 실패 화면을 보고했다.
+
 
 ### `DWNC-CORE-012` — 운영자 점검에서 발견한 기존 기능 결함 보완
 - **Status:** `planned`

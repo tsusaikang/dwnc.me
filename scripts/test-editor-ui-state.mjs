@@ -393,6 +393,19 @@ for(const rejected of ['https://outside.test'+selectedPhoto.src,'/media/native/1
  assert.equal(runInContext('current.coverPath',context),ownedCover);
 }
 selectedPhoto.src=ownedCover;
+// Local image conversion failures cannot be repaired by logging in. Keep the
+// current text and retry action while hiding only the irrelevant login controls.
+const beforeImageFailure=field('bodyHtml').innerHTML;
+runInContext("showIssue(uploadImageError('사진 처리 실패'),()=>{})",context);
+assert.equal(field('loginLink').hidden,true);
+assert.equal(field('resumeLogin').hidden,true);
+assert.equal(field('retrySave').hidden,false);
+assert.equal(field('bodyHtml').innerHTML,beforeImageFailure);
+runInContext("showIssue(requestError('연결 실패','connection_failed'),()=>{})",context);
+assert.equal(field('loginLink').hidden,false);
+assert.equal(field('resumeLogin').hidden,false);
+assert.equal(field('retrySave').hidden,false);
+runInContext('clearIssue()',context);
 selectedPhoto.alt='로그인 복구 후 설명';
 failure=401;
 await field('setSelectedCover').onclick();

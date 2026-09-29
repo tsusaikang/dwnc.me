@@ -2,7 +2,7 @@
 // Animation detection uses container records, never a first-frame canvas guess.
 export const imageUploadScript = String.raw`
 const uploadImageMaxBytes=25*1024*1024,uploadImageMaxEdge=2560,uploadJpegQuality=0.8;
-function uploadImageError(message){return new Error(message+' 원본 파일은 바뀌지 않았으며 이 사진은 업로드하지 않았습니다.')}
+function uploadImageError(message){const error=new Error(message+' 원본 파일은 바뀌지 않았으며 이 사진은 업로드하지 않았습니다.');error.code='image_processing_failed';return error}
 function inspectUploadImage(bytes,mime){
   const view=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),text=(at,n)=>String.fromCharCode(...bytes.subarray(at,at+n)),bad=()=>{throw uploadImageError('사진 형식이나 파일 내용이 올바르지 않습니다.')};
   if(mime==='image/jpeg'){if(bytes.length<4||bytes[0]!==255||bytes[1]!==216||bytes[2]!==255)bad();return{preserve:false}}
