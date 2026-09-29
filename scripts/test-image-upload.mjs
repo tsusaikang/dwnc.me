@@ -44,7 +44,7 @@ const limit=context.uploadImageDimensions(5000,4000);assert.equal(Math.max(limit
 alpha=255;dimensions={width:2000,height:1500};encodeBytes=10000;output=await context.normalizeUploadImage(source);assert.equal(output,source,'Do not enlarge an efficient small PNG');
 source=file(Buffer.concat([Buffer.from([255,216,255]),Buffer.alloc(2000)]),'photo.jpeg','image/jpeg');output=await context.normalizeUploadImage(source);assert.equal(output,source);
 dimensions={width:6000,height:4000};output=await context.normalizeUploadImage(source);assert.notEqual(output,source,'Pixel limit still applies when resizing produces more bytes');assert.equal(output.type,'image/jpeg');
-encodeFails=true;await assert.rejects(context.normalizeUploadImage(source),/HDR와 색상.*업로드하지 않았습니다/);encodeFails=false;
+encodeFails=true;await assert.rejects(context.normalizeUploadImage(source),error=>{assert.match(error.message,/HDR와 색상.*업로드하지 않았습니다/);assert.equal(error.cause.message,'codec failed: synthetic codec failure');assert.equal(error.message.includes('synthetic'),false);return true});encodeFails=false;
 encodeFails=true;await assert.rejects(context.normalizeUploadImage(file()),/업로드하지 않았습니다/);encodeFails=false;
 for(const mode of ['constructor','error','messageerror','timeout','oversize']){workerMode=mode;await assert.rejects(context.normalizeUploadImage(source),/HDR와 색상.*업로드하지 않았습니다/)}workerMode='normal';
 assert.equal(workersCreated,workersTerminated,'Every created worker is terminated after success or failure');assert.ok(workerRequests>0);assert.ok(source.size>0,'Transferring a read buffer never mutates the original File');

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { createEditorDatabase, seedLegacy } from './fixtures/editor-database.mjs';
 import { NativePostStore } from '../src/lib/native-post-store.ts';
@@ -60,14 +61,18 @@ assert.match(checkHtml,/await normalizeUploadImage\(file\)/);
 assert.equal(checkHtml.includes('/api/'),false);
 assert.equal((await request('/image-processing-check',{'cf-access-jwt-assertion':''})).status,401);
 assert.deepEqual(db.sqlite.prepare('SELECT * FROM editor_working_copies ORDER BY post_id').all(),before);
+const adminConfig=JSON.parse(await readFile(new URL('../wrangler.admin.jsonc',import.meta.url),'utf8'));
+assert.deepEqual(adminConfig.env.production.services,[{binding:'PUBLIC_SITE',service:'dwnc-me'}]);
+assert.deepEqual(adminConfig.env.staging.services,[{binding:'PUBLIC_SITE',service:'dwnc-me-staging'}]);
+response=await request('/image-codecs/hdr-worker.js');assert.equal(response.status,502);assert.equal((await response.json()).code,'codec_upstream_unavailable');
 const originalFetch=globalThis.fetch, codecRequests=[];
 let codecStatus=200,codecMimeOverride=null,codecThrows=false;
-globalThis.fetch=async(url,options)=>{
+env.PUBLIC_SITE={fetch:async(url,options)=>{
   codecRequests.push({url,options});
   if(codecThrows)throw new Error('synthetic upstream unavailable');
   const name=new URL(url).pathname.split('/').at(-1);
   return new Response(options.method==='HEAD'?null:'synthetic codec bytes',{status:codecStatus,headers:{'content-type':codecMimeOverride??imageCodecAssets[name],'set-cookie':'must-not-forward=1','access-control-allow-origin':'*'}});
-};
+}};
 try {
   for(const [name,mime] of Object.entries(imageCodecAssets))for(const method of ['GET','HEAD']){
     response=await request('/image-codecs/'+name,{cookie:'private-cookie',authorization:'private-token',origin:'https://admin.dwnc.me'},{method});
@@ -87,7 +92,7 @@ try {
   assert.equal(codecRequests.length,requested);
   codecStatus=404;assert.equal((await request('/image-codecs/hdr-codec.wasm')).status,502);
   codecStatus=200;codecMimeOverride='text/html';assert.equal((await request('/image-codecs/hdr-codec.js')).status,502);
-  codecThrows=true;assert.equal((await request('/image-codecs/hdr-worker.js')).status,502);
+  codecThrows=true;response=await request('/image-codecs/hdr-worker.js');assert.equal(response.status,502);assert.equal((await response.json()).code,'codec_upstream_unavailable');
 }finally{globalThis.fetch=originalFetch;}
 assert.deepEqual(db.sqlite.prepare('SELECT * FROM editor_working_copies ORDER BY post_id').all(),before);
 console.log(JSON.stringify({suite:'admin-session',status:'PASS',behavior:'strict authenticated boolean only, exact credentialed CORS, fail closed, canonical working-copy resolution, no writes'}));

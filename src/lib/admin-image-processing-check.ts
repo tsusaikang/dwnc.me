@@ -16,7 +16,7 @@ button.addEventListener('click',async()=>{
   button.disabled=true;output.textContent='';
   try{
     for(const asset of ['hdr-worker.js','jpeg-metadata.js','hdr-codec.js','hdr-codec.wasm']){
-      try{const response=await fetch('/image-codecs/'+asset,{cache:'no-store'});const bytes=await response.arrayBuffer();report({asset,status:response.status,type:response.headers.get('content-type'),bytes:bytes.byteLength,redirected:response.redirected});}
+      try{const response=await fetch('/image-codecs/'+asset,{cache:'no-store'});const bytes=await response.arrayBuffer();report({asset,status:response.status,type:response.headers.get('content-type'),bytes:bytes.byteLength,redirected:response.redirected,detail:response.ok?undefined:new TextDecoder().decode(bytes).slice(0,500)});}
       catch(error){report({asset,error:error.message});}
     }
     const started=performance.now(),result=await normalizeUploadImage(file);

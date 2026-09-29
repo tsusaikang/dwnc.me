@@ -17,6 +17,7 @@
   "env": {
     "staging": {
       "name": "dwnc-me-admin-staging",
+      "services": [{ "binding": "PUBLIC_SITE", "service": "dwnc-me-staging" }],
       "workers_dev": false,
       "preview_urls": false,
       "r2_buckets": [
@@ -29,6 +30,7 @@
     },
     "production": {
       "name": "dwnc-me-admin",
+      "services": [{ "binding": "PUBLIC_SITE", "service": "dwnc-me" }],
       "workers_dev": false,
       "preview_urls": false,
       "vars": {

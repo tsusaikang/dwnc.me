@@ -22,6 +22,7 @@ import { NativePostStore } from './lib/native-post-store.ts';
 import { CmsConfigurationStore } from './lib/cms-configuration.ts';
 
 interface AdminEnvironment extends AccessEnvironment {
+  PUBLIC_SITE: Fetcher;
   MEDIA_BUCKET: R2Bucket;
   NATIVE_DB: D1Database;
   NATIVE_MEDIA_BUCKET: R2Bucket;
@@ -97,16 +98,17 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
   const codecMime = IMAGE_CODEC_PATHS.get(url.pathname);
   if (codecMime) {
     if (!['GET', 'HEAD'].includes(request.method)) return new Response(null, { status: 405, headers: { allow: 'GET, HEAD', 'cache-control': 'no-store' } });
-    // Only reviewed public code and licence assets cross this fixed origin.
+    // Only reviewed public code and licence assets cross this fixed service binding.
+    // A service binding avoids same-zone Worker-to-Worker public fetch restrictions.
     // Do not forward cookies, Access assertions, request headers, or redirects.
     let response: Response;
-    try { response = await fetch(`https://dwnc.me${url.pathname}`, { method: request.method, redirect: 'error', signal: AbortSignal.timeout(15000) }); }
-    catch { return json({ error: '사진 처리 도구를 불러오지 못했습니다.' }, 502); }
+    try { response = await env.PUBLIC_SITE.fetch(`https://dwnc.me${url.pathname}`, { method: request.method, redirect: 'error', signal: AbortSignal.timeout(15000) }); }
+    catch { return json({ error: '사진 처리 도구를 불러오지 못했습니다.', code: 'codec_upstream_unavailable' }, 502); }
     const upstreamMime = response.headers.get('content-type')?.split(';', 1)[0].toLowerCase();
     const compatibleMime = upstreamMime === codecMime || codecMime === 'text/javascript' && upstreamMime === 'application/javascript';
     if (response.status !== 200 || !compatibleMime) {
       try { await response.body?.cancel(); } catch {}
-      return json({ error: '사진 처리 도구를 불러오지 못했습니다.' }, 502);
+      return json({ error: '사진 처리 도구를 불러오지 못했습니다.', code: response.status !== 200 ? 'codec_upstream_status' : 'codec_upstream_type', upstreamStatus: response.status }, 502);
     }
     const headers = new Headers({
       'content-type': codecMime,
