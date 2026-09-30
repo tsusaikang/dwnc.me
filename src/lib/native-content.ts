@@ -216,6 +216,7 @@ export function sanitizeNativeHtml(value: string) {
     allowedClasses: { figure: ['imageblock', 'alignLeft', 'alignCenter', 'alignRight'], a: ['og-image'], div: ['og-image', 'og-text', ...IMAGE_LAYOUT_CLASSES], p: ['og-title', 'og-desc', 'og-host'], span: ['og-image', 'og-text', 'og-title', 'og-desc', 'og-host'] },
     allowedStyles: {
       '*': {
+        '--dwnc-image-columns': [/^\d+(?:\.\d+)?fr(?: \d+(?:\.\d+)?fr){1,2}$/u],
         '--dwnc-original-layout-width': [/^\d{1,4}px$/u],
         color: [COLOR_STYLE], 'background-color': [COLOR_STYLE],
         'font-size': [SIZE_STYLE, /^var\(--dwnc-text-size-[1-7]\)(?:\s*!important)?$/u],

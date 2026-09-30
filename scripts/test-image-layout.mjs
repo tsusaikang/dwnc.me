@@ -4,7 +4,7 @@ import { imageLayoutScript } from '../src/lib/admin-image-layout.ts';
 import { load } from 'cheerio';
 import { NativePostStore } from '../src/lib/native-post-store.ts';
 import { sanitizeNativeHtml, sanitizeLegacyHtml } from '../src/lib/native-content.ts';
-import { IMAGE_LAYOUT_CSS } from '../src/lib/image-layout.ts';
+import { IMAGE_LAYOUT_CSS, IMAGE_LAYOUT_DOM_SCRIPT } from '../src/lib/image-layout.ts';
 import { adminHtml } from '../src/lib/admin-ui.ts';
 import { createEditorDatabase, seedLegacy } from './fixtures/editor-database.mjs';
 const media = '/media/native/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.png';
@@ -45,7 +45,7 @@ assert.ok(IMAGE_LAYOUT_CSS.includes('repeat(3,minmax(0,1fr))'));
 assert.ok(adminHtml('fixture@example.test').includes('id="openImageLayout"'));
 const availabilitySource=imageLayoutScript.slice(imageLayoutScript.indexOf('function layoutSizeAvailability'),imageLayoutScript.indexOf('function updateLayoutSizes'));
 const context=vm.createContext({window:{innerWidth:1400},getComputedStyle:()=>({getPropertyValue:()=>''}),$:()=>({getBoundingClientRect:()=>({width:860})})});
-vm.runInContext(availabilitySource,context);
+vm.runInContext(IMAGE_LAYOUT_DOM_SCRIPT,context);vm.runInContext(availabilitySource,context);
 const image=(width,complete=true)=>({naturalWidth:width,complete});
 for(const [width,columns,paragraph,full] of [[160,1,false,false],[720,1,true,false],[1800,1,true,true],[160,2,false,false],[400,2,true,false],[600,2,true,true],[250,3,true,false]]) {
  const result=context.layoutSizeAvailability(Array(columns).fill(image(width)),columns);
@@ -60,3 +60,15 @@ assert.equal(context.layoutSizeAvailability([image(400)],1).paragraph,false,'Mob
 assert.ok(IMAGE_LAYOUT_CSS.includes('--dwnc-current-layout-width'));
 assert.ok(sanitizeNativeHtml('<div class="dwnc-image-layout dwnc-image-original" style="--dwnc-original-layout-width:1000px">photo</div>').includes('--dwnc-original-layout-width:1000px'));
 console.log(JSON.stringify({suite:'image-layout',status:'PASS',behavior:'27 layout combinations, native/legacy sanitizer round trips, captions and links preserved, bounded classes, original-width caps, no-upscale size availability'}));
+
+const portrait={naturalWidth:600,naturalHeight:800,complete:true},landscape={naturalWidth:1000,naturalHeight:600,complete:true},square={naturalWidth:800,naturalHeight:800,complete:true};
+let columns='',cap='';const row={style:{setProperty(key,value){if(key==='--dwnc-image-columns')columns=value;if(key==='--dwnc-original-layout-width')cap=value},removeProperty(){}}};
+context.refreshImageGroupGeometry(row,[portrait,landscape]);assert.equal(columns,'0.750000fr 1.666667fr');assert.equal(cap,'1200px');
+assert.equal(context.layoutSizeAvailability([portrait,landscape],2).full,true,'Ratio-weighted sizing uses the common native height, not equal per-cell widths');
+context.refreshImageGroupGeometry(row,[{naturalWidth:150,naturalHeight:200,complete:true},landscape]);assert.equal(cap,'495px');assert.equal(context.layoutSizeAvailability([{naturalWidth:150,naturalHeight:200,complete:true},landscape],2).paragraph,false);
+context.refreshImageGroupGeometry(row,[portrait,landscape,square]);assert.equal(columns,'0.750000fr 1.666667fr 1.000000fr');
+for(const sanitize of [sanitizeNativeHtml,sanitizeLegacyHtml]){const saved=sanitize('<div class="dwnc-image-layout dwnc-image-cols-2" style="--dwnc-image-columns:0.750000fr 1.666667fr;--dwnc-original-layout-width:1200px">'+item.repeat(2)+'<div class="dwnc-image-caption"><em>공통 설명</em></div></div>');assert.ok(saved.includes('--dwnc-image-columns:0.750000fr 1.666667fr'));assert.equal(load(saved)('.dwnc-image-caption em').text(),'공통 설명');assert.equal(sanitize(saved),saved)}
+
+// Public rows measure the actual article column, excluding the desktop nav rail.
+assert.ok(IMAGE_LAYOUT_CSS.includes('.article-page{container-type:inline-size}'));
+assert.ok(IMAGE_LAYOUT_CSS.includes('--image-layout-full-width:min(1200px,calc(100cqw - 44px))'));

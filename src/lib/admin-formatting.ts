@@ -38,7 +38,7 @@ function restoreFormatRange(){const body=$('bodyHtml');body.focus({preventScroll
 // captions. Read the visible caption alignment without modifying saved HTML.
 function captionFormatAlignment(range){
   const ancestor=range.commonAncestorContainer,element=ancestor.nodeType===1?ancestor:ancestor.parentElement;
-  if(!element?.closest('figcaption,.se-caption,.se_mediaCaption'))return null;
+  if(!element?.closest('figcaption,.se-caption,.se_mediaCaption,.dwnc-image-caption'))return null;
   let node=range.startContainer;if(node.nodeType===1)node=node.childNodes[range.startOffset]||node;
   const selected=node.nodeType===1?node:node.parentElement,style=window.getComputedStyle(selected),align=style.textAlign;
   return align==='start'?(style.direction==='rtl'?'right':'left'):align==='end'?(style.direction==='rtl'?'left':'right'):align;

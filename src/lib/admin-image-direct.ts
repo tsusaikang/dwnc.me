@@ -81,18 +81,20 @@ function directPhotoUnit(image){
   const body=$('bodyHtml');
   if(!image||!body.contains(image)||image.tagName!=='IMG'||image.closest('[data-ke-type="opengraph"],.se_component.se_oglink,.se-component.se-oglink'))return null;
   const group=image.closest('.dwnc-image-layout');
-  if(group){const items=Array.from(group.children),item=image.closest('.dwnc-image-item');if(!item||item.parentElement!==group||items.some(node=>!node.matches('.dwnc-image-item')||node.querySelectorAll('img').length!==1))return null;return{image,group,item,root:group}}
+  if(group){const items=imageLayoutItems(group),item=image.closest('.dwnc-image-item');if(!item||item.parentElement!==group||Array.from(group.children).some(node=>!node.matches('.dwnc-image-item,.dwnc-image-caption'))||items.some(node=>!node.matches('.dwnc-image-item')||node.querySelectorAll('img').length!==1))return null;return{image,group,item,root:group}}
   return{image,group:null,item:null,root:layoutRoot(image)};
 }
 function directLayoutValue(group,values,fallback){return values.find(value=>group?.classList.contains('dwnc-image-'+value))||fallback}
 function directLayoutSupported(unit){return!!unit&&(!!unit.group||!unit.root.parentElement?.closest('p,h1,h2,h3,h4,h5,h6,span,a,em,strong,b,i,u,s'))}
 function normalizeDirectLayout(group){
+  normalizeImageGroupCaption(group);
   const images=Array.from(group.querySelectorAll('img')),columns=images.length;
   if(!columns){group.remove();return}
   group.classList.remove('dwnc-image-cols-2','dwnc-image-cols-3');if(columns>1)group.classList.add('dwnc-image-cols-'+columns);
   const size=directLayoutValue(group,['original','paragraph','full'],'original');
   if(size!=='original'&&!layoutSizeAvailability(images,columns)[size]){group.classList.remove('dwnc-image-paragraph','dwnc-image-full');group.classList.add('dwnc-image-original')}
   group.style.setProperty('--dwnc-original-layout-width',Math.max(1,Math.min(1200,Math.max(0,...images.map(image=>image.naturalWidth))*columns+12*(columns-1)))+'px');
+  refreshImageGroupGeometry(group,images);
   for(const image of images){if(!image.hasAttribute('data-dwnc-original-width'))image.setAttribute('data-dwnc-original-width','none');image.style.setProperty('width',image.naturalWidth>0?image.naturalWidth+'px':'auto','important')}
 }
 function ensureDirectLayout(unit){
@@ -111,21 +113,22 @@ function moveDirectPhoto(image,target){
     const destination=directPhotoUnit(target.image);
     if(!destination||image===target.image||source.root.contains(destination.root)&&source.group!==destination.group)return false;
     if(!directLayoutSupported(destination)){status('글자와 함께 있는 사진은 먼저 문단 사이로 끌어 놓은 뒤 묶어 주세요. 본문과 서식은 유지했습니다.');return false}
-    const same=!!source.group&&source.group===destination.group,count=destination.group?destination.group.children.length:1;
+    const same=!!source.group&&source.group===destination.group,count=destination.group?imageLayoutItems(destination.group).length:1;
     if(!same&&count>=3){status('한 줄에는 사진을 3장까지 놓을 수 있습니다. 문단 사이로 끌면 한 장씩 놓습니다.');return false}
     if(same&&(target.side==='before'?source.item.nextElementSibling===destination.item:destination.item.nextElementSibling===source.item))return false;
     commitEditorHistory();captureEditorBefore();editorTyping=null;
-    const old=source.group,group=ensureDirectLayout(destination);let item=source.item;
+    const old=source.group,group=ensureDirectLayout(destination);if(old)normalizeImageGroupCaption(old);normalizeImageGroupCaption(group);let item=source.item;
     if(!item){item=document.createElement('div');item.className='dwnc-image-item';item.append(source.root);prepareLayoutItem(item)}
     const next=target.side==='before'?directPhotoUnit(target.image).item:directPhotoUnit(target.image).item.nextSibling;
-    group.insertBefore(item,next);if(old&&old!==group)normalizeDirectLayout(old);normalizeDirectLayout(group);
+    group.insertBefore(item,next);if(old&&old!==group){if(!imageLayoutItems(old).length&&imageLayoutCaption(old)){const from=imageLayoutCaption(old),to=imageLayoutCaption(group);if(to){appendImageCaptionPart(to,from);from.remove()}else group.append(from)}normalizeDirectLayout(old);}normalizeDirectLayout(group);
     finishDirectPhotoChange(image,same?'사진 순서를 바꿨습니다.':'사진을 한 줄로 묶었습니다.');return true;
   }
   const parent=target.parent,before=target.before||null;
   if(!parent||(parent!==body&&!body.contains(parent))||before&&before.parentNode!==parent||source.root.contains(parent))return false;
-  if(!source.group||source.group.children.length===1){if(before===source.root||source.root.parentNode===parent&&source.root.nextSibling===before)return false}
+  if(!source.group||imageLayoutItems(source.group).length===1){if(before===source.root||source.root.parentNode===parent&&source.root.nextSibling===before)return false}
   commitEditorHistory();captureEditorBefore();editorTyping=null;
-  if(source.group&&source.group.children.length>1){
+  if(source.group&&imageLayoutItems(source.group).length>1){
+    normalizeImageGroupCaption(source.group);
     const group=document.createElement('div');group.className='dwnc-image-layout dwnc-image-'+directLayoutValue(source.group,['left','center','right'],'center')+' dwnc-image-original';group.append(source.item);parent.insertBefore(group,before);normalizeDirectLayout(source.group);normalizeDirectLayout(group);
   }else parent.insertBefore(source.root,before);
   finishDirectPhotoChange(image,source.group?'사진을 옮겼습니다.':'사진과 설명을 함께 옮겼습니다.');return true;
@@ -139,7 +142,7 @@ function updateDirectPhotoTools(){
   const select=$('directPhotoSize');select.value=size;select.disabled=!supported;
   for(const option of select.options){option.disabled=option.value!=='original'&&!available[option.value];option.title=option.disabled?'원본 너비가 부족하거나 아직 확인되지 않아 확대 없이 채울 수 없습니다.':''}
   $('splitSelectedPhoto').hidden=columns<2;
-  $('directPhotoHint').textContent=!supported?'글자와 함께 있는 사진은 문단 사이로 끌어 놓은 뒤 정렬·크기를 바꿀 수 있습니다.':(columns>1?'이 줄의 '+columns+'장에 정렬·크기가 함께 적용됩니다. ':'')+(available.full?'사진을 끌어 이동 · 사진 옆에 놓아 묶기':available.paragraph?'전체 폭은 원본 너비가 부족해 선택할 수 없습니다.':'원본을 확대하지 않습니다. 작은 사진이나 크기 미확인 사진은 100%만 선택할 수 있습니다.');
+  $('directPhotoHint').textContent=!supported?'글자와 함께 있는 사진은 문단 사이로 끌어 놓은 뒤 정렬·크기를 바꿀 수 있습니다.':(columns>1?'이 줄의 '+columns+'장에 설명·정렬·크기가 함께 적용됩니다. ':'')+(available.full?'사진을 끌어 이동 · 사진 옆에 놓아 묶기':available.paragraph?'전체 폭은 원본 너비가 부족해 선택할 수 없습니다.':'원본을 확대하지 않습니다. 작은 사진이나 크기 미확인 사진은 100%만 선택할 수 있습니다.');
 }
 function setDirectPhotoLayout(property,value){
   const unit=directPhotoUnit(selectedMedia?.image);if(busy||!current||!unit)return;
@@ -164,7 +167,7 @@ function directPhotoDropTarget(x,y,image){
   if(unit&&other!==image){
     const box=other.getBoundingClientRect();
     if(y>box.top+Math.min(32,box.height*.24)&&y<box.bottom-Math.min(32,box.height*.24)){
-      const side=x<box.left+box.width/2?'before':'after',full=unit.group&&unit.group!==source.group&&unit.group.children.length>=3,supported=directLayoutSupported(unit);
+      const side=x<box.left+box.width/2?'before':'after',full=unit.group&&unit.group!==source.group&&imageLayoutItems(unit.group).length>=3,supported=directLayoutSupported(unit);
       return{type:full||!supported?'blocked':'group',image:other,side,left:side==='before'?box.left:box.right,top:box.top,width:3,height:box.height,label:!supported?'글자 속 사진을 먼저 문단 밖으로 이동':full?'한 줄에 최대 3장':unit.group&&unit.group===source.group?'여기로 순서 변경':'옆에 놓아 함께 묶기'};
     }
   }
@@ -175,7 +178,7 @@ function directPhotoDropTarget(x,y,image){
   }
   if(!block)return{type:'move',parent:body,before:null,left:bounds.left,top:bounds.top,width:bounds.width,height:3,label:'여기에 사진 놓기'};
   const box=block.getBoundingClientRect(),before=y<box.top+box.height/2;
-  return{type:'move',parent:block.parentNode,before:before?block:block.nextSibling,left:Math.max(bounds.left,box.left),top:before?box.top-5:box.bottom+5,width:Math.min(bounds.width,box.width||bounds.width),height:3,label:source.group?.children.length>1?'여기로 빼내어 한 장씩 놓기':'이 문단 사이로 이동'};
+  return{type:'move',parent:block.parentNode,before:before?block:block.nextSibling,left:Math.max(bounds.left,box.left),top:before?box.top-5:box.bottom+5,width:Math.min(bounds.width,box.width||bounds.width),height:3,label:source.group&&imageLayoutItems(source.group).length>1?'여기로 빼내어 한 장씩 놓기':'이 문단 사이로 이동'};
 }
 function showDirectPhotoDrop(x,y){
   if(!photoDrag)return;photoDrag.x=x;photoDrag.y=y;photoDrag.target=directPhotoDropTarget(x,y,photoDrag.image);
@@ -203,5 +206,5 @@ $('dragSelectedPhoto').addEventListener('keydown',event=>{if(!['ArrowUp','ArrowD
 for(const button of $('directImageTools').querySelectorAll('[data-photo-align]'))button.addEventListener('click',()=>setDirectPhotoLayout('align',button.dataset.photoAlign));
 $('directPhotoSize').addEventListener('change',()=>setDirectPhotoLayout('size',$('directPhotoSize').value));
 $('splitSelectedPhoto').addEventListener('click',()=>{const unit=directPhotoUnit(selectedMedia?.image);if(unit?.group)moveDirectPhoto(unit.image,{type:'move',parent:unit.group.parentNode,before:unit.group.nextSibling})});
-$('bodyHtml').addEventListener('load',()=>{updateDirectPhotoTools();positionMediaSelection()},true);
+$('bodyHtml').addEventListener('load',event=>{const group=event.target.closest?.('.dwnc-image-layout');if(group)refreshImageGroupGeometry(group);updateDirectPhotoTools();positionMediaSelection()},true);
 `;
