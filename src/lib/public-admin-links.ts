@@ -1,5 +1,5 @@
 const ADMIN_ORIGIN = 'https://admin.dwnc.me';
-export const PUBLIC_ADMIN_ENTRY_HTML = `<a class="site-admin-entry" data-public-admin-entry href="${ADMIN_ORIGIN}/#view=posts" target="_blank" rel="noopener noreferrer" aria-label="관리자 로그인 (새 탭)">관리자 로그인 ↗</a>`;
+export const PUBLIC_ADMIN_ENTRY_HTML = '<a class="site-admin-entry" data-public-admin-entry href="/auth/login?return=/" aria-label="관리자 로그인">관리자 로그인</a>';
 const EDIT_PATH = /^\/(?:posts\/[1-9]\d*|pages\/[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12})$/u;
 
 export function editablePublicPath(value: string, origin: string): string | null {
@@ -7,6 +7,15 @@ export function editablePublicPath(value: string, origin: string): string | null
     const url = new URL(value, origin);
     return url.origin === origin && !url.search && !url.hash && EDIT_PATH.test(url.pathname) ? url.pathname : null;
   } catch { return null; }
+}
+
+export function publicLoginHref(value: string): string {
+  let returnPath = '/';
+  try {
+    const url = new URL(value, 'https://dwnc.me');
+    if (value.startsWith('/') && !value.startsWith('//') && !value.includes('\\') && url.origin === 'https://dwnc.me') returnPath = `${url.pathname}${url.search}${url.hash}`;
+  } catch { /* A malformed return path falls back to the public home page. */ }
+  return `/auth/login?return=${encodeURIComponent(returnPath)}`;
 }
 
 export function mountPublicAdminLinks() {
@@ -60,8 +69,12 @@ export function mountPublicAdminLinks() {
     authorized = value; toolbar.hidden = !value;
     for (const entry of document.querySelectorAll<HTMLAnchorElement>('[data-public-admin-entry]')) {
       const label = value ? '관리자 화면' : '관리자 로그인';
-      if (entry.textContent !== `${label} ↗`) entry.textContent = `${label} ↗`;
-      entry.setAttribute('aria-label', `${label} (새 탭)`);
+      const text = value ? `${label} ↗` : label;
+      if (entry.textContent !== text) entry.textContent = text;
+      entry.href = value ? `${ADMIN_ORIGIN}/#view=posts` : publicLoginHref(`${location.pathname}${location.search}${location.hash}`);
+      entry.setAttribute('aria-label', value ? `${label} (새 탭)` : label);
+      if (value) { entry.target = '_blank'; entry.rel = 'noopener noreferrer'; }
+      else { entry.removeAttribute('target'); entry.removeAttribute('rel'); }
     }
     for (const link of document.querySelectorAll<HTMLAnchorElement>('.public-edit-link')) link.hidden = !value;
     schedule();
@@ -80,7 +93,7 @@ export function mountPublicAdminLinks() {
     const controller = new AbortController(), timeout = setTimeout(() => controller.abort(), 5000);
     pendingRequest = controller;
     try {
-      const response = await fetch(`${ADMIN_ORIGIN}/api/session`, { credentials: 'include', mode: 'cors', cache: 'no-store', redirect: 'error', signal: controller.signal });
+      const response = await fetch('/auth/session', { credentials: 'same-origin', cache: 'no-store', redirect: 'manual', signal: controller.signal });
       const result: unknown = response.ok ? await response.json() : null;
       if (epoch === authorizationEpoch && isVisible()) setAuthorized(Boolean(result && typeof result === 'object' && (result as { authenticated?: unknown }).authenticated === true));
     } catch { if (epoch === authorizationEpoch) setAuthorized(false); }
@@ -91,6 +104,8 @@ export function mountPublicAdminLinks() {
   window.addEventListener('focus', refresh);
   window.addEventListener('pageshow', refresh);
   window.addEventListener('pagehide', invalidate);
+  window.addEventListener('hashchange', () => setAuthorized(authorized));
+  window.addEventListener('popstate', () => setAuthorized(authorized));
   document.addEventListener('visibilitychange', refresh);
   void refresh();
 }

@@ -68,7 +68,10 @@
       "workers_dev": false,
       "preview_urls": false,
       "vars": {
-        "DWNC_DEPLOYMENT_ENVIRONMENT": "production"
+        "DWNC_DEPLOYMENT_ENVIRONMENT": "production",
+        "ACCESS_TEAM_DOMAIN": "https://ancient-term-4cf0.cloudflareaccess.com",
+        "ACCESS_AUD": "e2607628d16bd1707b60ac68a33326591c72c0accf6e5e3da33514ad410555fb",
+        "ACCESS_ALLOWED_EMAIL": "tsusaikang@gmail.com"
       },
       "version_metadata": {
         "binding": "CF_VERSION_METADATA"

@@ -6,6 +6,10 @@ import {
 } from './lib/media-worker.ts';
 import { createNativePublicWorker } from './lib/native-public-worker.ts';
 import type { NativePublicEnvironment } from './lib/native-public-worker.ts';
+import { handlePublicAuth } from './lib/public-auth.ts';
+import type { AccessEnvironment } from './lib/access-auth.ts';
+
+type PublicEnvironment = NativePublicEnvironment & AccessEnvironment;
 
 const handleStatic = createMediaWorker(
   mediaManifest.entries,
@@ -16,7 +20,9 @@ const handleStatic = createMediaWorker(
 const handle = createNativePublicWorker(handleStatic);
 
 export default {
-  fetch(request: Request, env: NativePublicEnvironment, context: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: PublicEnvironment, context: ExecutionContext): Promise<Response> {
+    const authentication = await handlePublicAuth(request, env);
+    if (authentication) return authentication;
     return handle(request, env, context);
   },
-} satisfies ExportedHandler<NativePublicEnvironment>;
+} satisfies ExportedHandler<PublicEnvironment>;

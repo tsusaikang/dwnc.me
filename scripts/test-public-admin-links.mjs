@@ -1,14 +1,19 @@
 import assert from 'node:assert/strict';
 import { load } from 'cheerio';
-import { editablePublicPath, mountPublicAdminLinks, PUBLIC_ADMIN_ENTRY_HTML } from '../src/lib/public-admin-links.ts';
+import { editablePublicPath, publicLoginHref, mountPublicAdminLinks, PUBLIC_ADMIN_ENTRY_HTML } from '../src/lib/public-admin-links.ts';
 
 for (const path of ['/posts/1','/pages/123e4567-e89b-42d3-a456-426614174000']) assert.equal(editablePublicPath(path,'https://dwnc.me'),path);
 for (const path of ['/about','/posts/0','/posts/1?preview=1','/posts/1#part','/posts/%31','/pages/not-a-page','https://other.test/posts/1']) assert.equal(editablePublicPath(path,'https://dwnc.me'),null);
+for (const path of ['/posts/1?from=home#part','/category/%EC%9D%BC%EC%83%81?page=2#list']) assert.equal(new URL(publicLoginHref(path),'https://dwnc.me').searchParams.get('return'),path);
+for (const path of ['https://other.test/posts/1','//other.test/posts/1','/\\other.test/posts/1','javascript:alert(1)','posts/1']) assert.equal(publicLoginHref(path),'/auth/login?return=%2F');
 const $=load('<body><nav data-public-admin-tools hidden></nav><main><article class="article-page"><header class="post-header__inner"><h1>본문</h1></header></article><article class="post-card"><div class="post-card__body"><h2><a href="/posts/2">카드</a></h2><a href="/posts/2">읽기</a></div></article><article class="recent-card"><div class="recent-card__body"><h2><a href="/posts/6">최근 카드</a></h2></div></article><section class="archive-year"><li><a href="/posts/3">행</a></li></section></main><div class="search-results"></div></body>');
 const wrappers=new WeakMap(), events={}, calls=[];let observer,authenticated=false,failure=false;
 $('body').prepend('<header><nav class="site-nav">'+PUBLIC_ADMIN_ENTRY_HTML+'</nav></header>');
-function entryState(label){const entry=$('[data-public-admin-entry]');assert.equal(entry.length,1);assert.equal(entry.closest('[hidden]').length,0);assert.equal(entry.attr('href'),'https://admin.dwnc.me/#view=posts');assert.equal(entry.attr('target'),'_blank');assert.equal(entry.attr('rel'),'noopener noreferrer');assert.equal(entry.text(),label+' ↗');assert.equal(entry.attr('aria-label'),label+' (새 탭)')}
-entryState('관리자 로그인'); // Usable server HTML before any JavaScript/session request.
+function entryState(label,returnPath='/posts/1?from=home#part'){const entry=$('[data-public-admin-entry]'),authorized=label==='관리자 화면';assert.equal(entry.length,1);assert.equal(entry.closest('[hidden]').length,0);assert.equal(entry.attr('href'),authorized?'https://admin.dwnc.me/#view=posts':publicLoginHref(returnPath));assert.equal(entry.attr('target'),authorized?'_blank':undefined);assert.equal(entry.attr('rel'),authorized?'noopener noreferrer':undefined);assert.equal(entry.text(),authorized?label+' ↗':label);assert.equal(entry.attr('aria-label'),authorized?label+' (새 탭)':label)}
+// Usable server HTML before any JavaScript/session request, in the same tab.
+assert.equal($('[data-public-admin-entry]').attr('href'),'/auth/login?return=/');
+assert.equal($('[data-public-admin-entry]').attr('target'),undefined);
+assert.equal($('[data-public-admin-entry]').text(),'관리자 로그인');
 const nodeFor=node=>{
  if(!node)return null;if(wrappers.has(node))return wrappers.get(node);
  const value={
@@ -17,7 +22,7 @@ const nodeFor=node=>{
   get className(){return $(node).attr('class')??''},set className(value){$(node).attr('class',value)},
   get href(){return new URL($(node).attr('href')??'',location.origin).href},set href(value){$(node).attr('href',value)},
   get target(){return $(node).attr('target')},set target(value){$(node).attr('target',value)},set rel(value){$(node).attr('rel',value)},
-  setAttribute:(key,value)=>$(node).attr(key,value),getAttribute:key=>$(node).attr(key)??null,
+  setAttribute:(key,value)=>$(node).attr(key,value),getAttribute:key=>$(node).attr(key)??null,removeAttribute:key=>$(node).removeAttr(key),
   classList:{contains:name=>$(node).hasClass(name)},closest:selector=>nodeFor($(node).closest(selector)[0]),
   querySelector:selector=>nodeFor($(node).find(selector)[0]),appendChild:child=>$(node).append(child.node),
   get nextSibling(){return nodeFor(node.next)},get parentNode(){const parent=node.parent;return parent?{insertBefore:(child,next)=>next?$(next.node).before(child.node):$(parent).append(child.node)}:null},node,
@@ -25,7 +30,7 @@ const nodeFor=node=>{
 };
 const saved=Object.fromEntries(['document','window','location','MutationObserver','requestAnimationFrame','fetch'].map(key=>[key,globalThis[key]]));
 try{
- globalThis.location=new URL('https://dwnc.me/posts/1');
+ globalThis.location=new URL('https://dwnc.me/posts/1?from=home#part');
  globalThis.document={visibilityState:'visible',body:nodeFor($('body')[0]),querySelector:selector=>nodeFor($(selector)[0]),querySelectorAll:selector=>$(selector).toArray().map(nodeFor),createElement:tag=>nodeFor($(`<${tag}>`)[0]),addEventListener:(name,handler)=>events[name]=handler};
  globalThis.window={addEventListener:(name,handler)=>events[name]=handler};
  globalThis.MutationObserver=class{constructor(callback){observer=callback}observe(){}};
@@ -33,6 +38,8 @@ try{
  globalThis.fetch=async(url,options)=>{calls.push({url,options});if(failure)throw Error('synthetic unavailable');return Response.json({authenticated})};
  const settle=()=>new Promise(resolve=>setTimeout(resolve,20));
  mountPublicAdminLinks();await settle();assert.notEqual($('[data-public-admin-tools]').attr('hidden'),undefined);assert.equal($('.public-edit-link').length,0);entryState('관리자 로그인');
+ location.hash='#next-part';events.hashchange();entryState('관리자 로그인','/posts/1?from=home#next-part');
+ location=new URL('https://dwnc.me/posts/1?from=home#part');events.popstate();entryState('관리자 로그인');
  authenticated=true;await events.focus();await settle();assert.equal($('[data-public-admin-tools]').attr('hidden'),undefined);assert.equal($('.public-edit-link').length,4);assert.equal($('.recent-card .public-edit-link').attr('href'),'https://admin.dwnc.me/#edit=%2Fposts%2F6');
  entryState('관리자 화면');
  assert.equal($('a a').length,0);assert.equal($('.post-card .public-edit-link').attr('href'),'https://admin.dwnc.me/#edit=%2Fposts%2F2');
@@ -43,6 +50,9 @@ try{
  entryState('관리자 로그인');
  failure=false;await events.focus();await settle();assert.equal($('.public-edit-link:not([hidden])').length,5);
  entryState('관리자 화면');authenticated=false;await events.focus();await settle();entryState('관리자 로그인');assert.equal($('.public-edit-link:not([hidden])').length,0);
+ const normalFetch=globalThis.fetch;
+ for(const guestResponse of [new Response(null,{status:302,headers:{location:'https://login.example.test/'}}),new Response('<html>Login</html>',{headers:{'content-type':'text/html'}}),{ok:false,type:'opaqueredirect',status:0}]){globalThis.fetch=async()=>guestResponse;await events.focus();await settle();entryState('관리자 로그인');assert.equal($('.public-edit-link:not([hidden])').length,0)}
+ globalThis.fetch=normalFetch;
  authenticated='true';await events.focus();await settle();entryState('관리자 로그인');assert.equal($('.public-edit-link:not([hidden])').length,0,'Only an exact authenticated boolean enables editing');
  authenticated=true;await events.focus();await settle();entryState('관리자 화면');
  const fastFetch=globalThis.fetch;let resolveSlow;globalThis.fetch=()=>new Promise(resolve=>{resolveSlow=resolve});
@@ -50,8 +60,8 @@ try{
  entryState('관리자 로그인');
  globalThis.fetch=fastFetch;await events.pageshow();await settle();assert.equal($('.public-edit-link:not([hidden])').length,5);
  document.visibilityState='hidden';await events.visibilitychange();assert.equal($('.public-edit-link:not([hidden])').length,0);
- assert(calls.every(call=>call.url==='https://admin.dwnc.me/api/session'&&call.options.credentials==='include'&&call.options.cache==='no-store'&&call.options.redirect==='error'&&!call.options.headers));
+ assert(calls.every(call=>call.url==='/auth/session'&&call.options.credentials==='same-origin'&&call.options.cache==='no-store'&&call.options.redirect==='manual'&&!call.options.headers));
  const count=calls.length;location=new URL('http://127.0.0.1:4324/posts/1');mountPublicAdminLinks();await settle();assert.equal(calls.length,count);
  entryState('관리자 로그인');
- console.log(JSON.stringify({suite:'public-admin-links',status:'PASS',behavior:'persistent no-JS/login/expired/failed-session entry, authenticated label only, gated editing, focus recheck/stale response rejection, safe paths, no nested anchors, search/pagination updates, no real admin fetch from localhost'}));
+ console.log(JSON.stringify({suite:'public-admin-links',status:'PASS',behavior:'same-tab public login with safe current path/query/fragment return, usable no-JS entry, same-origin session, redirected/malformed/expired/failed sessions hidden, authenticated admin new tab, gated editing, focus recheck/stale response rejection, no nested anchors, search/pagination updates, no real auth fetch from localhost'}));
 }finally{for(const[key,value]of Object.entries(saved))value===undefined?delete globalThis[key]:globalThis[key]=value}

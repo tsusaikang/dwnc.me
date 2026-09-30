@@ -88,6 +88,7 @@ if (!exactObject(config.env.staging.vars, {
   DWNC_DEPLOYMENT_ENVIRONMENT: 'staging',
 }) || !exactObject(config.env.production.vars, {
   DWNC_DEPLOYMENT_ENVIRONMENT: 'production',
+  ...expectedAdminProductionVars,
 }) || 'secrets' in config.env.staging || 'secrets' in config.env.production || 'secrets' in config) {
   throw new Error('CLOUDFLARE_E_STAGING_CONFIG');
 }
