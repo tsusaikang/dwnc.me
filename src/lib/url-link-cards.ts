@@ -46,6 +46,13 @@ export function standaloneCardCandidates(html: string) {
     const textBlock=block.clone();textBlock.find('br').replaceWith('\n');
     const url = standaloneCardUrl(textBlock.text());
     if (!url || block.find('a').toArray().some(a => {try{return new URL($(a).attr('href') ?? '', 'https://dwnc.me').href !== url}catch{return true}})) return;
+    // The visible URL remains above its preview. Repeated saves must not append
+    // another card for a URL that already has its matching preview.
+    const next = block.next();
+    if (next.is('figure[data-ke-type="opengraph"],.se_oglink,.se-oglink')) {
+      const href = next.find('a[href]').first().attr('href');
+      try { if (href && new URL(href, 'https://dwnc.me').href === url) return; } catch {}
+    }
     candidates.push({element, url});
   });
   return {$, candidates};
@@ -78,7 +85,7 @@ export function publicAddress(address:string):boolean {
 }
 async function publicDns(host:string,fetcher:typeof fetch,signal:AbortSignal):Promise<boolean> {
   const answers=await Promise.all(['A','AAAA'].map(async type=>{
-    const response=await fetcher('https://cloudflare-dns.com/dns-query?name='+encodeURIComponent(host)+'&type='+type,{signal,redirect:'error',headers:{accept:'application/dns-json'}});
+    const response=await fetcher('https://cloudflare-dns.com/dns-query?name='+encodeURIComponent(host)+'&type='+type,{signal,redirect:'manual',headers:{accept:'application/dns-json'}});
     if(!response.ok||Number(response.headers.get('content-length')??0)>32768)throw new Error('DNS unavailable');
     const reader=response.body?.getReader();if(!reader)throw new Error('DNS unavailable');let text='',bytes=0;const decoder=new TextDecoder();
     try {while(true){const part=await reader.read();if(part.done)break;bytes+=part.value.length;if(bytes>32768)throw new Error('DNS response too large');text+=decoder.decode(part.value,{stream:true})}}finally{await reader.cancel()}
@@ -125,6 +132,6 @@ export async function prepareUrlLinkCards(html:string, posts:CardPost[], fetcher
   const cache=new Map<string,string>();let next=0;
   const deadline=Date.now()+3500;
   const boundedFetch:typeof fetch=(input,init)=>{const remaining=deadline-Date.now();if(remaining<=0)return Promise.reject(new Error('metadata deadline'));return fetcher(input,{...init,signal:AbortSignal.any([init?.signal??AbortSignal.timeout(remaining),AbortSignal.timeout(remaining)])})};
-  await Promise.all(Array.from({length:Math.min(4,candidates.length)},async()=>{while(next<candidates.length){const item=candidates[next++];let card=cache.get(item.url);if(!card){card=await resolveCardHtml(item.url,posts,boundedFetch,fetchExternal);cache.set(item.url,card)}const figure=$(card);for(const attribute of ['id','style','align','dir','lang']){const value=$(item.element).attr(attribute);if(value!==undefined)figure.attr(attribute,value)}$(item.element).replaceWith(figure)}}));
+  await Promise.all(Array.from({length:Math.min(4,candidates.length)},async()=>{while(next<candidates.length){const item=candidates[next++];let card=cache.get(item.url);if(!card){card=await resolveCardHtml(item.url,posts,boundedFetch,fetchExternal);cache.set(item.url,card)}const figure=$(card);for(const attribute of ['style','align','dir','lang']){const value=$(item.element).attr(attribute);if(value!==undefined)figure.attr(attribute,value)}$(item.element).after(figure)}}));
   return $.root().html()??html;
 }

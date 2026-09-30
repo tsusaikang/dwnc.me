@@ -4,7 +4,7 @@ import { autoLinkScript } from '../src/lib/admin-autolink.ts';
 
 // Deliberately small DOM adapter: checks qualification and asynchronous stale
 // response guards, not browser layout or native selection behavior.
-const root={addEventListener(){},contains(node){return node.attached},querySelectorAll(){return []}};
+const root={addEventListener(){},contains(node){return node?.attached},querySelectorAll(){return []}};
 const context=vm.createContext({URL,Map,Set,WeakMap,console,location:{origin:'https://admin.dwnc.me'},$:()=>root});
 vm.runInContext('let current={id:"one"},busy=false,editorComposing=false;',context);
 vm.runInContext(autoLinkScript,context);
@@ -25,6 +25,34 @@ for(const mode of ['changed','detached','switched','busy','composition','failed'
   await vm.runInContext('autoCardResolve(node,"https://example.test",{postId:"one",html:node.outerHTML})',context);
   assert.equal(touched,false,mode);
 }
+// Pasted blocks qualify independently from whole-document plain-text equality.
+const old=block('https://old.test'),pasted=block('https://new.test');
+root.querySelectorAll=()=>[old,pasted];context.beforeBlocks=new Map([[old,old.outerHTML]]);context.old=old;context.pasted=pasted;
+vm.runInContext('autoCardMarkPaste(beforeBlocks)',context);
+assert.equal(vm.runInContext('autoCardEligible.has(old)',context),false);
+assert.equal(vm.runInContext('autoCardEligible.has(pasted)',context),true);
+root.querySelectorAll=()=>[];
+// Real-browser regression: editing the suffix can leave it outside its anchor.
+let linkHref='https://dwnc.me/posts/1';
+const prefix={textContent:'https://dwnc.me/posts/'},suffix={textContent:'2'};
+const partialLink={textContent:prefix.textContent,childNodes:[prefix],setAttribute(name,value){if(name==='href')linkHref=value},replaceWith(...nodes){edited.childNodes=[...nodes,suffix]},append(...nodes){this.childNodes=nodes;this.textContent=nodes.map(node=>node.textContent).join('')}};
+const edited={textContent:'https://dwnc.me/posts/2',childNodes:[partialLink,suffix],querySelectorAll:()=>[partialLink],querySelector:()=>null,closest:()=>null,append(node){this.childNodes=[node]}};
+context.edited=edited;vm.runInContext('autoCardRefreshEditedLink(edited)',context);
+assert.equal(linkHref,'https://dwnc.me/posts/2');
+assert.equal(edited.childNodes.length,1);assert.equal(partialLink.textContent,edited.textContent);
+assert.deepEqual(partialLink.childNodes,[prefix,suffix],'Retyping preserves the existing inline nodes');
+// URL remains in place, preview is adjacent, and repeats cannot duplicate it.
+const urlBlock=block('https://example.test');let inserted=null,scheduled=0;
+urlBlock.hasAttribute=()=>false;urlBlock.contains=()=>false;urlBlock.after=card=>{inserted=card;urlBlock.nextElementSibling=card};
+const card={matches:()=>true,getAttribute:()=>null,querySelector:()=>({getAttribute:()=> 'https://example.test'})};
+context.node=urlBlock;context.api=async()=>({html:'<figure data-ke-type="opengraph"></figure>'});
+context.document={createElement:()=>({content:{firstElementChild:card,childElementCount:1}})};
+context.bodyRange=()=>null;context.commitEditorHistory=()=>{};context.captureEditorBefore=()=>{};context.schedule=()=>scheduled++;
+vm.runInContext('current={id:"one"};busy=false;editorComposing=false;let editorTyping=null;',context);
+await vm.runInContext('autoCardResolve(node,"https://example.test",{postId:"one",html:node.outerHTML})',context);
+assert.equal(inserted,card);assert.equal(urlBlock.textContent,'https://example.test');assert.equal(scheduled,1);
+assert.equal(vm.runInContext('autoCardHasPreview(node,"https://example.test")',context),true);
+assert.equal(vm.runInContext('autoCardHasPreview(node,"https://other.test")',context),false);
 console.log('PASS editor automatic cards: whole-paragraph eligibility, anchor identity, exclusions, stale edits/navigation/composition/offline preservation');
 // Large pastes must not create an unbounded metadata request burst.
 let active=0,peak=0;const releases=[];

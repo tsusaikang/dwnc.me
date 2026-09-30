@@ -1,6 +1,7 @@
 import postcss from 'postcss';
 import {load} from 'cheerio';
-import {IMPORTED_PRESENTATION_CSS} from '../src/lib/imported-presentation.ts';
+import {sanitizeNativeHtml,sanitizeLegacyHtml} from '../src/lib/native-content.ts';
+import {prepareImportedPresentation,IMPORTED_PRESENTATION_CSS} from '../src/lib/imported-presentation.ts';
 import assert from 'node:assert/strict';
 import {standaloneCardCandidates,prepareUrlLinkCards,resolveCardHtml,publicMetadataUrl,publicAddress} from '../src/lib/url-link-cards.ts';
 const body='<p>https://dwnc.me/posts/594</p><div><a href="https://example.com/">https://example.com/</a></div><p>본문 https://example.com/</p><pre><p>https://example.com/</p></pre><table><tr><td><p>https://example.com/</p></td></tr></table><p><a href="https://other.example/">https://example.com/</a></p><p>https://example.com/<br></p>';
@@ -25,7 +26,7 @@ for(const address of ['10.0.0.1','127.0.0.1','169.254.1.1','192.168.0.1','::1','
 let remoteCalls=0;await resolveCardHtml('https://private-dns.example/',[],async(url)=>{if(String(url).startsWith('https://cloudflare-dns.com/'))return Response.json({Status:0,Answer:[{type:1,data:'127.0.0.1'}]});remoteCalls++;return fetcher(url)});assert.equal(remoteCalls,0);
 
 const loose=await prepareUrlLinkCards('<a href="https://dwnc.me/posts/594">https://dwnc.me/posts/594</a><br><p id="reference" style="text-align:center">https://dwnc.me/posts/594</p><div class="se_oglink"><p>https://dwnc.me/posts/594</p></div>',[{path:'/posts/594',title:'공개 제목'}],noFetch);
-assert.equal((loose.match(/data-ke-type="opengraph"/g)||[]).length,2);assert.match(loose,/<figure[^>]*id="reference"[^>]*style="text-align:center"/);assert.match(loose,/<div class="se_oglink"><p>https:\/\/dwnc.me\/posts\/594<\/p>/);
+assert.equal((loose.match(/data-ke-type="opengraph"/g)||[]).length,2);assert.match(loose,/<p id="reference" style="text-align:center">https:\/\/dwnc.me\/posts\/594<\/p><figure[^>]*style="text-align:center"/);assert.match(loose,/<div class="se_oglink"><p>https:\/\/dwnc.me\/posts\/594<\/p>/);
 
 assert.equal(standaloneCardCandidates('https://example.test/a').candidates.length,1);
 const rootMixed=await prepareUrlLinkCards('https://example.test/a<p>https://example.test/b</p>',[],fetch,false);
@@ -40,3 +41,35 @@ for(const surface of ['prose','html-editor']){
     assert.equal(styles.display,'block',surface+' '+field+' must have its own line');assert.equal(styles['overflow-wrap'],'anywhere');assert.equal(styles['white-space'],'normal');
   }
 }
+
+const preserved=load(transformed,null,false);
+assert.equal(preserved('p').first().text(),'https://dwnc.me/posts/594');
+assert.equal(preserved('p').first().next().attr('data-ke-type'),'opengraph');
+let dnsRedirectPageCalls=0;
+await resolveCardHtml('https://dns-redirect.example/',[],async(url,init)=>{
+  if(String(url).startsWith('https://cloudflare-dns.com/')){
+    assert.equal(init.redirect,'manual');
+    return new Response(null,{status:302,headers:{location:'https://elsewhere.example/'}});
+  }
+  dnsRedirectPageCalls++;return new Response('');
+});
+assert.equal(dnsRedirectPageCalls,0);
+
+// A saved URL/card pair must survive both native and imported-post sanitizers.
+// Reopening and public presentation must retain the address and not add a card.
+const roundTripSource='<p>앞 본문</p><p><a href="https://dwnc.me/posts/594">https://dwnc.me/posts/594</a></p><p>뒤 본문</p>';
+for(const sanitize of [sanitizeNativeHtml,sanitizeLegacyHtml]){
+  const cards=await prepareUrlLinkCards(roundTripSource,[{path:'/posts/594',title:'왕복 제목',description:'설명'}],fetch,false);
+  const saved=sanitize(cards);
+  const reopened=await prepareUrlLinkCards(saved,[],fetch,false);
+  assert.equal(reopened,saved,'Reopening saved URL/card pair must be idempotent');
+  const published=prepareImportedPresentation(reopened);
+  const $=load(published,null,false),link=$('p>a').first();
+  assert.equal(link.text(),'https://dwnc.me/posts/594');
+  assert.equal(link.parent().next().attr('data-ke-type'),'opengraph');
+  assert.equal($('figure[data-ke-type="opengraph"]').length,1);
+  assert.match(published,/왕복 제목/);
+  assert.match(published,/앞 본문/);
+  assert.match(published,/뒤 본문/);
+}
+console.log('Native/legacy save, reopen and public URL/card round trips passed');

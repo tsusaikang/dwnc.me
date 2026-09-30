@@ -2,6 +2,7 @@
 // Provenance is session-local: reopening, saving, or merely adding a delimiter
 // beside an old URL never makes that old URL eligible for automatic linking.
 export const autoLinkScript = String.raw`
+let autoCardEligible=new WeakSet(),autoCardLooseNode=null;
 let autoLinkFresh=[],autoLinkBefore=null,autoLinkComposing=false,autoLinkText=null,autoLinkPaste=null,autoLinkComposition=null;
 const autoLinkBlocks=new Set(['P','DIV','H1','H2','H3','H4','H5','H6','LI','BLOCKQUOTE','PRE','TD','TH']);
 function autoLinkSnapshot(){
@@ -18,7 +19,7 @@ function autoLinkSnapshot(){
 }
 function autoLinkOffset(snapshot,node,offset){const entry=snapshot.nodes.get(node);if(!entry)return null;if(node.nodeType===3)return entry.start+Math.min(offset,node.data.length);const child=node.childNodes[offset];return child?snapshot.nodes.get(child)?.start??entry.end:entry.end}
 function autoLinkPoint(snapshot,offset,end=false){const entries=snapshot.texts;for(const entry of entries){if(end?offset>entry.start&&offset<=entry.end:offset>=entry.start&&offset<entry.end)return[entry.node,offset-entry.start]}for(const entry of entries){if(entry.start>=offset)return[entry.node,0]}const last=entries.at(-1);return last?[last.node,last.node.data.length]:[$('bodyHtml'),0]}
-function resetAutoLinks(){autoLinkFresh=[];autoLinkBefore=null;autoLinkComposing=false;autoLinkText=null;autoLinkPaste=null;autoLinkComposition=null}
+function resetAutoLinks(){autoCardEligible=new WeakSet();autoCardLooseNode=null;autoLinkFresh=[];autoLinkBefore=null;autoLinkComposing=false;autoLinkText=null;autoLinkPaste=null;autoLinkComposition=null}
 function autoLinkMerge(ranges){const result=[];for(const range of ranges.filter(([a,b])=>b>a).sort((a,b)=>a[0]-b[0])){const previous=result.at(-1);if(previous&&range[0]<=previous[1])previous[1]=Math.max(previous[1],range[1]);else result.push([...range])}return result}
 function autoLinkEdit(ranges,start,end,insertLength){const shift=insertLength-(end-start),next=[];for(const [a,b] of ranges){if(a<start)next.push([a,Math.min(b,start)]);if(b>end)next.push([Math.max(a,end)+shift,b+shift])}if(insertLength)next.push([start,start+insertLength]);return autoLinkMerge(next)}
 function autoLinkMatches(text){
@@ -59,9 +60,23 @@ function removeEditorLink(link){
   if(existing)link.replaceWith(...link.childNodes);else{span.setAttribute('data-dwnc-no-autolink','true');while(link.firstChild)span.append(link.firstChild);link.replaceWith(span)}
   const range=document.createRange();range.selectNodeContents(span);const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);captureFormatRange();resetAutoLinks();schedule();
 }
-// Only newly entered whole paragraphs become cards. Existing content is handled
-// by server display normalization, never by an editor-open mutation.
+// Preview eligibility follows explicitly pasted or Enter-confirmed paragraphs.
+// Merely opening a document never changes its existing content.
 const autoCardPending=new WeakMap(),autoCardJobs=[];let autoCardActive=0;
+function autoCardEditBlock(node){const block=node?.nodeType===1?node:node?.parentElement;return block?.closest?.('p,div')}
+function autoCardHasPreview(block,href){const next=block.nextElementSibling;if(!next?.matches('figure[data-ke-type="opengraph"]'))return false;const target=next.getAttribute('data-og-url')||next.querySelector('a[href]')?.getAttribute('href');try{return new URL(target,location.origin).href===new URL(href).href}catch{return false}}
+function autoCardPreviousPreview(block){const href=autoCardCandidate(block);return href&&autoCardHasPreview(block,href)?{block,href,card:block.nextElementSibling}:null}
+function autoCardRemoveStale(previous){if(previous&&$('bodyHtml').contains(previous.card)&&autoCardCandidate(previous.block)!==previous.href){previous.card.remove();autoCardEligible.add(previous.block)}}
+function autoCardRefreshEditedLink(block){
+  if(!block?.querySelectorAll)return;const label=block.textContent.trim(),matches=autoLinkMatches(label),links=block.querySelectorAll('a');
+  if(matches.length!==1||matches[0].label!==label||links.length!==1||block.closest('figure,pre,code,[contenteditable="false"],[data-dwnc-no-autolink]')||block.querySelector('p,div,figure,pre,code,ul,ol,table,img,video,iframe,[data-dwnc-no-autolink]'))return;
+  const link=links[0];link.setAttribute('href',matches[0].href);
+  // Browsers may place retyped URL suffixes outside the old anchor. Keep its
+  // inline nodes, but include that suffix in the same clickable URL again.
+  if(link.textContent.trim()!==label){link.replaceWith(...link.childNodes);link.append(...block.childNodes);block.append(link)}
+}
+function autoCardMarkPaste(before){for(const block of $('bodyHtml').querySelectorAll('p,div'))if(before.get(block)!==block.outerHTML)autoCardEligible.add(block)}
+
 function autoCardDrain(){while(autoCardActive<3&&autoCardJobs.length){const [block,href,token]=autoCardJobs.shift();autoCardActive++;void autoCardResolve(block,href,token).finally(()=>{autoCardActive--;autoCardDrain()})}}
 function autoCardCandidate(block){
   const root=$('bodyHtml');
@@ -79,19 +94,19 @@ function autoCardWrapLoose(){
   function wrap(){
     if(!run.length)return;const text=run.map(node=>node.textContent).join(''),label=text.trim(),match=autoLinkMatches(label);
     const entry=snapshot.nodes.get(run[0]),start=(entry?.start??-100000)+text.indexOf(label);
-    if(match.length===1&&match[0].label===label&&autoLinkFresh.some(([a,b])=>a<=start&&b>=start+label.length)){
-      const paragraph=document.createElement('p');run[0].before(paragraph);for(const node of run)paragraph.append(node);wrapped=true;
+    if(match.length===1&&match[0].label===label&&(run.some(node=>node===autoCardLooseNode||node.contains?.(autoCardLooseNode))||autoLinkFresh.some(([a,b])=>a<=start&&b>=start+label.length))){
+      const paragraph=document.createElement('p');run[0].before(paragraph);for(const node of run)paragraph.append(node);autoCardEligible.add(paragraph);wrapped=true;
     }run=[];
   }
-  for(const node of [...root.childNodes]){if(node.nodeType===3||node.nodeType===1&&node.matches('a,span,strong,b,em,i,u,s,font'))run.push(node);else wrap()}wrap();if(wrapped)autoLinkRestore(autoLinkSnapshot(),start,end);
+  for(const node of [...root.childNodes]){if(node.nodeType===3||node.nodeType===1&&node.matches('a,span,strong,b,em,i,u,s,font'))run.push(node);else wrap()}wrap();autoCardLooseNode=null;if(wrapped)autoLinkRestore(autoLinkSnapshot(),start,end);
 }
 function autoCardQueue(){
   autoCardWrapLoose();
   const snapshot=autoLinkSnapshot();
   for(const block of $('bodyHtml').querySelectorAll('p,div')){
-    const href=autoCardCandidate(block),entry=snapshot.nodes.get(block);if(!href||!entry||autoCardPending.has(block))continue;
+    const href=autoCardCandidate(block),entry=snapshot.nodes.get(block);if(!href||!entry||autoCardPending.has(block)||autoCardHasPreview(block,href))continue;
     const label=block.textContent.trim(),start=entry.start+block.textContent.indexOf(label),end=start+label.length;
-    if(!autoLinkFresh.some(([a,b])=>a<=start&&b>=end))continue;
+    if(!autoCardEligible.has(block)&&!autoLinkFresh.some(([a,b])=>a<=start&&b>=end))continue;
     const token={html:block.outerHTML,postId:current.id};autoCardPending.set(block,token);autoCardJobs.push([block,href,token]);autoCardDrain();
   }
 }
@@ -99,32 +114,33 @@ async function autoCardResolve(block,href,token){
   try{
     if(current?.id!==token.postId||!$('bodyHtml').contains(block)||block.outerHTML!==token.html)return;
     const result=await api('/link-preview',{method:'POST',body:JSON.stringify({url:href})});
-    if(busy||editorComposing||current?.id!==token.postId||!$('bodyHtml').contains(block)||block.outerHTML!==token.html||autoCardCandidate(block)!==href||typeof result.html!=='string')return;
+    if(busy||editorComposing||current?.id!==token.postId||!$('bodyHtml').contains(block)||block.outerHTML!==token.html||autoCardCandidate(block)!==href||autoCardHasPreview(block,href)||typeof result.html!=='string')return;
     const template=document.createElement('template');template.innerHTML=result.html;const card=template.content.firstElementChild;
     if(!card?.matches('figure[data-ke-type="opengraph"]')||template.content.childElementCount!==1)return;
-    for(const name of ['id','style','align','dir','lang'])if(block.hasAttribute(name))card.setAttribute(name,block.getAttribute(name));
+    for(const name of ['dir','lang'])if(block.hasAttribute(name))card.setAttribute(name,block.getAttribute(name));
     const selection=bodyRange(),inside=selection&&(block.contains(selection.startContainer)||block.contains(selection.endContainer));
-    // Never replace the user's active text selection. A collapsed caret in the
-    // URL can move to the following paragraph, without stealing outside focus.
+    // Keep the URL and current caret; the preview is an adjacent block.
     if(inside&&!selection.collapsed)return;
     const focused=$('bodyHtml').contains(document.activeElement)||document.activeElement===$('bodyHtml');
-    const saved=selection?.cloneRange();commitEditorHistory();captureEditorBefore();editorTyping=null;block.replaceWith(card);
-    if(inside&&focused){let next=card.nextElementSibling;if(!next?.matches('p,div')){next=document.createElement('p');next.append(document.createElement('br'));card.after(next)}const range=document.createRange();range.selectNodeContents(next);range.collapse(true);const live=window.getSelection();live.removeAllRanges();live.addRange(range);captureFormatRange()}
-    else if(saved&&focused){const live=window.getSelection();live.removeAllRanges();live.addRange(saved);captureFormatRange()}
-    resetAutoLinks();schedule();
+    const saved=selection?.cloneRange();commitEditorHistory();captureEditorBefore();editorTyping=null;block.after(card);autoCardEligible.delete(block);
+    if(saved&&focused){const live=window.getSelection();live.removeAllRanges();live.addRange(saved);captureFormatRange()}
+    autoLinkFresh=[];autoLinkText=null;schedule();
   }catch{/* Metadata failures keep the usable original link. */}
-  finally{autoCardPending.delete(block)}
+  finally{autoCardPending.delete(block);if(current?.id===token.postId&&autoCardEligible.has(block)&&block.outerHTML!==token.html)autoCardQueue()}
 }
 $('bodyHtml').addEventListener('paste',event=>{
-  autoLinkPaste=null;if(event.defaultPrevented||busy||!current||event.clipboardData?.files?.length)return;const plain=event.clipboardData?.getData('text/plain')||'';if(plain&&autoLinkMatches(plain).length){const snapshot=autoLinkSnapshot(),range=bodyRange(),a=range?autoLinkOffset(snapshot,range.startContainer,range.startOffset):0,b=range?autoLinkOffset(snapshot,range.endContainer,range.endOffset):0;autoLinkPaste={plain:plain.replace(/\r\n?/g,'\n'),postId:current.id,baseLength:snapshot.text.length,selectionLength:Math.max(0,(b??0)-(a??0))}};
+  autoLinkPaste=null;if(event.defaultPrevented||busy||!current||event.clipboardData?.files?.length)return;const plain=event.clipboardData?.getData('text/plain')||'';if(plain&&autoLinkMatches(plain).length){const snapshot=autoLinkSnapshot(),range=bodyRange(),a=range?autoLinkOffset(snapshot,range.startContainer,range.startOffset):0,b=range?autoLinkOffset(snapshot,range.endContainer,range.endOffset):0;autoLinkPaste={plain:plain.replace(/\r\n?/g,'\n'),postId:current.id,baseLength:snapshot.text.length,selectionLength:Math.max(0,(b??0)-(a??0)),blocks:new Map([...$('bodyHtml').querySelectorAll('p,div')].map(block=>[block,block.outerHTML]))}};
 });
 $('bodyHtml').addEventListener('beforeinput',event=>{
   autoLinkBefore=null;if(busy||!current||!['insertText','insertCompositionText','insertFromPaste','insertParagraph','insertLineBreak','deleteContentBackward','deleteContentForward','deleteByCut'].includes(event.inputType))return;
   const snapshot=autoLinkSnapshot(),range=bodyRange();if(autoLinkText!==snapshot.text)autoLinkFresh=[];if(!range)return;
-  autoLinkBefore={snapshot,start:autoLinkOffset(snapshot,range.startContainer,range.startOffset),end:autoLinkOffset(snapshot,range.endContainer,range.endOffset),type:event.inputType,data:event.data||''};
+  autoLinkBefore={snapshot,start:autoLinkOffset(snapshot,range.startContainer,range.startOffset),end:autoLinkOffset(snapshot,range.endContainer,range.endOffset),type:event.inputType,data:event.data||'',block:autoCardEditBlock(range.startContainer),node:range.startContainer,preview:autoCardPreviousPreview(autoCardEditBlock(range.startContainer))};
 });
 $('bodyHtml').addEventListener('input',event=>{
   const before=autoLinkBefore,pasted=autoLinkPaste;autoLinkBefore=null;autoLinkPaste=null;if(busy||!current)return;
+  autoCardRemoveStale(before?.preview);
+  if(before?.block&&['insertParagraph','insertLineBreak'].includes(before.type)){if(before.block===$('bodyHtml'))autoCardLooseNode=before.node;autoCardRefreshEditedLink(before.block);autoCardEligible.add(before.block)}
+  if(pasted?.postId===current.id){autoCardMarkPaste(pasted.blocks);Promise.resolve().then(()=>autoCardQueue())}
   // Native paste may replace an empty block's BR or normalize DIV/P wrappers.
   // The clipboard text immediately before the resulting caret identifies only
   // the inserted span, even when those browser changes invalidate a full diff.
@@ -138,7 +154,7 @@ $('bodyHtml').addEventListener('input',event=>{
   if(!snapshot.text.startsWith(prefix)||!snapshot.text.endsWith(suffix)||snapshot.text.length<prefix.length+suffix.length){
     // Deletion events have a collapsed selection, so derive their deleted span.
     // For browser-normalized insertion, discard provenance instead of touching old text.
-    if(!before.type.startsWith('delete')){autoLinkFresh=[];return}
+    if(!before.type.startsWith('delete')){autoLinkFresh=[];if(['insertParagraph','insertLineBreak'].includes(before.type))autoCardQueue();return}
     a=0;while(a<before.snapshot.text.length&&a<snapshot.text.length&&before.snapshot.text[a]===snapshot.text[a])a++;
     b=before.snapshot.text.length;let tail=snapshot.text.length;while(b>a&&tail>a&&before.snapshot.text[b-1]===snapshot.text[tail-1]){b--;tail--}
   }

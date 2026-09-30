@@ -10,7 +10,7 @@ import { createEditorDatabase } from './fixtures/editor-database.mjs';
 // fixture; this adapter deliberately does not pretend to implement browser DOM.
 const handlers = new Map();
 const root = { nodeType: 1, tagName: 'DIV', childNodes: [], addEventListener(type, listener) { const all = handlers.get(type) ?? []; all.push(listener); handlers.set(type, all); }, querySelectorAll() { return []; } };
-function textNode(data, excluded = false) { return { nodeType: 3, data, parentElement: { closest() { return excluded ? {} : null; } } }; }
+function textNode(data, excluded = false) { return { nodeType: 3, data, parentElement: { closest(selector) { return selector === 'p,div' ? null : excluded ? {} : null; } } }; }
 let node = textNode(''), caret = 0, selectionEnd = 0;
 root.childNodes = [node];
 const context = vm.createContext({ URL, Map, Set, console, $: () => root, bodyRange: () => ({ startContainer: node, startOffset: caret, endContainer: node, endOffset: selectionEnd, collapsed: caret === selectionEnd }) });
