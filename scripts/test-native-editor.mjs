@@ -275,7 +275,7 @@ ok(uiScript.includes("node.closest('figure.imageblock,.se_component.se_image,.se
 ok(uiScript.includes("event.key==='Delete'||event.key==='Backspace'"));
 ok(uiScript.includes("event.key==='Escape'&&selectedMedia"));
 ok(uiScript.includes("if(link)event.preventDefault()"));
-ok(uiScript.includes("target.remove();placeCaret(parent,next);schedule()"));
+ok(uiScript.includes("target.remove();if(group)normalizeDirectLayout(group);placeCaret(parent,next);schedule()"));
 ok(uiScript.includes('box.top-tool.height-gap'));
 ok(uiScript.includes('if(top<topLimit)top=box.bottom+gap'));
 ok(uiScript.includes('bottomLimit-tool.height'));

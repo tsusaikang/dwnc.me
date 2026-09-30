@@ -4,13 +4,14 @@ import { load } from 'cheerio';
 import { imageDirectScript, imageDirectToolsHtml, imageDirectOverlayHtml } from '../src/lib/admin-image-direct.ts';
 import { IMAGE_LAYOUT_DOM_SCRIPT } from '../src/lib/image-layout.ts';
 import { imageLayoutScript } from '../src/lib/admin-image-layout.ts';
+import { adminHtml } from '../src/lib/admin-ui.ts';
 import { editorHistoryScript } from '../src/lib/admin-editor-history.ts';
 import { sanitizeNativeHtml, sanitizeLegacyHtml } from '../src/lib/native-content.ts';
 
 // Cheerio supplies parsing/selector semantics; this adapter supplies DOM moves.
 // Pointer hit testing below uses deterministic rectangles. Actual browser layout
 // and pointer input are exercised in serve-editor-fixture.mjs.
-const $html=load('<div id="bodyHtml"></div><div id="imageTools">'+imageDirectToolsHtml+'</div>'+imageDirectOverlayHtml);
+const $html=load('<div id="bodyHtml"></div><button id="deleteImage"></button><div id="imageTools">'+imageDirectToolsHtml+'</div>'+imageDirectOverlayHtml);
 const wrappers=new WeakMap(),listeners=new Map(),widths=new Map();
 let hit=null,caretNode=null;
 class Element {
@@ -28,7 +29,7 @@ class Element {
   get parentNode(){return this.node.parent?wrap(this.node.parent):null} get parentElement(){return this.parentNode}
   get nextSibling(){return this.node.next?wrap(this.node.next):null}
   get nextElementSibling(){return wrap($html(this.node).next()[0])} get previousElementSibling(){return wrap($html(this.node).prev()[0])}
-  get complete(){return true} get naturalWidth(){return widths.get(this.getAttribute('src'))||0}
+  get complete(){return true} get naturalWidth(){return widths.get(this.getAttribute('src'))||0}get naturalHeight(){return this.naturalWidth*.75}
   get options(){return this.children}
   matches(selector){return $html(this.node).is(selector)}
   closest(selector){return wrap($html(this.node).closest(selector)[0])}
@@ -180,3 +181,32 @@ console.log(JSON.stringify({suite:'image-direct',status:'PASS',behavior:'move/gr
 // A foreign paragraph in an imported/hand-authored layout must never be erased
 // by extracting its final image.
 body.innerHTML='<div class="dwnc-image-layout"><div class="dwnc-image-item">'+photo('a')+'</div><p>그룹 안 별도 본문 보존</p></div>'+photo('b');run('resetEditorHistory()');const foreignBody=checkpoint();assert.equal(group('a','b'),false);assert.equal(checkpoint(),foreignBody);
+
+// Exercise the real deletion entry points, including immediate history flushes.
+const ui=adminHtml('fixture@example.test');
+run(ui.slice(ui.indexOf('function deleteSelectedMedia'),ui.indexOf('function fill(')));
+run("function selectMedia(image){selectedMedia={image,node:image.closest('figure.imageblock')||image,kind:'image'}}function placeCaret(parent,next){caretParent=parent;caretNext=next}let caretParent=null,caretNext=null;");
+run(ui.split('\n').find(line=>line.startsWith("$('bodyHtml').addEventListener('keydown',event=>{if(selectedMedia")));
+run(ui.split('\n').find(line=>line.startsWith("$('deleteImage').onclick=")));
+body.innerHTML='<p>Before</p>'+photo('a')+photo('b')+photo('c')+'<p>After</p>';run('resetEditorHistory()');assert.equal(group('b','a'),true);assert.equal(group('c','a'),true);await tick();
+const deletionStates=[checkpoint()];
+for(const [index,letter] of ['a','b','c'].entries()){
+  context.selected=image(letter);run('selectMedia(selected)');
+  if(index===0)field('deleteImage').onclick();else{const event={key:index===1?'Backspace':'Delete',preventDefault(){this.prevented=true}};listeners.get('bodyHtml:keydown')(event);assert.equal(event.prevented,true)}
+  await tick();const remaining=2-index,row=body.querySelector('.dwnc-image-layout');
+  assert.equal(body.querySelectorAll('img').length,remaining);assert.equal(body.querySelectorAll('.dwnc-image-item').length,remaining);
+  assert.equal(body.querySelectorAll('.dwnc-image-caption').length,1,'Deleting the final photo must retain the shared description');
+  assert.equal(body.querySelectorAll('.dwnc-image-caption em').length,3);
+  assert.equal(run('caretParent'),body,'Typing resumes outside the surviving group or caption');
+  if(remaining===2){assert.equal(row.classList.contains('dwnc-image-cols-2'),true);assert.equal(row.classList.contains('dwnc-image-cols-3'),false);assert.equal(row.style.getPropertyValue('--dwnc-image-columns').split(' ').length,2)}
+  if(remaining===1){assert.equal(row.classList.contains('dwnc-image-cols-2'),false);assert.equal(row.style.getPropertyValue('--dwnc-image-columns'),'');assert.equal(row.style.getPropertyValue('--dwnc-original-layout-width'),'1200px')}
+  if(!remaining)assert.equal(row,null);
+  const after=checkpoint();run("editorHistoryCommand('undo')");assert.equal(checkpoint(),deletionStates.at(-1));run("editorHistoryCommand('redo')");assert.equal(checkpoint(),after);deletionStates.push(after);
+  for(const sanitize of [sanitizeNativeHtml,sanitizeLegacyHtml]){const clean=sanitize(after),saved=load(clean);assert.equal(saved('img').length,remaining);assert.equal(saved('.dwnc-image-item').length,remaining);assert.equal(saved('.dwnc-image-caption em').length,3);assert.equal(sanitize(clean),clean)}
+}
+// Old saved rows can already contain a blank cell and stale two/three-column
+// weights. Reopen/preview/public use this same non-writing projection helper.
+const damaged='<p>Before</p><div class="dwnc-image-layout dwnc-image-original dwnc-image-cols-3" style="--dwnc-original-layout-width:1200px;--dwnc-image-columns:1fr 2fr 1fr"><div class="dwnc-image-item"><figure><br></figure></div><div class="dwnc-image-item">'+photo('d')+'</div><div class="dwnc-image-item"></div><div class="dwnc-image-caption"><em>보존 설명</em></div></div><p>After</p>';
+body.innerHTML=damaged;run("refreshImageGroups($('bodyHtml'))");const healed=checkpoint(),healedRow=body.querySelector('.dwnc-image-layout');assert.equal(body.querySelectorAll('.dwnc-image-item').length,1);assert.equal(body.querySelectorAll('.dwnc-image-cols-2,.dwnc-image-cols-3').length,0);assert.equal(healedRow.style.getPropertyValue('--dwnc-image-columns'),'');assert.equal(healedRow.style.getPropertyValue('--dwnc-original-layout-width'),'400px');assert.equal(body.querySelector('.dwnc-image-caption em').textContent,'보존 설명');run("refreshImageGroups($('bodyHtml'))");assert.equal(checkpoint(),healed,'Reopen projection is idempotent');
+body.innerHTML='<div class="dwnc-image-layout dwnc-image-cols-2"><div class="dwnc-image-item"><p>보존할 본문</p></div><div class="dwnc-image-item"></div><div class="dwnc-image-caption" style="text-align:right"><em>사진 없는 설명</em></div></div>';run("refreshImageGroups($('bodyHtml'))");assert.equal(body.querySelector('.dwnc-image-layout'),null);assert.equal(body.querySelector('p').textContent,'보존할 본문');assert.equal(body.querySelector('.dwnc-image-caption').style.getPropertyValue('text-align'),'right');
+console.log(JSON.stringify({suite:'image-group-deletion',status:'PASS',behavior:'button/Backspace/Delete 3→2→1→0, shared captions and rich markup kept, exact undo/redo, sanitizer/reopen, stale empty-cell repair and no-upscale width'}));

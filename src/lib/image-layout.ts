@@ -14,10 +14,10 @@ export const IMAGE_LAYOUT_CSS = String.raw`
 :is(.prose,.html-editor) .dwnc-image-right .dwnc-image-item img{margin-inline:auto 0!important}
 :is(.prose,.html-editor) .dwnc-image-layout:is(.dwnc-image-cols-2,.dwnc-image-cols-3){display:grid;gap:12px;align-items:start;grid-template-columns:var(--dwnc-image-columns,repeat(2,minmax(0,1fr)))}
 :is(.prose,.html-editor) .dwnc-image-layout.dwnc-image-cols-3{grid-template-columns:var(--dwnc-image-columns,repeat(3,minmax(0,1fr)));--dwnc-image-gaps:2}
-:is(.prose,.html-editor) .dwnc-image-layout > .dwnc-image-caption{grid-column:1 / -1;min-width:0;margin:0;text-align:center;font-size:0.9em;line-height:1.6;color:#777;white-space:pre-line}
+:is(.prose,.html-editor) .dwnc-image-caption{grid-column:1 / -1;min-width:0;margin:0;text-align:center;font-size:0.9em;line-height:1.6;color:#777;white-space:pre-line}
 :is(.prose,.html-editor) .dwnc-image-layout:is(.dwnc-image-cols-2,.dwnc-image-cols-3).dwnc-image-original{--dwnc-current-layout-width:min(var(--image-layout-full-width,min(1200px,calc(100vw - 44px))),calc(var(--dwnc-original-layout-width,720px) - (12px - var(--dwnc-image-gap,12px)) * var(--dwnc-image-gaps,1)));width:var(--dwnc-current-layout-width);margin-inline:calc((100% - var(--dwnc-current-layout-width)) / 2)}
 :is(.prose,.html-editor) .dwnc-image-layout:is(.dwnc-image-cols-2,.dwnc-image-cols-3) .dwnc-image-item img{width:100%!important}
-.article-page{container-type:inline-size}.article-page .dwnc-image-layout:is(.dwnc-image-cols-2,.dwnc-image-cols-3){--image-layout-full-width:min(1200px,calc(100cqw - 44px))}
+.article-page{container-type:inline-size}.article-page .dwnc-image-layout{--image-layout-full-width:min(1200px,calc(100cqw - 44px))}
 .preview-viewport{container-type:inline-size}.preview-viewport .dwnc-image-layout{--image-layout-full-width:100cqw}
 .image-layout-dialog{width:min(700px,calc(100vw - 32px));max-height:85vh;overflow:auto;border:1px solid #ccc;border-radius:8px;padding:24px}.image-layout-dialog::backdrop{background:#0005}.image-layout-list{display:grid;grid-template-columns:var(--dwnc-image-columns,repeat(3,minmax(0,1fr)));gap:8px;max-height:36vh;overflow:auto;margin:16px 0}.image-layout-choice{display:flex!important;gap:8px;align-items:center;border:2px solid #ddd;padding:8px;min-width:0}.image-layout-choice:has(:checked){border-color:#1769d2;background:#eef5ff}.image-layout-choice img{width:64px;height:55px;object-fit:contain}.image-layout-choice input{width:auto}.image-layout-dialog select{width:auto}.image-layout-dialog p{font-size:13px}.image-layout-error{color:#a22;min-height:1.4em}
 @media(max-width:600px){.image-layout-list{grid-template-columns:var(--dwnc-image-columns,repeat(2,minmax(0,1fr)))}:is(.prose,.html-editor) .dwnc-image-layout:is(.dwnc-image-cols-2,.dwnc-image-cols-3){gap:6px;--dwnc-image-gap:6px}}
@@ -49,14 +49,25 @@ function imageLayoutMetrics(images){
   const ratios=sizes.map(size=>size.width/size.height),height=Math.min(...sizes.map(size=>size.height));
   return{ratios,width:height*ratios.reduce((sum,value)=>sum+value,0)+12*(images.length-1)};
 }
+// Remove only vacated photo cells. Text, media and the shared description are
+// authored content, so a row with no images is unwrapped without discarding them.
+function normalizeImageGroupStructure(group){
+  normalizeImageGroupCaption(group);
+  for(const item of imageLayoutItems(group))if(!item.textContent.trim()&&!item.querySelector('img,video,audio,iframe,table,hr,svg,canvas,object,embed,input,button'))item.remove();
+  const images=Array.from(group.querySelectorAll('img'));
+  group.classList.remove('dwnc-image-cols-2','dwnc-image-cols-3');
+  if(images.length>1)group.classList.add('dwnc-image-cols-'+images.length);
+  if(!images.length){for(const child of Array.from(group.childNodes))group.before(child);group.remove();return null}
+  return images;
+}
 function refreshImageGroupGeometry(group,images=Array.from(group.querySelectorAll('img'))){
   const metrics=imageLayoutMetrics(images);
-  if(images.length<2){group.style.removeProperty('--dwnc-image-columns');return}
-  if(!metrics)return;
+  if(images.length<2){group.style.removeProperty('--dwnc-image-columns');if(metrics)group.style.setProperty('--dwnc-original-layout-width',Math.max(1,Math.floor(Math.min(1200,metrics.width)))+'px');return}
+  if(!metrics){group.style.removeProperty('--dwnc-image-columns');return}
   group.style.setProperty('--dwnc-image-columns',metrics.ratios.map(value=>Math.max(0.000001,value).toFixed(6)+'fr').join(' '));
   group.style.setProperty('--dwnc-original-layout-width',Math.max(1,Math.floor(Math.min(1200,metrics.width)))+'px');
 }
-function refreshImageGroups(root){for(const group of root.querySelectorAll('.dwnc-image-layout')){normalizeImageGroupCaption(group);refreshImageGroupGeometry(group)}}
+function refreshImageGroups(root){for(const group of root.querySelectorAll('.dwnc-image-layout')){const images=normalizeImageGroupStructure(group);if(images)refreshImageGroupGeometry(group,images)}}
 `;
 export const IMAGE_LAYOUT_BOOTSTRAP = '(function(){'+IMAGE_LAYOUT_DOM_SCRIPT+String.raw`
 function refresh(){for(const root of document.querySelectorAll('.prose'))refreshImageGroups(root)}

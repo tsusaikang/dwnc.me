@@ -87,10 +87,8 @@ function directPhotoUnit(image){
 function directLayoutValue(group,values,fallback){return values.find(value=>group?.classList.contains('dwnc-image-'+value))||fallback}
 function directLayoutSupported(unit){return!!unit&&(!!unit.group||!unit.root.parentElement?.closest('p,h1,h2,h3,h4,h5,h6,span,a,em,strong,b,i,u,s'))}
 function normalizeDirectLayout(group){
-  normalizeImageGroupCaption(group);
-  const images=Array.from(group.querySelectorAll('img')),columns=images.length;
-  if(!columns){group.remove();return}
-  group.classList.remove('dwnc-image-cols-2','dwnc-image-cols-3');if(columns>1)group.classList.add('dwnc-image-cols-'+columns);
+  const images=normalizeImageGroupStructure(group);if(!images)return;
+  const columns=images.length;
   const size=directLayoutValue(group,['original','paragraph','full'],'original');
   if(size!=='original'&&!layoutSizeAvailability(images,columns)[size]){group.classList.remove('dwnc-image-paragraph','dwnc-image-full');group.classList.add('dwnc-image-original')}
   group.style.setProperty('--dwnc-original-layout-width',Math.max(1,Math.min(1200,Math.max(0,...images.map(image=>image.naturalWidth))*columns+12*(columns-1)))+'px');
