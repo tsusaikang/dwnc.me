@@ -12,7 +12,7 @@ try{const seed=JSON.parse(document.getElementById('publicPhotoMetadata')?.textCo
 const layer=document.createElement('div');layer.className='public-photo-info-controls';
 const popover=document.createElement('section');popover.id='publicPhotoInfoPopover';popover.className='public-photo-info-popover';popover.hidden=true;popover.setAttribute('aria-labelledby','publicPhotoInfoTitle');
 popover.innerHTML='<div class="public-photo-info-popover__header"><h2 id="publicPhotoInfoTitle">사진 정보</h2><button type="button" data-photo-info-close aria-label="사진 정보 닫기">×</button></div><div data-photo-info-content aria-live="polite"></div>';
-document.body.append(layer,popover);
+document.body.append(layer);layer.append(popover);
 const title=popover.querySelector('h2'),content=popover.querySelector('[data-photo-info-content]');
 let active=null,reason='',requestVersion=0,frame=0,hoverTimer=null,closeTimer=null;
 const cache=new Map(),positive=value=>Number.isSafeInteger(value)&&value>0;
@@ -42,44 +42,35 @@ function renderInfo(info,image){
 }
 function closeInfo(restoreFocus=false){
   clearTimeout(hoverTimer);clearTimeout(closeTimer);requestVersion++;const button=active?.button;
-  if(button)button.setAttribute('aria-expanded','false');active=null;reason='';popover.hidden=true;
+  if(button){button.setAttribute('aria-expanded','false');active.card.setAttribute('data-expanded','false')}active=null;reason='';popover.hidden=true;layer.append(popover);position();
   if(restoreFocus&&button?.isConnected){button.suppressPhotoFocus=true;button.focus({preventScroll:true});button.suppressPhotoFocus=false}
 }
 function positionPopover(){
   if(!active||popover.hidden)return;
-  const rect=active.image.getBoundingClientRect(),viewportWidth=window.innerWidth,viewportHeight=window.innerHeight;
-  if(!active.image.isConnected||rect.bottom<=0||rect.top>=viewportHeight){closeInfo();return}
-  const width=Math.min(300,viewportWidth-16);popover.style.width=width+'px';popover.style.maxHeight=Math.max(0,viewportHeight-16)+'px';
-  const height=Math.min(popover.getBoundingClientRect().height,viewportHeight-16);
-  const group=active.image.closest('.dwnc-image-layout'),groupRect=group?.getBoundingClientRect(),edge=groupRect&&groupRect.width>0&&groupRect.height>0?groupRect:rect;
-  let left,top,availableWidth=width,availableHeight=height;
-  if(group&&viewportHeight-edge.bottom>=height+14){left=rect.right-width;top=edge.bottom+6}
-  else if(group&&edge.top>=height+14){left=rect.right-width;top=edge.top-height-6}
-  else if(viewportWidth-edge.right>=width+12){left=edge.right+6;top=rect.bottom-height}
-  else if(edge.left>=width+12){left=edge.left-width-6;top=rect.bottom-height}
-  else if(viewportHeight-edge.bottom>=height+14){left=rect.right-width;top=edge.bottom+6}
-  else if(edge.top>=height+14){left=rect.right-width;top=edge.top-height-6}
-  else{
-    // In cramped views keep the visible photo's center clear, and scroll the
-    // detail within the largest usable edge area instead of covering the image.
-    const cx=(Math.max(0,rect.left)+Math.min(viewportWidth,rect.right))/2,cy=(Math.max(0,rect.top)+Math.min(viewportHeight,rect.bottom))/2;
-    const areas=[{left:8,right:cx-12,top:8,bottom:viewportHeight-8},{left:cx+12,right:viewportWidth-8,top:8,bottom:viewportHeight-8},{left:8,right:viewportWidth-8,top:8,bottom:cy-12},{left:8,right:viewportWidth-8,top:cy+12,bottom:viewportHeight-8}]
-      .filter(area=>area.right>area.left&&area.bottom>area.top).map(area=>({...area,width:Math.min(width,area.right-area.left),height:Math.min(height,area.bottom-area.top)})).sort((a,b)=>b.width*b.height-a.width*a.height);
-    const area=areas[0];if(!area){closeInfo();return}
-    availableWidth=area.width;availableHeight=area.height;
-    left=Math.max(area.left,Math.min(area.right-availableWidth,rect.right-availableWidth));top=Math.max(area.top,Math.min(area.bottom-availableHeight,rect.bottom-availableHeight));
-  }
-  popover.style.width=availableWidth+'px';popover.style.maxHeight=availableHeight+'px';
-  popover.style.left=Math.max(8,Math.min(viewportWidth-availableWidth-8,left))+'px';
-  popover.style.top=Math.max(8,Math.min(viewportHeight-availableHeight-8,top))+'px';
+  const {image,button,card}=active,rect=image.getBoundingClientRect(),viewportWidth=window.innerWidth,viewportHeight=window.innerHeight;
+  const summaryHeight=button.offsetHeight||44,summaryWidth=button.offsetWidth||Math.min(140,Math.max(44,rect.width-8)),small=rect.height<128;
+  const anchorTop=small?rect.top-summaryHeight:rect.top+4;
+  if(!image.isConnected||anchorTop+summaryHeight<=0||anchorTop>=viewportHeight){closeInfo();return}
+  const width=Math.min(300,viewportWidth-16),left=Math.max(8,Math.min(viewportWidth-width-8,rect.right-4-width));
+  card.style.position='fixed';card.style.width=width+'px';card.style.maxWidth=width+'px';card.style.left=left+'px';
+  const anchorRight=Math.max(left+summaryWidth,Math.min(left+width,rect.right-4));button.style.marginRight=(left+width-anchorRight)+'px';
+  const top=Math.max(8,Math.min(viewportHeight-summaryHeight-8,anchorTop));
+  const detailHeight=popover.scrollHeight||popover.getBoundingClientRect().height,desiredHeight=summaryHeight+detailHeight;
+  const centerY=(Math.max(0,rect.top)+Math.min(viewportHeight,rect.bottom))/2;
+  const down=Math.max(0,Math.min(viewportHeight-8,centerY-12)-top),up=Math.max(0,top+summaryHeight-8);
+  let direction=small?'up':'down';
+  if((direction==='up'?up:down)<Math.min(desiredHeight,summaryHeight+80)&&(direction==='up'?down:up)>(direction==='up'?up:down))direction=direction==='up'?'down':'up';
+  const height=Math.min(desiredHeight,direction==='up'?up:down);
+  card.setAttribute('data-direction',direction);card.style.maxHeight=height+'px';card.style.top=(direction==='up'?top+summaryHeight-height:top)+'px';
+  popover.style.maxHeight=Math.max(0,height-summaryHeight)+'px';
 }
 async function openInfo(control,trigger){
   clearTimeout(hoverTimer);clearTimeout(closeTimer);
   if(document.querySelector('dialog[open]'))return;
   if(active===control&&!popover.hidden){if(trigger!=='hover')reason=trigger;return}
-  if(active)active.button.setAttribute('aria-expanded','false');
+  if(active){active.button.setAttribute('aria-expanded','false');active.card.setAttribute('data-expanded','false')}
   active=control;reason=trigger;const {image,index,button}=control,version=++requestVersion;
-  title.textContent=(index+1)+'번 사진 정보';button.setAttribute('aria-expanded','true');popover.hidden=false;message('사진 정보를 확인하고 있습니다.');
+  control.card.setAttribute('data-expanded','true');control.card.append(popover);title.textContent=(index+1)+'번 사진 정보';button.setAttribute('aria-expanded','true');popover.hidden=false;position();message('사진 정보를 확인하고 있습니다.');
   const path=sourcePath(image);if(!path){message('외부 사진의 파일 정보는 확인할 수 없습니다.');return}
   try{
     if(!cache.has(path)){
@@ -89,29 +80,31 @@ async function openInfo(control,trigger){
     const info=await cache.get(path);if(!popover.hidden&&active===control&&version===requestVersion)renderInfo(info,image);
   }catch{if(!popover.hidden&&active===control&&version===requestVersion)message('사진 정보를 불러오지 못했습니다. 잠시 뒤 다시 확인해 주세요.')}
 }
-function leaveHover(){clearTimeout(hoverTimer);if(reason==='hover'){clearTimeout(closeTimer);closeTimer=setTimeout(()=>closeInfo(),180)}}
+function leaveHover(event){clearTimeout(hoverTimer);if(active?.card.contains(event?.relatedTarget)){clearTimeout(closeTimer);return}if(reason==='hover'){clearTimeout(closeTimer);closeTimer=setTimeout(()=>closeInfo(),180)}}
 const controls=photos.map((image,index)=>{
+  const card=document.createElement('div');card.className='public-photo-info-card';card.setAttribute('data-expanded','false');
   const button=document.createElement('button');button.type='button';button.className='public-photo-info-button';button.setAttribute('aria-controls',popover.id);button.setAttribute('aria-expanded','false');
   const summary=document.createElement('span'),dimensions=document.createElement('span'),size=document.createElement('span');summary.className='public-photo-info-summary';summary.append(dimensions,size);button.append(summary);
-  const control={image,index,button,dimensions,size};
+  const control={image,index,button,card,dimensions,size};
+  card.addEventListener('pointerenter',()=>clearTimeout(closeTimer));card.addEventListener('pointerleave',leaveHover);
   button.addEventListener('pointerenter',event=>{if(event.pointerType==='touch')return;clearTimeout(hoverTimer);clearTimeout(closeTimer);hoverTimer=setTimeout(()=>openInfo(control,'hover'),140)});
   button.addEventListener('pointerleave',leaveHover);
   image.addEventListener('pointerenter',()=>{if(active===control)clearTimeout(closeTimer)});
-  image.addEventListener('pointerleave',()=>{if(active===control)leaveHover()});
+  image.addEventListener('pointerleave',event=>{if(active===control)leaveHover(event)});
   button.addEventListener('pointerdown',()=>{button.suppressPhotoFocus=true;setTimeout(()=>{button.suppressPhotoFocus=false},0)});
   button.addEventListener('focus',()=>{if(!button.suppressPhotoFocus)window.requestAnimationFrame(()=>{if(document.activeElement===button&&!button.suppressPhotoFocus&&!(active===control&&reason==='click'))openInfo(control,'focus')})});
   button.addEventListener('blur',event=>{if(reason==='focus'&&active===control&&!popover.contains(event.relatedTarget))closeInfo()});
   button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();if(active===control&&!popover.hidden&&reason==='click')closeInfo();else openInfo(control,'click')});
-  layer.append(button);return control;
+  card.append(button);layer.append(card);return control;
 });
 function position(){
   frame=0;
-  for(const {image,index,button,dimensions,size} of controls){
-    const rect=image.getBoundingClientRect();button.hidden=!image.isConnected||rect.width<=0||rect.height<=0;if(button.hidden)continue;
+  for(const control of controls){
+    const {image,index,button,card,dimensions,size}=control,rect=image.getBoundingClientRect();card.hidden=!image.isConnected||rect.width<=0||rect.height<=0;button.hidden=card.hidden;if(card.hidden)continue;
     const basic=basicInfo(image,rect.width<120);dimensions.textContent=basic.dimensions;size.textContent=basic.size;
-    button.setAttribute('aria-label',(index+1)+'번 사진 · '+basic.dimensions+' · '+basic.size+' · 상세 정보');button.style.maxWidth=Math.max(44,rect.width)+'px';
-    const width=button.offsetWidth||Math.min(140,rect.width),height=button.offsetHeight||44;
-    button.style.left=Math.max(0,window.scrollX+Math.max(rect.left,rect.right-width))+'px';button.style.top=Math.max(0,window.scrollY+Math.max(rect.top,rect.bottom-height))+'px';
+    button.setAttribute('aria-label',(index+1)+'번 사진 · '+basic.dimensions+' · '+basic.size+' · 상세 정보');button.style.maxWidth=Math.max(44,rect.width-8)+'px';
+    const width=button.offsetWidth||Math.min(140,Math.max(44,rect.width-8)),height=button.offsetHeight||44;
+    if(active!==control){card.style.position='absolute';card.style.width='';card.style.maxWidth=Math.max(44,rect.width-8)+'px';card.style.maxHeight='';button.style.marginRight='';card.style.left=Math.max(0,window.scrollX+rect.right-4-width)+'px';card.style.top=Math.max(0,window.scrollY+(rect.height<128?rect.top-height:rect.top+4))+'px'}
   }
   positionPopover();
 }
@@ -121,7 +114,7 @@ popover.addEventListener('pointerenter',()=>clearTimeout(closeTimer));popover.ad
 popover.addEventListener('focusin',()=>{reason='focus';clearTimeout(closeTimer)});
 popover.addEventListener('focusout',event=>{if(!popover.contains(event.relatedTarget)&&event.relatedTarget!==active?.button)closeInfo()});
 document.addEventListener('keydown',event=>{if(event.isComposing||event.keyCode===229)return;if(event.key==='Escape'&&active){event.preventDefault();closeInfo(popover.contains(document.activeElement))}});
-document.addEventListener('click',event=>{if(active&&!popover.contains(event.target)&&event.target!==active.button&&!active.button.contains(event.target))closeInfo()});
+document.addEventListener('click',event=>{if(active&&!active.card.contains(event.target))closeInfo()});
 window.addEventListener('resize',schedule,{passive:true});window.addEventListener('scroll',schedule,{passive:true});window.addEventListener('load',schedule,{once:true});
 body.addEventListener('load',schedule,true);
 if(typeof ResizeObserver==='function'){const observer=new ResizeObserver(schedule);observer.observe(body);for(const image of photos)observer.observe(image)}

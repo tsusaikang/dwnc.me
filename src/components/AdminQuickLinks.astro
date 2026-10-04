@@ -1,11 +1,12 @@
-<nav class="public-admin-tools" data-public-admin-tools aria-label="관리자 바로가기" hidden>
-  <span>관리자</span>
-  <a href="https://admin.dwnc.me/#view=posts" target="_blank" rel="noopener noreferrer">글 관리 ↗</a>
-  <a href="https://admin.dwnc.me/#view=new" target="_blank" rel="noopener noreferrer">새 글 ↗</a>
-  <a href="https://admin.dwnc.me/#view=statistics" target="_blank" rel="noopener noreferrer">통계 ↗</a>
-  <a href="https://admin.dwnc.me/#view=settings" target="_blank" rel="noopener noreferrer">설정 ↗</a>
-  <small>새 탭에서 열립니다.</small>
-</nav>
+<details class="public-admin-tools" data-public-admin-tools hidden>
+  <summary aria-label="관리자 바로가기">관리 <span aria-hidden="true">⌄</span></summary>
+  <nav class="public-admin-tools__links" aria-label="관리자 바로가기">
+    <a href="https://admin.dwnc.me/#view=posts" target="_blank" rel="noopener noreferrer" aria-label="글 관리 (새 탭)">글 관리 ↗</a>
+    <a href="https://admin.dwnc.me/#view=new" target="_blank" rel="noopener noreferrer" aria-label="새 글 (새 탭)">새 글 ↗</a>
+    <a href="https://admin.dwnc.me/#view=statistics" target="_blank" rel="noopener noreferrer" aria-label="통계 (새 탭)">통계 ↗</a>
+    <a href="https://admin.dwnc.me/#view=settings" target="_blank" rel="noopener noreferrer" aria-label="설정 (새 탭)">설정 ↗</a>
+  </nav>
+</details>
 
 <script>
   import { mountPublicAdminLinks } from '../lib/public-admin-links';
@@ -15,19 +16,18 @@
 <style is:global>
   .public-admin-tools[hidden], .public-edit-link[hidden] { display: none !important; }
   .public-admin-tools {
-    margin-left: var(--rail, 0px);
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 16px;
-    padding: 10px 24px;
-    background: var(--paper-light, #fbf9f3);
-    border-bottom: 1px solid var(--line, #cbc4b6);
+    position: relative;
+    width: fit-content;
+    margin-top: 22px;
     color: var(--ink, #172025);
     font: 13px/1.6 var(--sans, sans-serif);
   }
-  .public-admin-tools > span { font-weight: 700; }
-  .public-admin-tools small { color: var(--ink-soft, #5d6669); }
+  .public-admin-tools summary { display: flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 8px; list-style: none; cursor: pointer; }
+  .public-admin-tools summary::-webkit-details-marker { display: none; }
+  .public-admin-tools[open] summary { color: var(--accent, #81271f); }
+  .public-admin-tools__links { position: absolute; z-index: 1; top: calc(100% + 4px); left: 0; display: grid; width: 180px; padding: 6px; border: 1px solid var(--line, #cbc4b6); border-radius: 6px; background: var(--paper-light, #fbf9f3); box-shadow: 0 8px 24px rgb(0 0 0 / 10%); }
+  .public-admin-tools__links a { display: flex; align-items: center; min-height: 44px; padding: 8px 12px; text-decoration: none; }
+  .public-admin-tools__links a:hover { background: rgb(129 39 31 / 6%); }
   .public-admin-tools a, a.public-edit-link { color: var(--accent, #0e5362); text-underline-offset: 3px; }
   a.public-edit-link {
     display: inline-flex;
@@ -46,5 +46,13 @@
   .public-admin-tools a:focus-visible, a.public-edit-link:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
   .archive-year li > .public-edit-link, .home-index li > .public-edit-link, .post-related li > .public-edit-link { grid-column: 1 / -1; justify-self: start; }
   .search-results > .public-edit-link { margin: -6px 0 14px; padding: 4px 10px; }
-  @media (max-width: 900px) { .public-admin-tools { margin-left: 0; padding: 10px 20px; } }
+  @media (min-width: 901px) {
+    .public-admin-tools { width: 100%; flex-shrink: 0; }
+    .public-admin-tools__links { position: static; width: 100%; margin-top: 4px; padding: 0; border: 0; background: transparent; box-shadow: none; }
+    .public-admin-tools__links a { padding-inline: 8px; }
+  }
+  @media (max-width: 900px) {
+    .public-admin-tools { order: 2; flex: 0 0 auto; margin: 0; }
+    .public-admin-tools__links { right: 0; left: auto; width: min(210px, calc(100vw - 32px)); max-height: calc(100dvh - 72px); overflow-y: auto; overscroll-behavior: contain; }
+  }
 </style>

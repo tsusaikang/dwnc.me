@@ -18,6 +18,55 @@ export function publicLoginHref(value: string): string {
   return `/auth/login?return=${encodeURIComponent(returnPath)}`;
 }
 
+/** The compact menu is a disclosure; search/category dialogs retain their own focus handling. */
+export function mountPublicNavigation() {
+  const header = document.querySelector<HTMLElement>('.site-header');
+  const toggle = header?.querySelector<HTMLButtonElement>('[data-site-menu-toggle]');
+  const navigation = header?.querySelector<HTMLElement>('#site-navigation');
+  const admin = header?.querySelector<HTMLDetailsElement>('[data-public-admin-tools]');
+  if (!header || !toggle || !navigation) return;
+  const narrow = window.matchMedia('(max-width: 900px)');
+  const closeMenu = (restoreFocus = false) => {
+    header.removeAttribute('data-site-menu-open');
+    toggle.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) toggle.focus({ preventScroll: true });
+  };
+  toggle.hidden = false;
+  header.setAttribute('data-site-menu-ready', '');
+  toggle.addEventListener('click', () => {
+    if (toggle.getAttribute('aria-expanded') === 'true') closeMenu();
+    else {
+      admin?.removeAttribute('open');
+      header.setAttribute('data-site-menu-open', '');
+      toggle.setAttribute('aria-expanded', 'true');
+    }
+  });
+  admin?.querySelector('summary')?.addEventListener('click', () => closeMenu());
+  header.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || event.isComposing || event.keyCode === 229) return;
+    if (admin?.open) {
+      admin.removeAttribute('open');
+      admin.querySelector<HTMLElement>('summary')?.focus({ preventScroll: true });
+    } else if (narrow.matches && toggle.getAttribute('aria-expanded') === 'true') closeMenu(true);
+    else return;
+    event.preventDefault();
+  });
+  document.addEventListener('pointerdown', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || header.contains(target) || target.closest('dialog')) return;
+    closeMenu(); admin?.removeAttribute('open');
+  });
+  header.addEventListener('focusout', () => {
+    requestAnimationFrame(() => {
+      const active = document.activeElement;
+      // A modal returns focus to its opener in the expanded menu.
+      if (active instanceof Element && (header.contains(active) || active.closest('dialog'))) return;
+      closeMenu(); admin?.removeAttribute('open');
+    });
+  });
+  narrow.addEventListener('change', () => { closeMenu(); admin?.removeAttribute('open'); });
+}
+
 export function mountPublicAdminLinks() {
   const toolbar = document.querySelector<HTMLElement>('[data-public-admin-tools]');
   if (!toolbar || location.origin !== 'https://dwnc.me') return;
@@ -67,6 +116,7 @@ export function mountPublicAdminLinks() {
   const schedule = () => { if (authorized && !frame) frame = requestAnimationFrame(decorate); };
   const setAuthorized = (value: boolean) => {
     authorized = value; toolbar.hidden = !value;
+    if (!value) toolbar.removeAttribute('open');
     for (const entry of document.querySelectorAll<HTMLAnchorElement>('[data-public-admin-entry]')) {
       const label = value ? '관리자 화면' : '관리자 로그인';
       const text = value ? `${label} ↗` : label;

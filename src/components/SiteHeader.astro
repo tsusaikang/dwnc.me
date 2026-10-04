@@ -1,5 +1,6 @@
 ---
 import CategoryDrawer from './CategoryDrawer.astro';
+import AdminQuickLinks from './AdminQuickLinks.astro';
 import { PUBLIC_ADMIN_ENTRY_HTML } from '../lib/public-admin-links';
 
 interface Props {
@@ -23,7 +24,8 @@ const isCurrent = (href: string) => {
   <div class="site-header__inner">
     <a class="brand" href="/" aria-label="dwnc.me 홈">dwnc.me</a>
 
-    <nav class="site-nav" aria-label="주요 메뉴">
+    <button class="site-menu-toggle" type="button" data-site-menu-toggle aria-controls="site-navigation" aria-expanded="false" hidden>메뉴 <span aria-hidden="true">☰</span></button>
+    <nav class="site-nav" id="site-navigation" aria-label="주요 메뉴">
       {navItems.slice(0, 2).map((item) => (
         <a
           href={item.href}
@@ -56,8 +58,14 @@ const isCurrent = (href: string) => {
       </button>
       <Fragment set:html={PUBLIC_ADMIN_ENTRY_HTML} />
     </nav>
+    <AdminQuickLinks />
     <p class="site-header__note">개인 기록</p>
   </div>
 </header>
 
 <CategoryDrawer activeCategoryId={activeCategoryId} />
+
+<script>
+  import { mountPublicNavigation } from '../lib/public-admin-links';
+  mountPublicNavigation();
+</script>

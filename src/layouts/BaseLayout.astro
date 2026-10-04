@@ -2,8 +2,8 @@
 import SiteFooter from '../components/SiteFooter.astro';
 import SiteHeader from '../components/SiteHeader.astro';
 import SearchDialog from '../components/SearchDialog.astro';
-import AdminQuickLinks from '../components/AdminQuickLinks.astro';
 import '../styles/global.css';
+import '../styles/photo-info.css';
 
 interface Props {
   title?: string;
@@ -50,7 +50,6 @@ const socialImage = image ? new URL(image, Astro.site ?? Astro.url.origin) : und
   <body>
     <a class="skip-link" href="#main">본문 바로가기</a>
     <SiteHeader activeCategoryId={activeCategoryId} />
-    <AdminQuickLinks />
     <main id="main">
       <slot />
     </main>

@@ -15,7 +15,7 @@ const $html=load('<div id="editorHeader"></div><div id="editorFooter"></div><div
 const wrappers=new WeakMap(),listeners=new Map(),widths=new Map(),scrollRequests=[];
 let hit=null,caretNode=null,timerSerial=0;const timerCallbacks=new Map();const flushInfoTimers=()=>{for(const [id,callback] of [...timerCallbacks]){timerCallbacks.delete(id);callback()}};
 class Element {
-  constructor(node){this.node=node;this.listeners=new Map();this.dataset=new Proxy({},{get:(_,key)=>this.getAttribute('data-'+String(key).replace(/[A-Z]/g,letter=>'-'+letter.toLowerCase()))??undefined,set:(_,key,value)=>{this.setAttribute('data-'+String(key).replace(/[A-Z]/g,letter=>'-'+letter.toLowerCase()),value);return true}});this.hidden='hidden' in (node.attribs||{});this.value='';this.scrollTop=0;this.rect={left:0,top:0,right:800,bottom:100,width:800,height:100};this.style={getPropertyValue:name=>this.styles()[name]?.replace(/\s*!important$/,'' )||'',getPropertyPriority:name=>/!important$/.test(this.styles()[name]||'')?'important':'',setProperty:(name,value,priority)=>{const styles=this.styles();styles[name]=value+(priority?' !important':'');this.writeStyles(styles)},removeProperty:name=>{const styles=this.styles();delete styles[name];this.writeStyles(styles)}};this.classList={contains:name=>(this.node.attribs.class||'').split(/\s+/).includes(name),add:(...names)=>this.node.attribs.class=[...new Set((this.node.attribs.class||'').split(/\s+/).filter(Boolean).concat(names))].join(' '),remove:(...names)=>this.node.attribs.class=(this.node.attribs.class||'').split(/\s+/).filter(name=>!names.includes(name)).join(' ')};}
+  constructor(node){this.node=node;this.listeners=new Map();this.dataset=new Proxy({},{get:(_,key)=>this.getAttribute('data-'+String(key).replace(/[A-Z]/g,letter=>'-'+letter.toLowerCase()))??undefined,set:(_,key,value)=>{this.setAttribute('data-'+String(key).replace(/[A-Z]/g,letter=>'-'+letter.toLowerCase()),value);return true},deleteProperty:(_,key)=>{this.removeAttribute('data-'+String(key).replace(/[A-Z]/g,letter=>'-'+letter.toLowerCase()));return true}});this.hidden='hidden' in (node.attribs||{});this.value='';this.scrollTop=0;this.rect={left:0,top:0,right:800,bottom:100,width:800,height:100};this.style={getPropertyValue:name=>this.styles()[name]?.replace(/\s*!important$/,'' )||'',getPropertyPriority:name=>/!important$/.test(this.styles()[name]||'')?'important':'',setProperty:(name,value,priority)=>{const styles=this.styles();styles[name]=value+(priority?' !important':'');this.writeStyles(styles)},removeProperty:name=>{const styles=this.styles();delete styles[name];this.writeStyles(styles)}};this.classList={contains:name=>(this.node.attribs.class||'').split(/\s+/).includes(name),add:(...names)=>this.node.attribs.class=[...new Set((this.node.attribs.class||'').split(/\s+/).filter(Boolean).concat(names))].join(' '),remove:(...names)=>this.node.attribs.class=(this.node.attribs.class||'').split(/\s+/).filter(name=>!names.includes(name)).join(' ')};}
   styles(){return Object.fromEntries((this.node.attribs.style||'').split(';').filter(value=>value.includes(':')).map(value=>{const index=value.indexOf(':');return[value.slice(0,index).trim(),value.slice(index+1).trim()]}))}
   writeStyles(styles){const value=Object.entries(styles).map(([key,value])=>key+':'+value).join(';');if(value)this.node.attribs.style=value;else delete this.node.attribs.style}
   get tagName(){return this.node.name?.toUpperCase()}
@@ -390,16 +390,17 @@ run('refreshDirectPhotoNumbers()');assert.equal(field('photoNumberOverlay').quer
 const beforeNarrow=checkpoint(),previousWidth=context.window.innerWidth;
 context.window.innerWidth=390;
 const originalRectA=image('a').rect,originalRectB=image('b').rect;
-image('a').rect={left:20,right:98,top:2,bottom:96,width:78,height:94};
-image('b').rect={left:102,right:222,top:2,bottom:96,width:120,height:94};
+image('a').rect={left:20,right:98,top:160,bottom:254,width:78,height:94};
+image('b').rect={left:102,right:222,top:160,bottom:254,width:120,height:94};
 run('refreshDirectPhotoNumbers()');
 let mobileMarkers=field('photoNumberOverlay').querySelectorAll('.photo-number-marker');
-assert.equal(mobileMarkers[0].dataset.stacked,'true');assert.equal(mobileMarkers[0].style.width,'66px');
-assert.equal(mobileMarkers[1].dataset.stacked,'true');
-assert.ok(parseFloat(mobileMarkers[0].style.left)+66<=image('a').rect.right);
-assert.ok(parseFloat(mobileMarkers[0].style.left)+66<parseFloat(mobileMarkers[1].style.left),'Adjacent photo controls stay separate');
-assert.ok(parseFloat(mobileMarkers[0].style.top)+91<=image('a').rect.bottom,'The two 44px controls fit the 94px portrait');
-assert.match(imageDirectCss,/data-stacked="true"\]\{flex-direction:column\}/);
+const narrowInfo=mobileMarkers[0].querySelector('.photo-info-panel'),nextInfo=mobileMarkers[1].querySelector('.photo-info-panel');
+assert.equal(mobileMarkers[0].style.width,'44px');assert.equal(narrowInfo.style.width,'66px');
+assert.ok(parseFloat(narrowInfo.style.left)+66<=image('a').rect.right);
+assert.ok(parseFloat(narrowInfo.style.left)+66<parseFloat(nextInfo.style.left),'Adjacent summaries stay within their own photo width');
+assert.ok(parseFloat(narrowInfo.style.top)+44<=image('a').rect.top,'A narrow photo summary sits above the photo and its left-hand number');
+assert.ok(parseFloat(mobileMarkers[0].style.top)>=image('a').rect.top);
+assert.match(imageDirectCss,/background:rgb\(0 0 0 \/ 14%\)/);assert.match(imageDirectCss,/background:rgb\(0 0 0 \/ 22%\)/);
 assert.match(imageDirectCss,/photo-file-info\{[^}]*min-width:44px;min-height:44px/);assert.equal(imageDirectCss.includes('photo-file-info{display:none}'),false);
 mobileMarkers[0].querySelector('.photo-number-badge').click();assert.equal(run('selectedMedia.image'),image('a'),'The narrow photo number still selects that exact image');
 assert.equal(checkpoint(),beforeNarrow);
@@ -424,7 +425,7 @@ console.log(JSON.stringify({suite:'photo-file-info',status:'PASS',behavior:'intr
 // Detailed metadata is fetched only for a clicked photo, without replacing the
 // selected moving source or changing the saved body/history.
 const detailRequests=[];context.api=(path,options)=>new Promise((resolve,reject)=>detailRequests.push({path,options,resolve,reject}));
-body.innerHTML=photo('a')+photo('b');run("current={id:'photo-detail'};photoMetadataOwner=current.id;photoMetadataByPath=new Map();photoFileDetailsByPath=new Map();resetEditorHistory()");context.selected=image('b');run('selectMedia(selected)');context.infoImage=image('a');const detailBody=checkpoint(),detailHistory=run('editorUndoStates.length');
+body.innerHTML=photo('a')+photo('b');for(const letter of ['a','b'])image(letter).rect={left:100,right:900,top:160,bottom:660,width:800,height:500};run("current={id:'photo-detail'};photoMetadataOwner=current.id;photoMetadataByPath=new Map();photoFileDetailsByPath=new Map();resetEditorHistory()");context.selected=image('b');run('selectMedia(selected)');context.infoImage=image('a');const detailBody=checkpoint(),detailHistory=run('editorUndoStates.length');
 const detailLoad=run('openDirectPhotoInfo(infoImage,null)');assert.equal(field('photoInfoDialog').open,true);assert.equal(detailRequests.at(-1).path,'/posts/photo-detail/media-info');assert.equal(detailRequests.at(-1).options.method,'POST');assert.equal(JSON.parse(detailRequests.at(-1).options.body).path,src('a'));assert.equal(run('selectedMedia.image'),image('b'));
 detailRequests.at(-1).resolve({info:{format:'JPEG',bytes:456789,width:2560,height:1928,colorSpace:'Display P3',profileName:'Display P3',hdr:'metadata-present',metadataComplete:true}});await detailLoad;
 const detailsText=()=>field('photoInfoDetails').textContent;
@@ -454,18 +455,48 @@ const escapeInfo=(extra={})=>{const event={key:'Escape',...extra,preventDefault(
 run('editorComposing=true');assert.equal(escapeInfo().stopped,undefined);run('editorComposing=false');assert.equal(escapeInfo({isComposing:true}).prevented,undefined);assert.equal(escapeInfo({keyCode:229}).prevented,undefined);assert.equal(hoverDialog.open,true,'An IME cancel key belongs to composition');assert.equal(escapeInfo().stopped,true);assert.equal(hoverDialog.open,false);assert.equal(run('selectedMedia.image'),image('b'),'Closing photo details preserves the moving selection');trigger.listeners.get('focus')();assert.equal(hoverDialog.open,false,'Escape suppresses immediate reopening from the same focus');
 trigger.listeners.get('pointerenter')({pointerType:'mouse'});assert.equal(hoverDialog.open,true);assert.equal(hoverRequests.length,1,'Reentering while the read is pending does not download it again');
 firstRequest.resolve({info:{format:'JPEG',bytes:9876,width:1400,height:1050,colorSpace:'sRGB',profileName:null,hdr:'not-indicated',metadataComplete:true}});await tick();assert.match(detailsText(),/sRGB/);assert.equal(trigger.getAttribute('aria-expanded'),'true');
-const popupRect=()=>({left:parseFloat(hoverDialog.style.left),top:parseFloat(hoverDialog.style.top),width:parseFloat(hoverDialog.style.width),height:Math.min(hoverDialog.rect.height,parseFloat(hoverDialog.style.maxHeight))});
+const popupRect=()=>{const panel=trigger.parentElement;return{left:parseFloat(panel.style.left),top:parseFloat(panel.style.top),width:parseFloat(panel.style.width),height:parseFloat(panel.style.height)}};
 const assertOutsidePhotoCenter=()=>{const popup=popupRect(),box=image('a').getBoundingClientRect(),cx=(box.left+box.right)/2,cy=(box.top+box.bottom)/2;assert.equal(cx>=popup.left&&cx<=popup.left+popup.width&&cy>=popup.top&&cy<=popup.top+popup.height,false,'Popup must not cover the photo center');assert.ok(popup.left>=8&&popup.top>=8&&popup.left+popup.width<=context.window.innerWidth-8&&popup.top+popup.height<=context.window.innerHeight-8);};
 assertOutsidePhotoCenter();
+const expandingPanel=trigger.parentElement;
+assert.equal(hoverDialog.parentElement,expandingPanel);assert.equal(expandingPanel.dataset.expanded,'true');
+assert.equal(trigger.listeners.has('pointerleave'),false,'The whole expanding area owns hover leave');
+expandingPanel.listeners.get('pointerleave')({relatedTarget:expandingPanel});hoverDialog.listeners.get('pointerleave')({relatedTarget:expandingPanel});flushInfoTimers();assert.equal(hoverDialog.open,true,'Crossing into the expanded background keeps one continuous area open');
+assert.match(imageDirectCss,/body:has\(#photoInfoDialog\[open\]\):not\(:has\(dialog\[open\]:not\(#photoInfoDialog\)\)\)\{overflow:visible\}/,'A photo expansion must not apply the other dialogs’ document scroll lock');
 // Mouse may cross the small gap and read the tooltip; leaving both closes it.
-document.activeElement=body;trigger.listeners.get('pointerleave')({relatedTarget:null});hoverDialog.listeners.get('pointerenter')();flushInfoTimers();assert.equal(hoverDialog.open,true);hoverDialog.listeners.get('pointerleave')({relatedTarget:null});flushInfoTimers();assert.equal(hoverDialog.open,false);
+document.activeElement=body;trigger.parentElement.listeners.get('pointerleave')({relatedTarget:null});hoverDialog.listeners.get('pointerenter')();flushInfoTimers();assert.equal(hoverDialog.open,true);hoverDialog.listeners.get('pointerleave')({relatedTarget:null});flushInfoTimers();assert.equal(hoverDialog.open,false);
 trigger.listeners.get('pointerenter')({pointerType:'touch'});assert.equal(hoverDialog.open,false,'Touch hover is ignored');trigger.click();assert.equal(hoverDialog.open,true);trigger.click();assert.equal(hoverDialog.open,false,'Touch/click on the same metadata toggles the tooltip');
-trigger.click();listeners.get('document:pointerdown')({target:body});assert.equal(hoverDialog.open,false,'Outside pointer closes without changing content or selection');
+trigger.click();listeners.get('document:pointerdown')({target:body});assert.equal(hoverDialog.open,false,'Outside pointer closes without changing content or selection');assert.equal(hoverDialog.parentElement,field('photoInfoHost'),'Closed details return to the hidden shared host');
 // A tall full-width photo leaves no room outside it: use a bounded edge strip.
-context.window.innerWidth=390;context.window.innerHeight=720;image('a').rect={left:12,right:378,top:70,bottom:970,width:366,height:900};trigger.rect={left:62,right:202,top:76,bottom:120,width:140,height:44};trigger.click();assertOutsidePhotoCenter();assert.ok(parseFloat(hoverDialog.style.maxHeight)<720);
+context.window.innerWidth=390;context.window.innerHeight=720;image('a').rect={left:12,right:378,top:70,bottom:970,width:366,height:900};trigger.rect={left:62,right:202,top:76,bottom:120,width:140,height:44};trigger.click();assertOutsidePhotoCenter();assert.ok(parseFloat(trigger.parentElement.style.height)<720);assert.equal(hoverDialog.parentElement,trigger.parentElement,'Summary and details share the same expanding panel');
 // Small grouped photos retain pixels and bytes; their tooltip sits outside.
 image('a').rect={left:20,right:98,top:160,bottom:254,width:78,height:94};image('b').rect={left:102,right:222,top:160,bottom:254,width:120,height:94};run('refreshDirectPhotoNumbers()');assert.equal(infoTrigger('a'),trigger);assert.match(trigger.textContent,/1400×1050px/);assert.match(trigger.textContent,/9.88 KB/);assertOutsidePhotoCenter();
 trigger.listeners.get('blur')({relatedTarget:field('closePhotoInfo')});assert.equal(hoverDialog.open,true);hoverDialog.listeners.get('focusout')({relatedTarget:body});assert.equal(hoverDialog.open,false);
-trigger.click();run('busy=true;refreshDirectPhotoNumbers()');assert.equal(hoverDialog.open,false,'Busy operations close the tooltip');run('busy=false;refreshDirectPhotoNumbers()');trigger.click();image('a').rect.top=-400;image('a').rect.bottom=-306;run('refreshDirectPhotoNumbers()');assert.equal(hoverDialog.open,false,'Offscreen source removes its tooltip');
+trigger.click();run('busy=true;refreshDirectPhotoNumbers()');assert.equal(hoverDialog.open,false,'Busy operations close the tooltip');run('busy=false;refreshDirectPhotoNumbers()');trigger.click();image('a').rect.top=-20;image('a').rect.bottom=74;run('refreshDirectPhotoNumbers()');assert.equal(hoverDialog.open,false,'The summary does not follow scrolling down over the lower photo or its capture text');
 assert.equal(checkpoint(),hoverBody);assert.equal(run('editorUndoStates.length'),hoverHistory);assert.equal(run('selectedMedia.image'),image('b'));assert.equal(hoverRequests.length,1);
-console.log(JSON.stringify({suite:'photo-info-tooltip',status:'PASS',behavior:'pixels/bytes hover and keyboard focus, no separate info button/modal/focus theft, trigger and in-flight request reuse, click/touch toggle, Escape/outside/leave cleanup, desktop/mobile/group edge geometry, busy/offscreen and source/history/body preservation'}));
+// Actual 390px browser geometry exposed a dangerous overlap: the narrow
+// summary's center hit the selected-photo Delete button underneath it.
+field('editorHeader').rect={left:0,right:390,top:0,bottom:102,width:390,height:102};
+image('a').rect={left:20,right:91.85,top:374.27,bottom:470.07,width:71.85,height:95.8};
+image('b').rect={left:102,right:222,top:374.27,bottom:470.07,width:120,height:95.8};
+const imageTools=field('imageTools');imageTools.hidden=false;imageTools.rect={left:12,right:378,top:192.27,bottom:366.27,width:366,height:174};
+panel.hidden=false;panel.rect={left:12,right:378,top:490,bottom:710,width:366,height:220};list.scrollTop=67;
+context.selected=image('a');run('selectMedia(selected);refreshDirectPhotoNumbers()');
+const collisionBody=checkpoint(),collisionHistory=run('editorUndoStates.length'),collisionScroll=context.window.scrollY;
+const containsPoint=(rect,x,y)=>x>=rect.left&&x<=rect.right&&y>=rect.top&&y<=rect.bottom;
+const realHit=(x,y)=>document.body.dataset.photoInfo!=='open'&&containsPoint(imageTools.rect,x,y)?field('deleteImage'):containsPoint(trigger.parentElement.photoBaseRect,x,y)?trigger:null;
+assert.equal(realHit(55.925,350.27)===field('deleteImage'),true,'The original reported summary center really intersects Delete');
+const safeAnchor={...trigger.parentElement.photoBaseRect};
+assert.ok(safeAnchor.bottom<=imageTools.rect.top-6,'The collapsed summary must be above the actual toolbar hit region');
+assert.ok(safeAnchor.top>=field('editorHeader').rect.bottom+6,'The safe summary remains below the fixed header');
+const actualTarget=realHit((safeAnchor.left+safeAnchor.right)/2,(safeAnchor.top+safeAnchor.bottom)/2);
+assert.equal(actualTarget===trigger,true);actualTarget.click();assert.equal(hoverDialog.open,true);assert.equal(document.body.dataset.photoInfo,'open');
+assert.match(imageDirectCss,/body\[data-photo-info="open"\] #imageTools,body\[data-photo-info="open"\] #photoOrderPanel\{visibility:hidden;pointer-events:none\}/,'Expanded details fold controls without moving or resetting them');
+let expandedSafe=popupRect();assert.equal(trigger.parentElement.dataset.direction,'down');
+assert.ok(expandedSafe.top>=field('editorHeader').rect.bottom+6);assert.ok(expandedSafe.top+expandedSafe.height<=image('a').rect.top-6);
+assert.ok(parseFloat(hoverDialog.style.maxHeight)>=150,'The detail area retains usable reading height instead of a narrow slit');assertOutsidePhotoCenter();
+run('refreshDirectPhotoNumbers()');assert.deepEqual({...trigger.parentElement.photoBaseRect},safeAnchor,'Metadata refresh retains the safe basic anchor while controls are folded');
+assert.equal(list.scrollTop,67);assert.equal(imageTools.hidden,false);assert.equal(panel.hidden,false);
+escapeInfo();assert.equal(hoverDialog.open,false);assert.equal(document.body.dataset.photoInfo,undefined,'Closing restores the same editing controls');assert.equal(imageTools.hidden,false);assert.equal(panel.hidden,false);assert.equal(list.scrollTop,67);
+assert.equal(checkpoint(),collisionBody);assert.equal(run('editorUndoStates.length'),collisionHistory);assert.equal(run('selectedMedia.image'),image('a'));assert.equal(body.querySelectorAll('img').length,2);assert.equal(context.window.scrollY,collisionScroll);
+console.log(JSON.stringify({suite:'photo-info-tooltip',status:'PASS',behavior:'pixels/bytes hover and keyboard focus, no separate info button/modal/focus theft, trigger and in-flight request reuse, click/touch toggle, Escape/outside/leave cleanup, one light translucent panel, upper-right/above-photo summary, desktop/mobile/group geometry, Delete-button hit avoidance, readable expansion below header, editing controls restored, busy/offscreen and source/history/body preservation'}));

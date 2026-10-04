@@ -174,7 +174,7 @@ document.querySelectorAll('[data-fixture-paste]').forEach(button=>{button.addEve
  status.textContent=compare?'합성 '+(plainOnly?'무서식':'서식 포함')+' 붙여넣기를 전달했습니다. 본문·실행 취소·저장을 확인하세요.':event.defaultPrevented?'합성 붙여넣기를 전달했습니다. 본문과 저장 상태를 확인하세요.':'붙여넣기 처리기가 이벤트를 받지 않았습니다.';
 })});</script>`;
 const counts = { saves: 0, publishes: 0 };
-const controls = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>합성 CMS 시험</title><style>body{font:18px sans-serif;max-width:900px;margin:40px auto}a{display:block;margin:18px}</style><h1>로컬 합성 CMS 시험</h1><a href="/" target="editor">관리자 열기</a><a href="${publicOrigin}/" target="public">실제 공개 처리기로 합성 방문자 화면 확인</a><a href="/__fixture/public" target="public-raw">저장된 공개 사본 확인</a>${[['fail','다음 저장 실패'],['auth','로그인 만료'],['conflict','다른 세션에서 수정'],['slow','다음 저장 3초 지연'],['slow-publish','다음 공개 반영 3초 지연'],['normal','정상으로 전환']].map(([key,label])=>`<a href="/__fixture/action/${key}">${label}</a>`).join('')}<a href="/__fixture/state">현재 합성 데이터</a></html>`;
+const controls = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>합성 CMS 시험</title><style>body{font:18px sans-serif;max-width:900px;margin:40px auto}a{display:block;margin:18px}</style><h1>로컬 합성 CMS 시험</h1><a href="/" target="editor">관리자 열기</a><a href="${publicOrigin}/" target="public">실제 공개 처리기로 합성 방문자 화면 확인</a><a href="/__fixture/public" target="public-raw">저장된 공개 사본 확인</a>${[['fail','다음 저장 실패'],['auth','로그인 만료'],['conflict','다른 세션에서 수정'],['slow','다음 저장 3초 지연'],['slow-publish','다음 공개 반영 3초 지연'],['normal','정상으로 전환'],['admin-on','공개 관리자 메뉴 표시'],['admin-off','공개 관리자 메뉴 숨김']].map(([key,label])=>`<a href="/__fixture/action/${key}">${label}</a>`).join('')}<a href="/__fixture/state">현재 합성 데이터</a></html>`;
 const fontFiles = new Set(['NanumGothic.woff','NanumGothicBold.ttf','NanumMyeongjo.woff','NanumMyeongjoBold.woff','NanumBarunGothic.woff','NanumBarunGothicBold.woff'].map(name=>'/fonts/nanum/'+name));
 const server = createServer(async (incoming, outgoing) => {
   try {
@@ -227,18 +227,22 @@ const server = createServer(async (incoming, outgoing) => {
 server.listen(editorPort, '127.0.0.1', () => console.log('Synthetic editor fixture: '+editorOrigin+'/__fixture'));
 
 const publicCss = await readFile(new URL('../src/styles/global.css', import.meta.url), 'utf8');
+const photoInfoCss = await readFile(new URL('../src/styles/photo-info.css', import.meta.url), 'utf8');
 // Only this local scenario rewrites the browser origin and session endpoint.
 // Production accepts no localhost origin and the fixture calls no real admin API.
 const adminComponent = await readFile(new URL('../src/components/AdminQuickLinks.astro', import.meta.url), 'utf8');
 const adminMarkup = adminComponent.split('<script>')[0].replaceAll('https://admin.dwnc.me', editorOrigin);
 const adminCss = adminComponent.match(/<style is:global>([\s\S]*?)<\/style>/u)?.[1] ?? '';
 const adminBrowserSource = (await readFile(new URL('../src/lib/public-admin-links.ts', import.meta.url), 'utf8')).replaceAll('https://admin.dwnc.me',editorOrigin).replaceAll('https://dwnc.me',publicOrigin).replace(/^export /gmu,'');
-const adminBrowserScript = ts.transpileModule(adminBrowserSource,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText + '\nmountPublicAdminLinks();';
+const dialogComponents = await Promise.all(['CategoryDrawer','SearchDialog'].map(name => readFile(new URL('../src/components/'+name+'.astro', import.meta.url),'utf8')));
+const dialogMarkup = dialogComponents.map(source => source.split('<script>')[0].replace(/^---[\s\S]*?---\s*/u,'').replace(/<CategoryTree[^>]*\/>/u,'')).join('');
+const dialogBrowserSource = dialogComponents.map(source => '{'+(source.match(/<script>([\s\S]*?)<\/script>/u)?.[1] ?? '')+'}').join('\n');
+const adminBrowserScript = ts.transpileModule(adminBrowserSource+'\nmountPublicNavigation();\nmountPublicAdminLinks();\n'+dialogBrowserSource,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.None}}).outputText;
 const syntheticIndex = [{ title: staticArticle.title, description: staticArticle.description, path: '/posts/1', date: '2026.09.01', publishedAt: staticArticle.publishedAt, updatedAt: staticArticle.updatedAt, featured: true, cover: legacyImage, coverAlt: '합성 시험 이미지', categoryId: 'daily', categories: ['일상'], tags: [], categoryPath: ['일상'], leafCategory: { label: '일상', path: '/category/일상' }, searchText: '합성 기존 공개 글 방문자에게 보이는 원래 본문입니다.' }];
-const syntheticShell = (main = '') => `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>합성 공개 화면</title><meta name="description"><link rel="canonical"><meta property="og:title"><meta property="og:description"><meta property="og:url"><meta property="og:site_name"><meta property="og:type"><meta name="twitter:card"><link rel="stylesheet" href="/__fixture/global.css"></head><body><header class="site-header"><div class="site-header__inner"><a class="brand" href="/">dwnc.me</a><nav class="site-nav"></nav><p class="site-header__note">합성 기록</p></div></header><main id="main">${main}</main><dialog id="category-drawer"><nav></nav></dialog><footer class="site-footer"><div class="site-footer__inner shell"><p><a href="/"></a><span></span></p><div class="site-footer__links"><span></span></div></div></footer></body></html>`;
+const syntheticShell = (main = '') => `<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>합성 공개 화면</title><meta name="description"><link rel="canonical"><meta property="og:title"><meta property="og:description"><meta property="og:url"><meta property="og:site_name"><meta property="og:type"><meta name="twitter:card"><link rel="stylesheet" href="/__fixture/global.css"><link rel="stylesheet" href="/__fixture/photo-info.css"></head><body><header class="site-header"><div class="site-header__inner"><a class="brand" href="/">dwnc.me</a><button class="site-menu-toggle" type="button" data-site-menu-toggle aria-controls="site-navigation" aria-expanded="false" hidden>메뉴 <span aria-hidden="true">☰</span></button><nav class="site-nav" id="site-navigation" aria-label="주요 메뉴"></nav>${adminMarkup}<p class="site-header__note">합성 기록</p></div></header><main id="main">${main}</main>${dialogMarkup}<footer class="site-footer"><div class="site-footer__inner shell"><p><a href="/"></a><span></span></p><div class="site-footer__links"><span></span></div></div></footer></body></html>`;
 const publicHandler = createNativePublicWorker(async (request) => {
   const path = new URL(request.url).pathname;
-  const html = body => new Response(request.method === 'HEAD' ? null : syntheticShell(body).replace('<main id="main">',`${adminMarkup}<main id="main">`).replace('</head>',`<style>${adminCss}</style><script src="/__fixture/admin-links.js" defer></script></head>`), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+  const html = body => new Response(request.method === 'HEAD' ? null : syntheticShell(body).replace('</head>',`<style>${adminCss}</style><script src="/__fixture/admin-links.js" defer></script></head>`), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
   if (path === '/search-index.json') return Response.json(syntheticIndex);
   if (path === '/1') return new Response(null, { status: 308, headers: { location: '/posts/1' } });
   if (['/posts/1', '/posts/1/', '/posts/1/index.html', '/posts/1.html'].includes(path)) return html(`<article class="prose"><h1>${staticArticle.title}</h1>${staticArticle.bodyHtml}</article>`);
@@ -249,7 +253,9 @@ const publicServer = createServer(async (incoming, outgoing) => {
   try {
     const url = new URL(incoming.url, publicOrigin);
     let response;
-    if (url.pathname === '/__fixture/global.css') response = new Response(publicCss, { headers: { 'content-type': 'text/css' } });
+    if (url.pathname === '/auth/session') response = Response.json({authenticated:fixtureAdmin},{headers:{'cache-control':'no-store'}});
+    else if (url.pathname === '/__fixture/photo-info.css') response = new Response(photoInfoCss,{headers:{'content-type':'text/css'}});
+    else if (url.pathname === '/__fixture/global.css') response = new Response(publicCss, { headers: { 'content-type': 'text/css' } });
     else if (url.pathname === '/__fixture/admin-links.js') response = new Response(adminBrowserScript, {headers:{'content-type':'text/javascript','cache-control':'no-store'}});
     else if (fontFiles.has(url.pathname)) response = new Response(await readFile(new URL('../public' + url.pathname, import.meta.url)), { headers: { 'content-type': url.pathname.endsWith('.ttf') ? 'font/ttf' : 'font/woff' } });
     else {
