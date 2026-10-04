@@ -8,6 +8,8 @@ import { resolvePostCategory, resolvePostCategoryId, taxonomyLineage } from '../
 import BaseLayout from './BaseLayout.astro';
 import Breadcrumbs from '../components/Breadcrumbs.astro';
 import { IMAGE_LAYOUT_BOOTSTRAP } from '../lib/image-layout';
+import { renderPostPhotoSummary, summarizePostPhotos } from '../lib/photo-media-summary';
+import { PUBLIC_PHOTO_INFO_BOOTSTRAP } from '../lib/public-photo-info';
 import { prepareImportedPresentation, IMPORTED_PRESENTATION_CSS, ENGINE_DIAGRAM_CSS, ENGINE_DIAGRAM_BOOTSTRAP } from '../lib/imported-presentation';
 
 interface Props {
@@ -43,6 +45,7 @@ const presentationHtml = prepareImportedPresentation(await Astro.slots.render('d
   source: data.source, sourceId: data.sourceId,
 });
 const hasEngineDiagram = presentationHtml.includes('data-engine-diagram');
+const photoSummary = renderPostPhotoSummary(summarizePostPhotos(presentationHtml));
 ---
 
 <BaseLayout
@@ -66,6 +69,7 @@ const hasEngineDiagram = presentationHtml.includes('data-engine-diagram');
           <time datetime={data.publishedAt.toISOString()}>{formatDate(data.publishedAt)}</time>
         </p>
         <h1>{data.title}</h1>
+        <Fragment set:html={photoSummary} />
       </div>
     </header>
 
@@ -78,6 +82,7 @@ const hasEngineDiagram = presentationHtml.includes('data-engine-diagram');
     {presentationHtml.includes('dwnc-image-layout') && <script is:inline set:html={IMAGE_LAYOUT_BOOTSTRAP} />}
     {hasEngineDiagram && <style is:inline set:html={ENGINE_DIAGRAM_CSS} />}
     {hasEngineDiagram && <script is:inline set:html={ENGINE_DIAGRAM_BOOTSTRAP} />}
+    <script is:inline set:html={PUBLIC_PHOTO_INFO_BOOTSTRAP} />
 
     <footer class="post-footer">
       <div class="post-footer__inner">

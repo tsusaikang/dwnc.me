@@ -2,6 +2,9 @@ import { IMAGE_LAYOUT_BOOTSTRAP } from './image-layout.ts';
 import { prepareUrlLinkCards } from './url-link-cards.ts';
 import { renderArchiveRow, renderRecentJournal } from './post-listing.ts';
 import { PUBLIC_ADMIN_ENTRY_HTML } from './public-admin-links.ts';
+import { renderPostPhotoSummary } from './photo-media-summary.ts';
+import { PUBLIC_PHOTO_INFO_BOOTSTRAP } from './public-photo-info.ts';
+import { servePublicPhotoInfo } from './photo-media-info.ts';
 import { orderedCategoryPosts, renderPostCategoryPagination } from './post-category-pagination.ts';
 import { categoryDisplayId, categoryDisplayLabel, categoryDisplayNode, categoryDisplayNodes } from './category-display.ts';
 import { eligiblePostView, PostViewStatistics } from './post-view-statistics.ts';
@@ -238,7 +241,7 @@ async function combinedPosts(staticHandler: StaticHandler, request: Request, env
   });
   return [...merged,...[...dynamic.values()].map((post)=>nativeDiscovery(post,categories))].sort(comparePosts);
 }
-async function postDocument(response: Response, post: NativePost, canonical: string, posts: DiscoveryPost[], settings: CmsSettings, categories: CmsCategory[]) {
+async function postDocument(response: Response, post: NativePost, canonical: string, posts: DiscoveryPost[], settings: CmsSettings, categories: CmsCategory[], store: NativePostStore) {
   const title = `${post.title} — ${settings.title}`, description = post.description || post.bodyText.slice(0,160);
   const lineage = categoryLineage(post.categoryId,categories), category = lineage.at(-1) ?? {label:post.categoryLabel,slug:post.categorySlug};
   const tags=tagNodes(posts); const tagLinks=post.tags.map((label)=>{const tag=tags.find((item)=>item.label===label.normalize('NFC').trim());return tag?`<a rel="tag" href="/tag/${encodeURIComponent(tag.slug)}">#${escapeHtml(label)}</a>`:'';}).join('');
@@ -248,10 +251,11 @@ async function postDocument(response: Response, post: NativePost, canonical: str
   const related=renderPostCategoryPagination(posts,post.categoryId,new URL(canonical).pathname,`/category/${encodeURIComponent(category.slug)}`);
   const neighbor=(item:DiscoveryPost|null|undefined,rel:string,label:string)=>item?`<a rel="${rel}" href="${escapeHtml(item.path)}"><span>${label}</span><strong>${escapeHtml(item.title)}</strong><time datetime="${escapeHtml(item.publishedAt)}">${item.date}</time></a>`:'<span></span>';
   const bodyHtml=prepareImportedPresentation(await prepareUrlLinkCards(post.bodyHtml,posts),post.source&&post.sourceId?{source:post.source,sourceId:post.sourceId}:undefined);
-  const presentation=`${bodyHtml.includes('dwnc-image-layout')?`<script>${IMAGE_LAYOUT_BOOTSTRAP}</script>`:''}<style>${IMPORTED_PRESENTATION_CSS}${bodyHtml.includes('data-engine-diagram')?ENGINE_DIAGRAM_CSS:''}</style>${bodyHtml.includes('data-engine-diagram')?`<script>${ENGINE_DIAGRAM_BOOTSTRAP}</script>`:''}`;
+  const photoSummary=renderPostPhotoSummary(await store.photoSummaryForSnapshot({...post,bodyHtml}));
+  const presentation=`${bodyHtml.includes('dwnc-image-layout')?`<script>${IMAGE_LAYOUT_BOOTSTRAP}</script>`:''}<style>${IMPORTED_PRESENTATION_CSS}${bodyHtml.includes('data-engine-diagram')?ENGINE_DIAGRAM_CSS:''}</style>${bodyHtml.includes('data-engine-diagram')?`<script>${ENGINE_DIAGRAM_BOOTSTRAP}</script>`:''}<script>${PUBLIC_PHOTO_INFO_BOOTSTRAP}</script>`;
   const images=(post.bodyHtml.match(/<img\b/giu)??[]).length;const photo=images>=8||(images>=4&&post.bodyText.length/images<400)||(images>=1&&images<=3&&post.bodyText.length<120);
   const cover=post.coverPath&&!post.bodyHtml.includes(post.coverPath)?`<img class="post-cover" src="${escapeHtml(post.coverPath)}" alt="${escapeHtml(post.coverAlt)}" decoding="async">`:'';
-  const main=`<article class="article-page article-page--${photo?'photo':'longform'}" data-category-id="${escapeHtml(post.categoryId)}"><header class="post-header"><div class="post-header__inner">${breadcrumb}<p class="post-header__kicker">${escapeHtml(category.label)}</p><p class="post-header__meta"><a href="/category/${encodeURIComponent(category.slug)}">${escapeHtml(category.label)}</a><time datetime="${escapeHtml(post.publishedAt??'')}">${dateLabel(post.publishedAt??post.updatedAt,settings.timezone)}</time></p><h1>${escapeHtml(post.title)}</h1></div></header>${cover}<div class="prose">${bodyHtml}</div>${settings.ccl!=='none'?`<p class="shell post-license"><a rel="license" href="https://creativecommons.org/licenses/${settings.ccl}/4.0/">CC ${settings.ccl.toUpperCase()} 4.0</a></p>`:''}${presentation}<footer class="post-footer"><div class="post-footer__inner"><div class="post-tags"><a href="/category/${encodeURIComponent(category.slug)}">${escapeHtml(category.label)}</a>${tagLinks}</div>${related}${previous||next?`<nav class="post-sequence" aria-label="같은 카테고리의 시간순 글 이동">${neighbor(next,'next','다음 글')}${neighbor(previous,'prev','이전 글')}</nav>`:''}</div></footer></article>`;
+  const main=`<article class="article-page article-page--${photo?'photo':'longform'}" data-category-id="${escapeHtml(post.categoryId)}"><header class="post-header"><div class="post-header__inner">${breadcrumb}<p class="post-header__kicker">${escapeHtml(category.label)}</p><p class="post-header__meta"><a href="/category/${encodeURIComponent(category.slug)}">${escapeHtml(category.label)}</a><time datetime="${escapeHtml(post.publishedAt??'')}">${dateLabel(post.publishedAt??post.updatedAt,settings.timezone)}</time></p><h1>${escapeHtml(post.title)}</h1>${photoSummary}</div></header>${cover}<div class="prose">${bodyHtml}</div>${settings.ccl!=='none'?`<p class="shell post-license"><a rel="license" href="https://creativecommons.org/licenses/${settings.ccl}/4.0/">CC ${settings.ccl.toUpperCase()} 4.0</a></p>`:''}${presentation}<footer class="post-footer"><div class="post-footer__inner"><div class="post-tags"><a href="/category/${encodeURIComponent(category.slug)}">${escapeHtml(category.label)}</a>${tagLinks}</div>${related}${previous||next?`<nav class="post-sequence" aria-label="같은 카테고리의 시간순 글 이동">${neighbor(next,'next','다음 글')}${neighbor(previous,'prev','이전 글')}</nav>`:''}</div></footer></article>`;
   return rewriteDocument(response,main,title,description,canonical,true,settings,categories,post);
 }
 
@@ -337,6 +341,10 @@ export function createNativePublicWorker(staticHandler: StaticHandler) {
   const handle = async (request: Request, env: NativePublicEnvironment, context: ExecutionContext, countViews = true): Promise<Response> => {
     const originalRequest = request;
     const url = new URL(request.url); const store = new NativePostStore(env.NATIVE_DB);
+    if(url.pathname==='/api/photo-info')return servePublicPhotoInfo(request,env,store,{
+      authorizeImported:path=>allowedImportedMedia(path,request,env),
+      readImported:mediaRequest=>staticHandler(mediaRequest,env,context),
+    });
     let normalized: string;try{normalized=decodeURIComponent(url.pathname).replace(/\/index\.html$/u,'').replace(/\/$/u,'')||'/';}catch{return unavailable(request.method);}
     if(normalized.includes('%')||normalized.includes('\\')||normalized.includes('//'))return unavailable(request.method);
     const alias=edgeRedirects.redirects.find(entry=>entry.from===normalized);
@@ -393,7 +401,7 @@ export function createNativePublicWorker(staticHandler: StaticHandler) {
       const base = await pageShell(staticHandler, request, env, context);
       if (!base.ok || !base.headers.get('content-type')?.toLowerCase().startsWith('text/html')) return withVersion(base,env);
       const posts = await combinedPosts(staticHandler, request, env, context, store,categories);
-      const response = await postDocument(base, post, `https://dwnc.me${post.publicPath}`, posts,settings,categories);
+      const response = await postDocument(base, post, `https://dwnc.me${post.publicPath}`, posts,settings,categories,store);
       const headers = new Headers(response.headers); headers.set('cache-control', 'no-store'); headers.delete('content-length');
       const delivered = withVersion(new Response(response.body, { status: 200, headers }), env);
       return countedPostResponse(originalRequest,post,delivered,env,context,settings.timezone,countViews);

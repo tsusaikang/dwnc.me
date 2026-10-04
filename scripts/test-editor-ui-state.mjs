@@ -507,7 +507,7 @@ runInContext('managementDirty=false;managementDrafts.clear()',context);await flu
 let navigationStart=requests.length;window.location.hash='#view=new';await runInContext('followAdminDeepLink()',context);
 assert.equal(field('postsPanel').hidden,false);assert.equal(field('new').focused,true);assert.match(field('adminLinkMessage').textContent,/아직 초안은 만들지/u);assert.equal(requests.length,navigationStart);
 window.location.hash='#edit='+encodeURIComponent('/posts/597');await runInContext('followAdminDeepLink()',context);
-assert.equal(runInContext('current.id',context),draft.id);assert.equal(field('editorView').hidden,false);assert.deepEqual(requests.slice(navigationStart).map(request=>request.method),['GET']);
+assert.equal(runInContext('current.id',context),draft.id);assert.equal(field('editorView').hidden,false);assert.deepEqual(requests.slice(navigationStart).map(request=>request.method),['GET','GET']);assert.ok(requests.at(-1).path.endsWith('/media'),'Opening the exact post also reads its photo metadata');
 edit('직접 연결에도 유지할 내용');navigationStart=requests.length;
 window.location.hash='#edit=/posts/598';await runInContext('followAdminDeepLink()',context);assert.equal(field('title').value,'직접 연결에도 유지할 내용');assert.equal(runInContext('current.id',context),draft.id);assert.equal(requests.length,navigationStart);assert.equal(field('openAdminLinkTab').hidden,false);assert.equal(field('openAdminLinkTab').href,'/#edit=/posts/598');
 window.location.hash='#edit=/posts/597';await runInContext('followAdminDeepLink()',context);assert.equal(field('title').value,'직접 연결에도 유지할 내용');assert.equal(requests.length,navigationStart);assert.equal(field('editorView').hidden,false);
@@ -521,7 +521,7 @@ window.location.hash='#edit=/posts/597&view=new';await runInContext('followAdmin
 // Authentication failure keeps the hash and currently open editor; retry resolves it.
 const pageDraft=await store.createDraft({id:'daily',slug:'일상',label:'일상'},'page');const pageWorking=await store.update(pageDraft.id,0,{...input,title:'합성 직접 연결 페이지'});const pagePublic=await store.publish(pageDraft.id,pageWorking.revision);
 window.location.hash='#edit='+encodeURIComponent(pagePublic.publicPath);failure=401;await runInContext('followAdminDeepLink()',context);assert.equal(field('openAdminLinkTab').hidden,false);assert.equal(field('retryAdminLink').hidden,false);assert.equal(runInContext('current.id',context),draft.id);navigationStart=requests.length;
-await field('retryAdminLink').onclick();assert.equal(runInContext('current.id',context),pageDraft.id);assert.equal(field('adminLinkNotice').hidden,true);assert.deepEqual(requests.slice(navigationStart).map(request=>request.method),['GET']);
+await field('retryAdminLink').onclick();assert.equal(runInContext('current.id',context),pageDraft.id);assert.equal(field('adminLinkNotice').hidden,true);assert.deepEqual(requests.slice(navigationStart).map(request=>request.method),['GET','GET']);assert.ok(requests.at(-1).path.endsWith('/media'));
 assert.equal(window.location.hash,'#edit='+encodeURIComponent(pagePublic.publicPath));
 
 // Title wraps visually while retaining a single-line value and native IME input.

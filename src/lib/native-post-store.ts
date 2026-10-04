@@ -7,6 +7,7 @@ import { CmsConfigurationStore } from './cms-configuration.ts';
 import { load } from 'cheerio';
 import mediaManifest from '../data/public-media-r2-v1.json' with { type: 'json' };
 import { slugifyLabel } from './taxonomy.ts';
+import { canonicalPhotoSource, publishedPhotoMetadata, summarizePostPhotos, type PhotoFileMetadata } from './photo-media-summary.ts';
 
 export type NativePostStatus = 'draft' | 'published' | 'tombstone';
 export type AdminPostSort = 'created-desc' | 'created-asc' | 'updated-desc' | 'updated-asc';
@@ -283,14 +284,23 @@ export class NativePostStore {
 
   async mediaForPost(id: string) {
     const post = await this.getForAdmin(id); if (!post) throw new Error('NATIVE_E_MEDIA_POST');
-    const media = await this.database.prepare(`SELECT id, public_path, alt, mime FROM ${post.sourceKind === 'legacy' ? 'legacy_media' : 'native_media'} WHERE post_id = ?1 ORDER BY created_at`).bind(id).all<{id:string;public_path:string;alt:string;mime:string}>();
-    const images = new Map<string, {id: string | null; path: string; alt: string; kind: 'native' | 'legacy'}>();
-    for (const item of media.results ?? []) if(item.mime.startsWith('image/')) images.set(item.public_path, {id:item.id,path:item.public_path,alt:item.alt,kind:'native'});
+    const media = await this.database.prepare(`SELECT id, public_path, alt, mime, bytes FROM ${post.sourceKind === 'legacy' ? 'legacy_media' : 'native_media'} WHERE post_id = ?1 ORDER BY created_at`).bind(id).all<{id:string;public_path:string;alt:string;mime:string;bytes:number}>();
+    const images = new Map<string, {id: string | null; path: string; alt: string; kind: 'native' | 'legacy';bytes:number|null;mime:string}>();
+    for (const item of media.results ?? []) if(item.mime.startsWith('image/')) images.set(item.public_path, {id:item.id,path:item.public_path,alt:item.alt,kind:'native',bytes:Number.isSafeInteger(item.bytes)&&item.bytes>0?item.bytes:null,mime:item.mime});
     const allowed = new Set(mediaManifest.entries.filter((entry) => entry.contentType.startsWith('image/')).map((entry) => entry.publicPath));
     const $ = load(post.bodyHtml);
-    $('img[src]').each((_i, image) => { const path = $(image).attr('src') ?? ''; if (allowed.has(path)) images.set(path, {id:null,path,alt:$(image).attr('alt') ?? '',kind:'legacy'}); });
-    if (post.coverPath && allowed.has(post.coverPath)) images.set(post.coverPath,{id:null,path:post.coverPath,alt:post.coverAlt,kind:'legacy'});
+    $('img[src]').each((_i, image) => { const path = canonicalPhotoSource($(image).attr('src') ?? ''), file=publishedPhotoMetadata(path); if (allowed.has(path)&&file) images.set(path, {id:null,path,alt:$(image).attr('alt') ?? '',kind:'legacy',bytes:file.bytes,mime:file.mime}); });
+    if (post.coverPath && allowed.has(post.coverPath)) {const file=publishedPhotoMetadata(post.coverPath)!;images.set(post.coverPath,{id:null,path:post.coverPath,alt:post.coverAlt,kind:'legacy',bytes:file.bytes,mime:file.mime});}
     return [...images.values()];
+  }
+
+  async photoSummaryForSnapshot(post: Pick<NativePost, 'id' | 'sourceKind' | 'bodyHtml'>) {
+    let files:PhotoFileMetadata[]=[];
+    try {
+      const result=await this.database.prepare(`SELECT public_path, bytes, mime FROM ${post.sourceKind==='legacy'?'legacy_media':'native_media'} WHERE post_id=?1`).bind(post.id).all<{public_path:string;bytes:number;mime:string}>();
+      files=(result.results??[]).map(item=>({path:item.public_path,bytes:item.bytes,mime:item.mime}));
+    } catch { /* Missing file-size metadata must not prevent reading the post. */ }
+    return summarizePostPhotos(post.bodyHtml,files);
   }
 
   async normalizeInput(value: unknown, current: NativePost, requirePublishable = false) {

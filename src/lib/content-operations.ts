@@ -54,7 +54,7 @@ export class ContentOperations {
  }
 }
 
-export async function boundedBody(request: Request, limit: number): Promise<Uint8Array> {
+export async function boundedBody(request: Pick<Request, 'headers' | 'body'>, limit: number): Promise<Uint8Array> {
  if(Number(request.headers.get('content-length')??0)>limit)throw new Error('ADMIN_E_BODY_SIZE');
  if(!request.body)return new Uint8Array();
  const reader=request.body.getReader(),chunks:Uint8Array[]=[];let length=0;

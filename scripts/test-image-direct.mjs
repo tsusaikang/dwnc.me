@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { load } from 'cheerio';
-import { imageDirectScript, imageDirectToolsHtml, imageDirectOverlayHtml } from '../src/lib/admin-image-direct.ts';
+import { imageDirectScript, imageDirectToolsHtml, imageDirectOverlayHtml, imageDirectCss } from '../src/lib/admin-image-direct.ts';
 import { IMAGE_LAYOUT_DOM_SCRIPT } from '../src/lib/image-layout.ts';
 import { imageLayoutScript } from '../src/lib/admin-image-layout.ts';
 import { adminHtml } from '../src/lib/admin-ui.ts';
@@ -57,7 +57,7 @@ class Element {
 function wrap(node){if(!node)return null;if(!wrappers.has(node))wrappers.set(node,new Element(node));return wrappers.get(node)}
 const field=id=>wrap($html('#'+id)[0]),body=field('bodyHtml');
 const document={body:wrap($html('body')[0]),createElement:tag=>wrap($html('<'+tag+'>')[0]),createRange:()=>({selectNodeContents(node){caretNode=node},collapse(){}}),elementFromPoint:()=>hit,addEventListener(name,fn){listeners.set('document:'+name,fn)}};
-const context=vm.createContext({document,Element,$:field,window:{getSelection:()=>({removeAllRanges(){},addRange(){}}),addEventListener(){},requestAnimationFrame:()=>1,cancelAnimationFrame(){},scrollY:0,scrollBy(...args){scrollRequests.push({method:'scrollBy',args});this.scrollY+=typeof args[0]==='object'?args[0].top||0:args[1]||0},scrollTo(...args){scrollRequests.push({method:'scrollTo',args});this.scrollY=typeof args[0]==='object'?args[0].top||0:args[1]||0},innerHeight:900,innerWidth:1000},Promise,Date,JSON,console});
+const context=vm.createContext({document,Element,URL,$:field,window:{getSelection:()=>({removeAllRanges(){},addRange(){}}),addEventListener(){},requestAnimationFrame:()=>1,cancelAnimationFrame(){},scrollY:0,scrollBy(...args){scrollRequests.push({method:'scrollBy',args});this.scrollY+=typeof args[0]==='object'?args[0].top||0:args[1]||0},scrollTo(...args){scrollRequests.push({method:'scrollTo',args});this.scrollY=typeof args[0]==='object'?args[0].top||0:args[1]||0},innerHeight:900,innerWidth:1000},Promise,Date,JSON,console});
 vm.runInContext(`let current={id:'synthetic-photo'},busy=false,selectedMedia=null,uploadRange=null,formatRange=null,pendingFontSpans=null,pastedImageNodes=null;function status(message){lastStatus=message}let lastStatus='';function bodyRange(){return null}function captureFormatRange(){}function updateFormatState(){}function positionMediaSelection(){}function clearMediaSelection(){selectedMedia=null;if(typeof closeDirectPhotoOrder==='function')closeDirectPhotoOrder()}function selectMedia(image){selectedMedia={image};updateDirectPhotoTools()}function schedule(){rememberEditorChange()}`,context);
 vm.runInContext(editorHistoryScript,context);vm.runInContext(IMAGE_LAYOUT_DOM_SCRIPT,context);
 for(const [start,end] of [['function layoutRoot','function openImageLayout'],['function layoutSizeAvailability','function updateLayoutSizes'],['function prepareLayoutItem','function applyImageLayout']])vm.runInContext(imageLayoutScript.slice(imageLayoutScript.indexOf(start),imageLayoutScript.indexOf(end)),context);
@@ -218,12 +218,12 @@ for(const arrangement of [[['a','b','c']],[['b','c','d']],[['a','b'],['c','d']],
   if(from!==to){run("editorHistoryCommand('undo')");assert.equal(checkpoint(),prior,'One undo restores original rows');run("editorHistoryCommand('redo')");assert.equal(order(),letters.join(''))}
 }
 body.innerHTML=original;run('resetEditorHistory()');finalPositionMove('a',3);await tick();
-body.rect={left:0,right:800,top:0,bottom:800,width:800,height:800};run('refreshDirectPhotoNumbers()');assert.equal(field('photoNumberOverlay').querySelectorAll('button').length,4);assert.equal(checkpoint().includes('photo-number'),false);assert.equal(field('directPhotoNumber').textContent,'사진 3 / 4');
+body.rect={left:0,right:800,top:0,bottom:800,width:800,height:800};run('refreshDirectPhotoNumbers()');assert.equal(field('photoNumberOverlay').querySelectorAll('.photo-number-badge').length,4);assert.equal(checkpoint().includes('photo-number'),false);assert.equal(field('directPhotoNumber').textContent,'사진 3 / 4');
 for(const sanitize of [sanitizeNativeHtml,sanitizeLegacyHtml]){const saved=sanitize(checkpoint());assert.equal(load(saved)('img').length,4);assert.equal(load(saved)('figcaption em,.dwnc-image-caption em').length,4);assert.equal(saved.includes('photo-number'),false);assert.equal(saved.includes('photoOrderPanel'),false);assert.equal(sanitize(saved),saved)}
-body.innerHTML=photo('a')+'<figure data-ke-type="opengraph"><img src="card.png"></figure>'+photo('b');run('resetEditorHistory();refreshDirectPhotoNumbers()');assert.equal(field('photoNumberOverlay').querySelectorAll('button').length,2,'URL card thumbnails have no photo number');
+body.innerHTML=photo('a')+'<figure data-ke-type="opengraph"><img src="card.png"></figure>'+photo('b');run('resetEditorHistory();refreshDirectPhotoNumbers()');assert.equal(field('photoNumberOverlay').querySelectorAll('.photo-number-badge').length,2,'URL card thumbnails have no photo number');
 body.innerHTML=photo('b');run('resetEditorHistory();refreshDirectPhotoNumbers()');selectPhoto('b');assert.equal(field('directPhotoNumber').textContent,'사진 1 / 1');
 const singlePhoto=checkpoint();for(const button of field('photoOrderList').querySelectorAll('.photo-order-slot'))button.click();assert.equal(checkpoint(),singlePhoto,'A single photo cannot move relative to itself');
-body.innerHTML=photo('a')+photo('b');run('resetEditorHistory();refreshDirectPhotoNumbers()');assert.equal(field('photoNumberOverlay').querySelectorAll('button').map(node=>node.textContent).join(','),'1,2');
+body.innerHTML=photo('a')+photo('b');run('resetEditorHistory();refreshDirectPhotoNumbers()');assert.equal(field('photoNumberOverlay').querySelectorAll('.photo-number-badge').map(node=>node.textContent).join(','),'1,2');
 run('busy=true');assert.equal(positionMove('a','b','after'),false);run('busy=false;editorComposing=true');assert.equal(positionMove('a','b','after'),false);run('editorComposing=false');
 
 // Selecting a photo opens a persistent, nonmodal array. Thumbnail selection
@@ -369,3 +369,69 @@ const damaged='<p>Before</p><div class="dwnc-image-layout dwnc-image-original dw
 body.innerHTML=damaged;run("refreshImageGroups($('bodyHtml'))");const healed=checkpoint(),healedRow=body.querySelector('.dwnc-image-layout');assert.equal(body.querySelectorAll('.dwnc-image-item').length,1);assert.equal(body.querySelectorAll('.dwnc-image-cols-2,.dwnc-image-cols-3').length,0);assert.equal(healedRow.style.getPropertyValue('--dwnc-image-columns'),'');assert.equal(healedRow.style.getPropertyValue('--dwnc-original-layout-width'),'400px');assert.equal(body.querySelector('.dwnc-image-caption em').textContent,'보존 설명');run("refreshImageGroups($('bodyHtml'))");assert.equal(checkpoint(),healed,'Reopen projection is idempotent');
 body.innerHTML='<div class="dwnc-image-layout dwnc-image-cols-2"><div class="dwnc-image-item"><p>보존할 본문</p></div><div class="dwnc-image-item"></div><div class="dwnc-image-caption" style="text-align:right"><em>사진 없는 설명</em></div></div>';run("refreshImageGroups($('bodyHtml'))");assert.equal(body.querySelector('.dwnc-image-layout'),null);assert.equal(body.querySelector('p').textContent,'보존할 본문');assert.equal(body.querySelector('.dwnc-image-caption').style.getPropertyValue('text-align'),'right');
 console.log(JSON.stringify({suite:'image-group-deletion',status:'PASS',behavior:'button/Backspace/Delete 3→2→1→0, shared captions and rich markup kept, exact undo/redo, sanitizer/reopen, stale empty-cell repair and no-upscale width'}));
+
+
+// File information is read-only UI. Metadata races cannot cross post boundaries,
+// and newly uploaded files remain known when an older inventory request ends.
+const metadataRequests=[];
+context.api=path=>new Promise((resolve,reject)=>metadataRequests.push({path,resolve,reject}));
+body.innerHTML=photo('a')+photo('b');run("current={id:'metadata-post'};resetEditorHistory();clearMediaSelection()");
+const metadataBody=checkpoint(),metadataHistory=run('editorUndoStates.length');
+const metadataLoad=run('loadDirectPhotoMetadata(current.id)');
+assert.equal(metadataRequests.at(-1).path,'/posts/metadata-post/media');
+context.infoImage=image('a');assert.equal(run('directPhotoFileInfo(infoImage).size'),'용량 확인 중');
+assert.equal(run('directPhotoFileInfo(infoImage).dimensions'),'1400 × 1050 px','Intrinsic pixels do not use HTML width/height styles');
+metadataRequests.at(-1).resolve({media:[{path:src('a'),bytes:2500000,mime:'image/png'},{path:src('b'),bytes:1500,mime:'image/png'}]});await metadataLoad;
+assert.equal(run('directPhotoFileInfo(infoImage).size'),'2.5 MB');assert.equal(run('directPhotoFileInfo(infoImage).title'),'1400 × 1050 px · 저장 파일 2,500,000 바이트');
+context.infoImage=image('b');assert.equal(run('directPhotoFileInfo(infoImage).size'),'1.5 KB');
+run('refreshDirectPhotoNumbers()');assert.equal(field('photoNumberOverlay').querySelectorAll('.photo-file-info').length,2);assert.equal(checkpoint(),metadataBody);assert.equal(run('editorUndoStates.length'),metadataHistory);assert.equal(checkpoint().includes('photo-file-info'),false);
+// A narrow portrait in a three-photo mobile row must not place its 44px
+// controls horizontally over the next photo. Stack them within the photo.
+const beforeNarrow=checkpoint(),previousWidth=context.window.innerWidth;
+context.window.innerWidth=390;
+const originalRectA=image('a').rect,originalRectB=image('b').rect;
+image('a').rect={left:20,right:98,top:2,bottom:96,width:78,height:94};
+image('b').rect={left:102,right:222,top:2,bottom:96,width:120,height:94};
+run('refreshDirectPhotoNumbers()');
+let mobileMarkers=field('photoNumberOverlay').querySelectorAll('.photo-number-marker');
+assert.equal(mobileMarkers[0].dataset.stacked,'true');assert.equal(mobileMarkers[0].style.width,'44px');
+assert.equal(mobileMarkers[1].dataset.stacked,'false');
+assert.ok(parseFloat(mobileMarkers[0].style.left)+44<=image('a').rect.right);
+assert.ok(parseFloat(mobileMarkers[0].style.left)+44<parseFloat(mobileMarkers[1].style.left),'Adjacent photo controls stay separate');
+assert.ok(parseFloat(mobileMarkers[0].style.top)+91<=image('a').rect.bottom,'The two 44px controls fit the 94px portrait');
+assert.match(imageDirectCss,/data-stacked="true"\]\{flex-direction:column\}/);
+assert.match(imageDirectCss,/photo-file-info-button\{width:44px;min-width:44px/);
+mobileMarkers[0].querySelector('.photo-number-badge').click();assert.equal(run('selectedMedia.image'),image('a'),'The narrow photo number still selects that exact image');
+assert.equal(checkpoint(),beforeNarrow);
+image('a').rect=originalRectA;image('b').rect=originalRectB;context.window.innerWidth=previousWidth;run('clearMediaSelection();refreshDirectPhotoNumbers()');
+assert.equal(run("directPhotoMediaPath('https://admin.dwnc.me"+src('a')+"?v=2#photo')"),src('a'));
+assert.equal(run("directPhotoMediaPath('https://example.test"+src('a')+"')"),null);assert.equal(run("directPhotoMediaPath('media/native/example.png')"),null);
+context.window.location={origin:'http://127.0.0.1:4322'};assert.equal(run("directPhotoMediaPath('http://127.0.0.1:4322"+src('a')+"')"),src('a'),'The same local fixture origin must not retain its port when canonicalized');delete context.window.location;
+image('b').currentSrc='https://outside.test'+src('a');assert.equal(run('directPhotoFileInfo(infoImage).size'),'용량 미확인','An external alias cannot inherit local bytes');delete image('b').currentSrc;
+context.infoImage=image('a');image('a').currentSrc='/media/native/diagram.svg';context.vector={path:'/media/native/diagram.svg',bytes:901,mime:'image/svg+xml'};run('rememberDirectPhotoMetadata(current.id,vector)');assert.equal(run('directPhotoFileInfo(infoImage).dimensions'),'벡터 이미지');delete image('a').currentSrc;
+// A pending/rejected metadata read never invents zero bytes.
+const failedLoad=run('loadDirectPhotoMetadata(current.id)');metadataRequests.at(-1).reject(new Error('read failed'));await failedLoad;assert.equal(run('directPhotoFileInfo(infoImage).size'),'용량 미확인');
+context.uploaded={publicPath:src('a'),bytes:98765,mime:'image/png'};
+const racingLoad=run('loadDirectPhotoMetadata(current.id)');run('rememberDirectPhotoMetadata(current.id,uploaded)');assert.equal(run('directPhotoFileInfo(infoImage).size'),'98.77 KB');metadataRequests.at(-1).resolve({media:[]});await racingLoad;assert.equal(run('directPhotoFileInfo(infoImage).size'),'98.77 KB');
+// Undo recreates image nodes, so file lookups remain path-based.
+context.selected=image('a');run('selectMedia(selected);deleteSelectedMedia()');await tick();run("editorHistoryCommand('undo')");context.infoImage=image('a');assert.equal(run('directPhotoFileInfo(infoImage).size'),'98.77 KB');assert.equal(checkpoint(),metadataBody);
+const oldPostLoad=run('loadDirectPhotoMetadata(current.id)'),oldRequest=metadataRequests.at(-1);run("current={id:'next-metadata-post'}");const nextPostLoad=run('loadDirectPhotoMetadata(current.id)');metadataRequests.at(-1).resolve({media:[{path:src('a'),bytes:2222,mime:'image/png'}]});await nextPostLoad;oldRequest.resolve({media:[{path:src('a'),bytes:999999,mime:'image/png'}]});await oldPostLoad;assert.equal(run('directPhotoFileInfo(infoImage).size'),'2.22 KB');
+const earlierLoad=run('loadDirectPhotoMetadata(current.id)'),earlierRequest=metadataRequests.at(-1),latestLoad=run('loadDirectPhotoMetadata(current.id)');metadataRequests.at(-1).resolve({media:[{path:src('a'),bytes:3333,mime:'image/png'}]});await latestLoad;earlierRequest.resolve({media:[{path:src('a'),bytes:1111,mime:'image/png'}]});await earlierLoad;assert.equal(run('directPhotoFileInfo(infoImage).size'),'3.33 KB');
+assert.ok(ui.includes('void loadDirectPhotoMetadata(p.id)'));assert.ok(ui.includes('rememberDirectPhotoMetadata(postId,j.media)'));assert.ok(listeners.has('bodyHtml:error'));
+console.log(JSON.stringify({suite:'photo-file-info',status:'PASS',behavior:'intrinsic pixels and saved bytes, shared decimal units, external/unknown/vector handling, read-only overlay, upload/read race, cross-post and same-post stale responses, deletion undo and image load/error refresh'}));
+
+
+// Detailed metadata is fetched only for a clicked photo, without replacing the
+// selected moving source or changing the saved body/history.
+const detailRequests=[];context.api=(path,options)=>new Promise((resolve,reject)=>detailRequests.push({path,options,resolve,reject}));
+body.innerHTML=photo('a')+photo('b');run("current={id:'photo-detail'};photoMetadataOwner=current.id;photoMetadataByPath=new Map();photoFileDetailsByPath=new Map();resetEditorHistory()");context.selected=image('b');run('selectMedia(selected)');context.infoImage=image('a');const detailBody=checkpoint(),detailHistory=run('editorUndoStates.length');
+const detailLoad=run('openDirectPhotoInfo(infoImage,null)');assert.equal(field('photoInfoDialog').open,true);assert.equal(detailRequests.at(-1).path,'/posts/photo-detail/media-info');assert.equal(detailRequests.at(-1).options.method,'POST');assert.equal(JSON.parse(detailRequests.at(-1).options.body).path,src('a'));assert.equal(run('selectedMedia.image'),image('b'));
+detailRequests.at(-1).resolve({info:{format:'JPEG',bytes:456789,width:2560,height:1928,colorSpace:'Display P3',profileName:'Display P3',hdr:'metadata-present',metadataComplete:true}});await detailLoad;
+const detailsText=()=>field('photoInfoDetails').textContent;
+assert.ok(detailsText().includes('2560 × 1928 px'));assert.ok(detailsText().includes('456.79 KB (456,789 바이트)'));assert.ok(detailsText().includes('Display P3'));assert.ok(detailsText().includes('실제 HDR 지원 여부 미확인'));assert.equal(checkpoint(),detailBody);assert.equal(run('editorUndoStates.length'),detailHistory);
+field('photoInfoDialog').close();const cachedRequests=detailRequests.length;await run('openDirectPhotoInfo(infoImage,null)');assert.equal(detailRequests.length,cachedRequests,'Reopening the same stored file uses the result cache');field('photoInfoDialog').close();
+context.infoImage=image('b');const partialLoad=run('openDirectPhotoInfo(infoImage,null)');detailRequests.at(-1).resolve({info:{format:'PNG',bytes:3333,width:null,height:null,colorSpace:null,profileName:null,hdr:'unknown',metadataComplete:false}});await partialLoad;assert.ok(detailsText().includes('색영역미확인'));assert.ok(detailsText().includes('HDR 정보확인 불가'));assert.match(field('photoInfoStatus').textContent,/이 파일에서 일부 정보/);field('photoInfoDialog').close();
+run('photoFileDetailsByPath=new Map()');const lateDetails=run('openDirectPhotoInfo(infoImage,null)'),lateRequest=detailRequests.at(-1);field('photoInfoDialog').close();context.infoImage=image('a');const currentDetails=run('openDirectPhotoInfo(infoImage,null)');detailRequests.at(-1).resolve({info:{format:'JPEG',bytes:3333,width:1400,height:1050,colorSpace:'sRGB',profileName:null,hdr:'not-indicated',metadataComplete:true}});await currentDetails;lateRequest.resolve({info:{format:'PNG',bytes:1,width:1,height:1,colorSpace:'Rec.2020',profileName:null,hdr:'metadata-present',metadataComplete:true}});await lateDetails;assert.ok(detailsText().includes('색영역sRGB'));assert.equal(detailsText().includes('Rec.2020'),false);assert.ok(detailsText().includes('SDR 여부는 미확인'));field('photoInfoDialog').close();
+image('a').currentSrc='https://outside.test/photo.jpg';const externalRequests=detailRequests.length;await run('openDirectPhotoInfo(infoImage,null)');assert.equal(detailRequests.length,externalRequests,'External sources are never downloaded for metadata');assert.match(field('photoInfoStatus').textContent,/외부 사진/);field('photoInfoDialog').close();delete image('a').currentSrc;
+run('refreshDirectPhotoNumbers()');assert.equal(field('photoNumberOverlay').querySelectorAll('.photo-file-info-button').length,2);assert.equal(checkpoint().includes('photoInfoDialog'),false);
+console.log(JSON.stringify({suite:'photo-file-details',status:'PASS',behavior:'explicit single-photo request, cached details, stored dimensions/bytes/format, declared color and HDR wording, incomplete metadata, modal stale response, unchanged source/history/body and no external fetch'}));

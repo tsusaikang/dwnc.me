@@ -19,6 +19,7 @@ import {
 import { createMediaWorker } from './lib/media-worker.ts';
 import { serveAdminNativeMedia } from './lib/native-public-worker.ts';
 import { NativePostStore } from './lib/native-post-store.ts';
+import { serveAdminPhotoInfo } from './lib/photo-media-info.ts';
 import { CmsConfigurationStore } from './lib/cms-configuration.ts';
 
 interface AdminEnvironment extends AccessEnvironment {
@@ -196,7 +197,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
     const category = (await config.categories()).value[0];
     return json({ post: await store.createDraft(category, body.kind ?? 'post') }, 201);
   }
-  const match = url.pathname.match(/^\/api\/posts\/([^/]+)(?:\/(preview|publish|media))?$/u);
+  const match = url.pathname.match(/^\/api\/posts\/([^/]+)(?:\/(preview|publish|media|media-info))?$/u);
   if (!match || !validAdminPostId(match[1])) return notFound(request);
   const [, id, action] = match;
   if (request.method === 'GET' && !action) {
@@ -221,6 +222,9 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
     return json({ post: await store.publish(id, Number(body.expectedRevision), body) });
   }
   if (request.method === 'GET' && action === 'media') return json({ media: await store.mediaForPost(id) });
+  if (request.method === 'POST' && action === 'media-info') {
+    return serveAdminPhotoInfo((await requestJson(request)).path, id, env, store, mediaRequest => serveLegacyMedia(mediaRequest, env, context));
+  }
   if (request.method === 'POST' && action === 'media') {
     const mime = request.headers.get('content-type')?.split(';', 1)[0].toLowerCase() ?? '';
     const extension = MIME_EXTENSIONS.get(mime);

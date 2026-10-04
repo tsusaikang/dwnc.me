@@ -56,7 +56,12 @@ const bucket = {
     const object = { key, bytes, size: bytes.length, customMetadata: options.customMetadata, httpMetadata: options.httpMetadata, httpEtag: '"fixture"', checksums: { sha256: Uint8Array.from(Buffer.from(sha256, 'hex')).buffer } };
     objects.set(key, object); return object;
   },
-  async get(key) { const object = objects.get(key); return object ? { ...object, body: object.bytes } : null; },
+  async get(key, options) {
+    const object = objects.get(key); if (!object) return null;
+    const range = options?.range;
+    const body = range ? object.bytes.subarray(range.offset ?? 0, (range.offset ?? 0) + (range.length ?? object.bytes.length)) : object.bytes;
+    return { ...object, body: new Response(body).body };
+  },
   async head(key) { return objects.get(key) ?? null; },
 };
 const legacyImageSha = createHash('sha256').update(imageBytes).digest('hex');
@@ -77,7 +82,7 @@ if (process.env.DWNC_PHOTO_FIXTURE_DIR) {
 }
 // Opt-in whole-photo panel scenario. Generated, visibly numbered PNGs need no
 // files or network; all 41 photos, groups, captions and edits stay in memory.
-if (process.env.DWNC_PHOTO_ORDER_FIXTURE === '1') {
+if (process.env.DWNC_PHOTO_ORDER_FIXTURE === '1' || process.env.DWNC_PHOTO_METADATA_FIXTURE === '1') {
   const crcTable=Array.from({length:256},(_,index)=>{let value=index;for(let bit=0;bit<8;bit+=1)value=value&1?0xedb88320^(value>>>1):value>>>1;return value>>>0});
   const pngChunk=(name,data)=>{const type=Buffer.from(name),size=Buffer.alloc(4),crc=Buffer.alloc(4);size.writeUInt32BE(data.length);let value=0xffffffff;for(const byte of Buffer.concat([type,data]))value=crcTable[(value^byte)&255]^(value>>>8);crc.writeUInt32BE((value^0xffffffff)>>>0);return Buffer.concat([size,type,data,crc])};
   const syntheticPng=(width,height,number)=>{
@@ -91,13 +96,14 @@ if (process.env.DWNC_PHOTO_ORDER_FIXTURE === '1') {
     const header=Buffer.alloc(13);header.writeUInt32BE(width,0);header.writeUInt32BE(height,4);header[8]=8;header[9]=2;
     return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),pngChunk('IHDR',header),pngChunk('IDAT',deflateSync(raw)),pngChunk('IEND',Buffer.alloc(0))]);
   };
-  const draft=await store.createDraft({id:'daily',slug:'일상',label:'일상'}),photos=[];
+  const draft=await store.createDraft({id:'daily',slug:'일상',label:'일상'}),photos=[],photoFiles=[];
   for(let number=1;number<=41;number+=1){
     const [width,height]=number%3===0?[900,1200]:number%3===1?[1600,900]:[1200,1200];
     const bytes=syntheticPng(width,height,number);
     const id='123e4567-e89b-42d3-a456-426614175'+String(number).padStart(3,'0'),path='/media/native/'+id+'.png',sha256=createHash('sha256').update(bytes).digest('hex');
     await bucket.put(path.slice(1),bytes,{httpMetadata:{contentType:'image/png'},customMetadata:{sha256,contract:'dwnc-native-media-v1'}});
     await store.addMedia({id,postId:draft.id,publicPath:path,objectKey:path.slice(1),sha256,bytes:bytes.length,mime:'image/png',alt:'합성 사진 '+number,createdAt:'2026-10-04T00:00:00Z'});
+    photoFiles.push({path,bytes:bytes.length,width,height});
     photos.push('<figure class="imageblock alignCenter"><img src="'+path+'" width="'+width+'" height="'+height+'" alt="합성 사진 '+number+'"><figcaption><em>사진 '+number+' 설명 보존</em></figcaption></figure>');
   }
   const groups=new Map([[2,2],[6,3],[12,2],[17,3],[24,2],[30,3],[36,3]]),parts=['<h2>41장 사진 배열 시험</h2><p>첫 문단의 <strong>굵은 글씨</strong>와 사진 설명을 보존합니다.</p>'];
@@ -109,8 +115,13 @@ if (process.env.DWNC_PHOTO_ORDER_FIXTURE === '1') {
     if(index===23)parts.push('<table><tbody><tr><td>보존할 표</td><td>합성 자료</td></tr></tbody></table>');
   }
   parts.push('<p>41번째 사진 뒤 마지막 문단입니다.</p>');
-  await store.update(draft.id,draft.revision,{title:'41장 사진 배열 합성 시험',description:'항상 보이는 배열과 클릭 이동 로컬 시험',bodyFormat:'html',bodyMarkdown:parts.join(''),categoryId:'daily',tags:[],coverMediaId:null});
+  const saved=await store.update(draft.id,draft.revision,{title:'41장 사진 배열 합성 시험',description:'항상 보이는 배열과 클릭 이동 로컬 시험',bodyFormat:'html',bodyMarkdown:parts.join(''),categoryId:'daily',tags:[],coverMediaId:null});
   console.log('Synthetic 41-photo post: '+draft.id+' (41장 사진 배열 합성 시험)');
+  if(process.env.DWNC_PHOTO_METADATA_FIXTURE==='1'){
+    const published=await store.publish(saved.id,saved.revision);
+    await store.update(published.id,published.revision,{...published,bodyFormat:'html',bodyMarkdown:parts.join('')+'<p>작업본에만 추가한 같은 파일 사진</p>'+photos[0]});
+    console.log('Synthetic photo metadata: '+JSON.stringify({postId:published.id,publicPath:'/posts/'+published.globalSequence,publishedCount:41,workingCount:42,totalBytes:photoFiles.reduce((sum,item)=>sum+item.bytes,0),firstPhoto:photoFiles[0]}));
+  }
 }
 // Optional category scenario; both original IDs stay in the local in-memory store.
 if (process.env.DWNC_CATEGORY_FIXTURE === '1') {
@@ -141,7 +152,7 @@ let mode = 'normal';
 let fixtureAdmin = false;
 // Synthetic events exercise the real paste handler without OS clipboard access.
 // Only the browser's default insertion is emulated; app input/history/save handlers run normally.
-const pasteControls = `<aside style="position:fixed;left:12px;bottom:80px;z-index:1000;max-width:460px;padding:8px;background:#fff;border:1px solid #999;font:13px sans-serif"><details><summary>합성 붙여넣기 시험</summary><p>실제 OS 단축키 대신 키·클립보드 이벤트와 브라우저 기본 삽입을 합성합니다.</p><button type="button" data-fixture-paste="image">이미지 붙여넣기 시험</button><button type="button" data-fixture-paste="html">HTML소스 붙여넣기 시험</button><button type="button" data-fixture-paste="source-rich">HTML 문자 · 서식 포함</button><button type="button" data-fixture-paste="source-plain">HTML 문자 · 무서식</button><button type="button" data-fixture-paste="styled-rich">굵은 문장 · 서식 포함</button><button type="button" data-fixture-paste="styled-plain">굵은 문장 · 무서식</button><button type="button" data-fixture-paste="cards-plain">URL 여러 문단 · 무서식</button><button type="button" data-fixture-paste="cards-rich">URL 여러 문단 · 서식 포함</button><button type="button" data-fixture-paste="one-plain">URL 하나 · 무서식</button><p id="fixturePasteStatus" role="status"></p></details></aside><script>
+const pasteControls = String.raw`<aside style="position:fixed;left:12px;bottom:80px;z-index:1000;max-width:460px;padding:8px;background:#fff;border:1px solid #999;font:13px sans-serif"><details><summary>합성 붙여넣기 시험</summary><p>실제 OS 단축키 대신 키·클립보드 이벤트와 브라우저 기본 삽입을 합성합니다.</p><button type="button" data-fixture-paste="image">이미지 붙여넣기 시험</button><button type="button" data-fixture-paste="html">HTML소스 붙여넣기 시험</button><button type="button" data-fixture-paste="source-rich">HTML 문자 · 서식 포함</button><button type="button" data-fixture-paste="source-plain">HTML 문자 · 무서식</button><button type="button" data-fixture-paste="styled-rich">굵은 문장 · 서식 포함</button><button type="button" data-fixture-paste="styled-plain">굵은 문장 · 무서식</button><button type="button" data-fixture-paste="cards-plain">URL 여러 문단 · 무서식</button><button type="button" data-fixture-paste="cards-rich">URL 여러 문단 · 서식 포함</button><button type="button" data-fixture-paste="one-plain">URL 하나 · 무서식</button><p id="fixturePasteStatus" role="status"></p></details></aside><script>
 document.querySelectorAll('[data-fixture-paste]').forEach(button=>{button.addEventListener('mousedown',event=>event.preventDefault());button.addEventListener('click',()=>{
  const editor=document.getElementById('bodyHtml'),status=document.getElementById('fixturePasteStatus');
  if(!editor||!editor.getClientRects().length){status.textContent='먼저 HTML 글을 열어 주세요.';return;}
