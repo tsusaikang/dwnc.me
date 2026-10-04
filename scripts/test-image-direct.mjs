@@ -12,7 +12,7 @@ import { sanitizeNativeHtml, sanitizeLegacyHtml } from '../src/lib/native-conten
 // Pointer hit testing below uses deterministic rectangles. Actual browser layout
 // and pointer input are exercised in serve-editor-fixture.mjs.
 const $html=load('<div id="editorHeader"></div><div id="editorFooter"></div><div id="bodyHtml"></div><div id="markdownMedia"></div><div id="formatToolbar"></div><div id="linkPanel"></div><div id="tablePanel"></div><button id="deleteImage"></button><div id="imageTools">'+imageDirectToolsHtml+'</div>'+imageDirectOverlayHtml);
-const wrappers=new WeakMap(),listeners=new Map(),widths=new Map();
+const wrappers=new WeakMap(),listeners=new Map(),widths=new Map(),scrollRequests=[];
 let hit=null,caretNode=null;
 class Element {
   constructor(node){this.node=node;this.listeners=new Map();this.dataset=new Proxy({},{get:(_,key)=>this.getAttribute('data-'+String(key).replace(/[A-Z]/g,letter=>'-'+letter.toLowerCase()))??undefined,set:(_,key,value)=>{this.setAttribute('data-'+String(key).replace(/[A-Z]/g,letter=>'-'+letter.toLowerCase()),value);return true}});this.hidden='hidden' in (node.attribs||{});this.value='';this.scrollTop=0;this.rect={left:0,top:0,right:800,bottom:100,width:800,height:100};this.style={getPropertyValue:name=>this.styles()[name]?.replace(/\s*!important$/,'' )||'',getPropertyPriority:name=>/!important$/.test(this.styles()[name]||'')?'important':'',setProperty:(name,value,priority)=>{const styles=this.styles();styles[name]=value+(priority?' !important':'');this.writeStyles(styles)},removeProperty:name=>{const styles=this.styles();delete styles[name];this.writeStyles(styles)}};this.classList={contains:name=>(this.node.attribs.class||'').split(/\s+/).includes(name),add:(...names)=>this.node.attribs.class=[...new Set((this.node.attribs.class||'').split(/\s+/).filter(Boolean).concat(names))].join(' '),remove:(...names)=>this.node.attribs.class=(this.node.attribs.class||'').split(/\s+/).filter(name=>!names.includes(name)).join(' ')};}
@@ -42,7 +42,7 @@ class Element {
   insertBefore(node,before){if(before)$html(before.node).before(node.node);else this.append(node)}
   remove(){$html(this.node).remove()}
   cloneNode(){return wrap($html(this.node).clone()[0])}
-  getBoundingClientRect(){return this.rect}
+  getBoundingClientRect(){return this.measureRect?this.measureRect():this.rect}
   setPointerCapture(id){assert.equal(field('imageTools').hidden,false,'Capture must precede hiding the floating tools');this.captured=id}
   hasPointerCapture(id){return this.captured===id} releasePointerCapture(){this.captured=null}
   focus(){document.activeElement=this} scrollIntoView(){} showModal(){this.open=true} close(){this.open=false;listeners.get(this.getAttribute('id')+':close')?.()} addEventListener(name,fn){this.listeners.set(name,fn);listeners.set(this.getAttribute('id')+':'+name,fn)}
@@ -57,7 +57,7 @@ class Element {
 function wrap(node){if(!node)return null;if(!wrappers.has(node))wrappers.set(node,new Element(node));return wrappers.get(node)}
 const field=id=>wrap($html('#'+id)[0]),body=field('bodyHtml');
 const document={body:wrap($html('body')[0]),createElement:tag=>wrap($html('<'+tag+'>')[0]),createRange:()=>({selectNodeContents(node){caretNode=node},collapse(){}}),elementFromPoint:()=>hit,addEventListener(name,fn){listeners.set('document:'+name,fn)}};
-const context=vm.createContext({document,Element,$:field,window:{getSelection:()=>({removeAllRanges(){},addRange(){}}),addEventListener(){},requestAnimationFrame:()=>1,cancelAnimationFrame(){},innerHeight:900,innerWidth:1000},Promise,Date,JSON,console});
+const context=vm.createContext({document,Element,$:field,window:{getSelection:()=>({removeAllRanges(){},addRange(){}}),addEventListener(){},requestAnimationFrame:()=>1,cancelAnimationFrame(){},scrollY:0,scrollBy(...args){scrollRequests.push({method:'scrollBy',args});this.scrollY+=typeof args[0]==='object'?args[0].top||0:args[1]||0},scrollTo(...args){scrollRequests.push({method:'scrollTo',args});this.scrollY=typeof args[0]==='object'?args[0].top||0:args[1]||0},innerHeight:900,innerWidth:1000},Promise,Date,JSON,console});
 vm.runInContext(`let current={id:'synthetic-photo'},busy=false,selectedMedia=null,uploadRange=null,formatRange=null,pendingFontSpans=null,pastedImageNodes=null;function status(message){lastStatus=message}let lastStatus='';function bodyRange(){return null}function captureFormatRange(){}function updateFormatState(){}function positionMediaSelection(){}function clearMediaSelection(){selectedMedia=null;if(typeof closeDirectPhotoOrder==='function')closeDirectPhotoOrder()}function selectMedia(image){selectedMedia={image};updateDirectPhotoTools()}function schedule(){rememberEditorChange()}`,context);
 vm.runInContext(editorHistoryScript,context);vm.runInContext(IMAGE_LAYOUT_DOM_SCRIPT,context);
 for(const [start,end] of [['function layoutRoot','function openImageLayout'],['function layoutSizeAvailability','function updateLayoutSizes'],['function prepareLayoutItem','function applyImageLayout']])vm.runInContext(imageLayoutScript.slice(imageLayoutScript.indexOf(start),imageLayoutScript.indexOf(end)),context);
@@ -293,7 +293,48 @@ for(const sanitize of [sanitizeNativeHtml,sanitizeLegacyHtml]){const saved=sanit
 selectPhoto('a');const escaped=panelKey('Escape',{metaKey:false});assert.equal(escaped.prevented,true);assert.equal(panel.hidden,true);assert.equal(document.activeElement,body,'Escape restores editor focus');
 // Ordinary inline text/table structures are not split to manufacture a gap.
 body.innerHTML=photo('a')+'<p>Text before <img src="'+src('b')+'" alt="b"> between <img src="'+src('c')+'" alt="c"> after</p>'+photo('d');run('resetEditorHistory()');const inlineBefore=checkpoint();assert.equal(positionMove('a','c','before'),false);assert.equal(positionMove('d','b','after'),false);assert.equal(checkpoint(),inlineBefore);
+
+// Long-distance moving preserves the source node. The follow-up defect is a
+// stale body viewport, not a transfer of selection to photo 41. Model document
+// positions so moving photo 40 to photo 18 also moves its measured rectangle.
+const longNumbers=Array.from({length:41},(_,index)=>index+1);
+const longPhotos=longNumbers.map(number=>'<figure class="imageblock"><img src="/media/native/123e4567-e89b-42d3-a456-426614175'+String(number).padStart(3,'0')+'.png" alt="synthetic-'+number+'"><figcaption><em>caption '+number+'</em></figcaption></figure>').join('');
+const longOrder=()=>body.querySelectorAll('img').map(node=>Number(node.getAttribute('alt').split('-').at(-1)));
+const measureLongPhotos=(height=500)=>{
+  for(const item of body.querySelectorAll('img')){
+    const measure=()=>{const top=body.querySelectorAll('img').indexOf(item)*600-context.window.scrollY;return{left:30,right:650,width:620,top,bottom:top+height,height}};
+    item.measureRect=measure;item.closest('figure').measureRect=measure;
+  }
+};
+const resetLongPhotos=()=>{
+  run('clearMediaSelection()');body.innerHTML=longPhotos;run('resetEditorHistory()');
+  context.window.innerWidth=1200;context.window.innerHeight=900;context.window.scrollY=39*600-160;
+  field('editorHeader').rect={left:0,right:1200,top:0,bottom:80,width:1200,height:80};field('editorFooter').hidden=false;field('editorFooter').rect={left:0,right:1200,top:820,bottom:900,width:1200,height:80};
+  panel.rect={left:868,right:1188,top:88,bottom:812,width:320,height:724};measureLongPhotos();scrollRequests.length=0;
+};
+for(const side of ['before','after']){
+  resetLongPhotos();selectPhoto('synthetic-40');const source40=image('synthetic-40'),last41=image('synthetic-41'),beforeMove=checkpoint();list.scrollTop=2400;
+  run('refreshDirectPhotoOrder();refreshDirectPhotoNumbers();updateDirectPhotoTools();positionDirectPhotoOrder()');assert.equal(scrollRequests.length,0,'Passive refresh and ordinary selection do not reposition the body');
+  if(side==='before')clickSlot(18,side);else assert.equal(positionMove('synthetic-40','synthetic-18',side),true);
+  await tick();const expected=longNumbers.filter(number=>number!==40);expected.splice(side==='before'?17:18,0,40);
+  assert.deepEqual(longOrder(),expected);assert.equal(run('selectedMedia.image')===source40,true,'The moved DOM image remains selected');assert.equal(run('selectedMedia.image')===last41,false,'The last photo never becomes the source');
+  assert.equal(field('directPhotoNumber').textContent,'사진 '+(side==='before'?18:19)+' / 41');assert.equal(list.querySelectorAll('.photo-order-choice').filter(button=>button.dataset.selected==='true').length,1);assert.equal(list.querySelectorAll('.photo-order-choice').find(button=>button.dataset.selected==='true').photoOrderImage===source40,true);
+  assert.equal(list.scrollTop,2400,'Revealing the moved body photo retains the array scroll position');assert.equal(scrollRequests.length,1,'A successful distant move repositions the body once');assert.equal(scrollRequests[0].method,'scrollBy');assert.ok(scrollRequests[0].args[1]<0);const visible=source40.getBoundingClientRect();assert.ok(visible.top>=80&&visible.bottom<=820,'The selected photo enters the usable body viewport');
+  const movedBody=checkpoint(),requestsAfterMove=scrollRequests.length;run('refreshDirectPhotoOrder();refreshDirectPhotoNumbers();updateDirectPhotoTools()');assert.equal(scrollRequests.length,requestsAfterMove,'Later selection/number refresh must not pull the reader back');
+  run("editorHistoryCommand('undo')");assert.equal(checkpoint(),beforeMove);assert.deepEqual(longOrder(),longNumbers);run("editorHistoryCommand('redo')");assert.equal(checkpoint(),movedBody);assert.deepEqual(longOrder(),expected);assert.equal(scrollRequests.length,requestsAfterMove,'History restore does not initiate another source jump');
+}
+resetLongPhotos();selectPhoto('synthetic-40');const beforeChoice=checkpoint(),choiceHistory=run('editorUndoStates.length');
+list.querySelectorAll('.photo-order-choice')[17].click();assert.equal(run('selectedMedia.image')===image('synthetic-18'),true);assert.equal(checkpoint(),beforeChoice);assert.equal(run('editorUndoStates.length'),choiceHistory);assert.equal(scrollRequests.length,1,'An explicit distant thumbnail choice reveals its source');assert.ok(image('synthetic-18').getBoundingClientRect().top>=80);
+// Busy, composition, no-op and invalid targets must not move either the body
+// or its viewport. A normal refresh must also permit manual reading elsewhere.
+context.window.scrollY=39*600-160;scrollRequests.length=0;
+assert.equal(positionMove('synthetic-18','synthetic-18','before'),false);assert.equal(positionMove('synthetic-18','synthetic-19','before'),false);assert.equal(positionMove('synthetic-18','synthetic-19','invalid'),false);
+run('busy=true');assert.equal(positionMove('synthetic-18','synthetic-20','before'),false);context.destination=image('synthetic-20');run('chooseDirectPhotoOrder(destination)');run('busy=false;editorComposing=true');assert.equal(positionMove('synthetic-18','synthetic-20','before'),false);run('chooseDirectPhotoOrder(destination);editorComposing=false;refreshDirectPhotoOrder();refreshDirectPhotoNumbers()');assert.equal(scrollRequests.length,0);assert.equal(checkpoint(),beforeChoice);assert.equal(run('selectedMedia.image')===image('synthetic-18'),true);
+// On compact screens, the array and footer reduce the available photo area.
+context.window.innerWidth=390;panel.rect={left:12,right:378,top:520,bottom:812,width:366,height:292};measureLongPhotos(180);context.destination=image('synthetic-20');run('chooseDirectPhotoOrder(destination)');const compactPhoto=image('synthetic-20').getBoundingClientRect();assert.ok(compactPhoto.top>=80&&compactPhoto.bottom<=520,'Explicit selection fits above the compact panel');assert.equal(scrollRequests.length,1);
+run('clearMediaSelection()');context.window.innerWidth=1000;context.window.scrollY=0;field('editorHeader').rect={left:0,right:1000,top:0,bottom:0,width:1000,height:0};field('editorFooter').hidden=true;
 console.log(JSON.stringify({suite:'photo-order-panel',status:'PASS',behavior:'automatic nonmodal array, real rows, source thumbnail selection, click slots at first/last/inner positions, paragraph boundary distinction, one-step undo, live refresh, busy/IME and post/deletion guards, card exclusion and external UI'}));
+console.log(JSON.stringify({suite:'photo-order-source-visibility',status:'PASS',behavior:'41-photo distant moves retain photo 40 identity, source/number agreement, explicit move/thumbnail reveal only, desktop/compact viewport, passive refresh/no-op/busy/composition preservation, undo/redo'}));
 console.log(JSON.stringify({suite:'image-direct',status:'PASS',behavior:'move/group/reorder/split, cap at three, captions and text preserved, shared undo/redo, sanitizer reopen, no-upscale, photo margin text insertion/reuse/caret, anchor positions, atomic row split and external labels'}));
 
 // A foreign paragraph in an imported/hand-authored layout must never be erased

@@ -50,6 +50,21 @@ function positionDirectPhotoOrder(){
   const height=compact?Math.min(280,Math.max(120,available*.4)):available;
   panel.style.top=(compact?bottom-height:top)+'px';panel.style.height=height+'px';document.body.style.setProperty('--photo-order-height',(height+8)+'px');
 }
+function directPhotoViewport(){
+  positionDirectPhotoOrder();
+  const panel=$('photoOrderPanel'),panelBox=panel.hidden?null:panel.getBoundingClientRect(),margin=12,gap=8;
+  return{left:margin,top:Math.max(margin,$('editorHeader').getBoundingClientRect().bottom+gap),right:panelBox&&window.innerWidth>=960?panelBox.left-gap:window.innerWidth-margin,bottom:panelBox&&window.innerWidth<960?panelBox.top-gap:$('editorFooter').hidden?window.innerHeight-margin:$('editorFooter').getBoundingClientRect().top-margin};
+}
+function revealDirectPhotoInBody(image){
+  if(busy||editorComposing||!current||selectedMedia?.image!==image||!directPhotoUnit(image))return false;
+  const viewport=directPhotoViewport(),box=image.getBoundingClientRect(),available=viewport.bottom-viewport.top;
+  if(available<=0||box.width<=0||box.height<=0)return false;
+  // Only an explicit panel choice follows the selected image. Passive refreshes
+  // keep the reader's scroll position, and the panel has its own scroll area.
+  const list=$('photoOrderList'),scroll=list.scrollTop,targetTop=viewport.top,delta=box.top-targetTop;
+  if(Math.abs(delta)>1)window.scrollBy(0,delta);
+  positionMediaSelection();list.scrollTop=scroll;scheduleDirectPhotoNumbers();return true;
+}
 function photoOrderHasContentBetween(left,right){
   const start=directPhotoUnit(left)?.root,end=directPhotoUnit(right)?.root;
   if(!start||!end||start===end)return false;
@@ -97,7 +112,7 @@ function refreshDirectPhotoOrder(){
 }
 function chooseDirectPhotoOrder(image){
   if(busy||editorComposing||!current||current.id!==photoOrderOwner||!directPhotoUnit(image))return;
-  photoOrderPreservePosition=true;selectMedia(image);refreshDirectPhotoOrder();photoOrderPreservePosition=false;
+  photoOrderPreservePosition=true;selectMedia(image);refreshDirectPhotoOrder();photoOrderPreservePosition=false;revealDirectPhotoInBody(image);
   const button=Array.from($('photoOrderList').querySelectorAll('.photo-order-choice')).find(node=>node.photoOrderImage===image);if(button)button.focus({preventScroll:true});
   status('사진 '+(directBodyPhotos().indexOf(image)+1)+'번을 골랐습니다. 원하는 곳의 여기로 이동을 누르세요.');
 }
@@ -123,7 +138,7 @@ function moveDirectPhotoToPosition(anchor,side){
   if(!moved){status('사진 위치를 바꾸지 않았습니다.');return false}
   updateDirectPhotoNumberControls();refreshDirectPhotoOrder();
   if(keepFocus){const buttons=Array.from(list.querySelectorAll('button')),button=buttons.find(node=>node.photoOrderImage===anchor&&node.dataset.photoOrderSide===side)||buttons.find(node=>node.photoOrderImage===image&&!node.dataset.photoOrderSide);if(button)button.focus({preventScroll:true})}
-  list.scrollTop=scroll;scheduleDirectPhotoNumbers();status('사진 '+(from+1)+'번을 선택한 위치로 옮겼습니다. 실행 취소할 수 있으며 작업본에 자동저장됩니다.');return true;
+  list.scrollTop=scroll;revealDirectPhotoInBody(image);scheduleDirectPhotoNumbers();status('사진 '+(from+1)+'번을 선택한 위치로 옮겼습니다. 실행 취소할 수 있으며 작업본에 자동저장됩니다.');return true;
 }
 function emptyPhotoParagraph(node){return!!node&&node.tagName==='P'&&!node.textContent.replace(/[\s\u200b]/g,'')&&!node.querySelector('img,video,audio,iframe,table,hr,input,button,svg,canvas')}
 function photoTextBlock(node){const image=node?.matches('img')?node:node?.querySelector('img'),unit=directPhotoUnit(image);return!!unit&&unit.root===node}
