@@ -1844,45 +1844,65 @@
 
   .public-photo-info-button {
     position: absolute;
+    display: flex;
+    align-items: flex-end;
+    justify-content: flex-end;
+    width: max-content;
     min-width: 44px;
     min-height: 44px;
-    padding: 6px;
-    border: 1px solid #ffffffb3;
-    border-radius: 8px;
-    background: #172330c9;
+    padding: 4px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
     color: #fff;
-    font: 500 12px/1.3 var(--sans);
+    box-shadow: none;
     cursor: pointer;
     pointer-events: auto;
   }
 
-  .public-photo-info-button[hidden] { display: none; }
-  .public-photo-info-button:hover { background: #172330; }
-  .public-photo-info-button:focus-visible { outline: 3px solid #2878d0; outline-offset: 3px; }
-
-  .public-photo-info-dialog {
-    width: min(420px, calc(100vw - 24px));
-    max-height: calc(100dvh - 32px);
-    margin: auto;
-    padding: 22px;
-    overflow: auto;
-    border: 1px solid var(--line, #d6dce3);
-    border-radius: 14px;
-    background: var(--paper, #fff);
-    color: var(--ink, #172330);
-    font-family: var(--sans);
-    box-shadow: 0 16px 64px #0003;
+  .public-photo-info-summary {
+    display: block;
+    max-width: 100%;
+    padding: 3px 5px;
+    border-radius: 3px;
+    background: rgb(0 0 0 / 45%);
+    color: #fff;
+    font: 400 10px/1.4 var(--sans);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
   }
 
-  .public-photo-info-dialog::backdrop { background: #17233080; }
-  .public-photo-info-dialog__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
-  .public-photo-info-dialog__header h2 { margin: 0; font-size: 1.1rem; }
-  .public-photo-info-dialog__header button { min-width: 60px; min-height: 44px; padding: 8px; border: 1px solid var(--line, #d6dce3); border-radius: 7px; background: transparent; color: inherit; cursor: pointer; }
-  .public-photo-info-dialog dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px 18px; margin: 0; font-size: .88rem; line-height: 1.5; }
-  .public-photo-info-dialog dt { color: var(--muted, #68717c); }
-  .public-photo-info-dialog dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-  .public-photo-info-dialog p { margin: 0; font-size: .9rem; line-height: 1.6; }
-  .public-photo-info-dialog .public-photo-info-dialog__note { margin-top: 18px; color: var(--muted, #68717c); font-size: .78rem; }
+  .public-photo-info-summary span { display: block; }
+  .public-photo-info-button[hidden] { display: none; }
+  .public-photo-info-button:hover .public-photo-info-summary,
+  .public-photo-info-button:focus-visible .public-photo-info-summary { background: rgb(0 0 0 / 65%); }
+  .public-photo-info-button:focus-visible { outline: 2px solid #fff; outline-offset: -3px; border-radius: 5px; }
+
+  .public-photo-info-popover {
+    position: fixed;
+    z-index: 30;
+    width: min(300px, calc(100vw - 16px));
+    max-height: calc(100dvh - 16px);
+    padding: 10px 12px 12px;
+    overflow: auto;
+    border: 0;
+    border-radius: 5px;
+    background: rgb(0 0 0 / 76%);
+    color: #fff;
+    font-family: var(--sans);
+  }
+
+  .public-photo-info-popover[hidden] { display: none; }
+  .public-photo-info-popover__header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+  .public-photo-info-popover__header h2 { margin: 0; font-size: 12px; font-weight: 500; }
+  .public-photo-info-popover__header button { min-width: 44px; min-height: 44px; margin: -10px -12px -6px 0; padding: 8px; border: 0; background: transparent; color: inherit; font-size: 18px; cursor: pointer; }
+  .public-photo-info-popover dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 12px; margin: 0; font-size: 11px; line-height: 1.5; }
+  .public-photo-info-popover dt { color: #ffffffb3; }
+  .public-photo-info-popover dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+  .public-photo-info-popover p { margin: 0; font-size: 11px; line-height: 1.6; }
+  .public-photo-info-popover .public-photo-info-popover__note { margin-top: 10px; color: #ffffffbf; font-size: 10px; }
 
   .post-header h1 {
     max-width: 940px;

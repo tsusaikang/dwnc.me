@@ -8,7 +8,7 @@ import { resolvePostCategory, resolvePostCategoryId, taxonomyLineage } from '../
 import BaseLayout from './BaseLayout.astro';
 import Breadcrumbs from '../components/Breadcrumbs.astro';
 import { IMAGE_LAYOUT_BOOTSTRAP } from '../lib/image-layout';
-import { renderPostPhotoSummary, summarizePostPhotos } from '../lib/photo-media-summary';
+import { collectPostPhotoData, renderPostPhotoMetadata, renderPostPhotoSummary } from '../lib/photo-media-summary';
 import { PUBLIC_PHOTO_INFO_BOOTSTRAP } from '../lib/public-photo-info';
 import { prepareImportedPresentation, IMPORTED_PRESENTATION_CSS, ENGINE_DIAGRAM_CSS, ENGINE_DIAGRAM_BOOTSTRAP } from '../lib/imported-presentation';
 
@@ -45,7 +45,9 @@ const presentationHtml = prepareImportedPresentation(await Astro.slots.render('d
   source: data.source, sourceId: data.sourceId,
 });
 const hasEngineDiagram = presentationHtml.includes('data-engine-diagram');
-const photoSummary = renderPostPhotoSummary(summarizePostPhotos(presentationHtml));
+const photoData = collectPostPhotoData(presentationHtml);
+const photoSummary = renderPostPhotoSummary(photoData.summary);
+const photoMetadata = renderPostPhotoMetadata(photoData.files);
 ---
 
 <BaseLayout
@@ -78,6 +80,7 @@ const photoSummary = renderPostPhotoSummary(summarizePostPhotos(presentationHtml
     <div class="prose">
       <Fragment set:html={presentationHtml} />
     </div>
+    <Fragment set:html={photoMetadata} />
     <style is:inline set:html={IMPORTED_PRESENTATION_CSS} />
     {presentationHtml.includes('dwnc-image-layout') && <script is:inline set:html={IMAGE_LAYOUT_BOOTSTRAP} />}
     {hasEngineDiagram && <style is:inline set:html={ENGINE_DIAGRAM_CSS} />}

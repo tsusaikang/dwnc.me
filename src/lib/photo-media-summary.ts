@@ -9,6 +9,7 @@ export interface PostPhotoSummary {
   unknownCount: number;
   totalBytes: number | null;
 }
+export interface PostPhotoData { summary: PostPhotoSummary; files: PhotoFileMetadata[] }
 
 const cardSelector = '[data-ke-type="opengraph"],.se_component.se_oglink,.se-component.se-oglink';
 const publishedFiles = new Map(mediaManifest.entries.filter(item => item.contentType.startsWith('image/'))
@@ -43,7 +44,7 @@ export function formatPhotoBytes(bytes: number): string {
 
 // The caller supplies the exact body snapshot being displayed and metadata
 // owned by that post. No working copy, upload inventory or cover is inspected.
-export function summarizePostPhotos(bodyHtml: string, metadata: PhotoFileMetadata[] = []): PostPhotoSummary {
+export function collectPostPhotoData(bodyHtml: string, metadata: PhotoFileMetadata[] = []): PostPhotoData {
   const $ = load(bodyHtml), sources: string[] = [];
   $('img[src]').each((_index, image) => {
     if ($(image).closest(cardSelector).length) return;
@@ -52,13 +53,31 @@ export function summarizePostPhotos(bodyHtml: string, metadata: PhotoFileMetadat
   });
   const files = new Map(metadata.map(item => [canonicalPhotoSource(item.path), item]));
   const unique = new Set(sources);
+  const referencedFiles: PhotoFileMetadata[] = [];
   let bytes = 0, unknownCount = 0;
   for (const source of unique) {
-    const item = files.get(source) ?? publishedPhotoMetadata(source);
-    if (!item?.mime.startsWith('image/') || !Number.isSafeInteger(item.bytes) || item.bytes === null || item.bytes < 1) { unknownCount += 1; continue; }
-    bytes += item.bytes;
+    // Only owned local file metadata can accompany a public body. In particular,
+    // an external URL with an identical pathname cannot inherit local bytes.
+    const item = source.startsWith('/media/') ? files.get(source) ?? publishedPhotoMetadata(source) : null;
+    if (!item?.mime.startsWith('image/')) { unknownCount += 1; continue; }
+    const size = Number.isSafeInteger(item.bytes) && item.bytes !== null && item.bytes > 0 ? item.bytes : null;
+    referencedFiles.push({path:source, bytes:size, mime:item.mime});
+    if (size === null) { unknownCount += 1; continue; }
+    bytes += size;
   }
-  return {count:sources.length, uniqueCount:unique.size, duplicateCount:sources.length-unique.size, unknownCount, totalBytes:unknownCount || !Number.isSafeInteger(bytes) ? null : bytes};
+  return {summary:{count:sources.length, uniqueCount:unique.size, duplicateCount:sources.length-unique.size, unknownCount, totalBytes:unknownCount || !Number.isSafeInteger(bytes) ? null : bytes}, files:referencedFiles};
+}
+
+export function summarizePostPhotos(bodyHtml: string, metadata: PhotoFileMetadata[] = []): PostPhotoSummary {
+  return collectPostPhotoData(bodyHtml, metadata).summary;
+}
+
+export function renderPostPhotoMetadata(files: PhotoFileMetadata[]): string {
+  // JSON script contents are raw text, not HTML-escaped attributes. Escaping '<'
+  // prevents a filename or MIME value from closing this non-executable script.
+  const payload = JSON.stringify(files.map(({path,bytes,mime}) => ({path,bytes,mime})))
+    .replace(/[<>&\u2028\u2029]/gu, value => '\\u' + value.charCodeAt(0).toString(16).padStart(4, '0'));
+  return `<script id="publicPhotoMetadata" type="application/json">${payload}</script>`;
 }
 
 export function renderPostPhotoSummary(summary: PostPhotoSummary): string {

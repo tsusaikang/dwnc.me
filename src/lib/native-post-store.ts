@@ -7,7 +7,7 @@ import { CmsConfigurationStore } from './cms-configuration.ts';
 import { load } from 'cheerio';
 import mediaManifest from '../data/public-media-r2-v1.json' with { type: 'json' };
 import { slugifyLabel } from './taxonomy.ts';
-import { canonicalPhotoSource, publishedPhotoMetadata, summarizePostPhotos, type PhotoFileMetadata } from './photo-media-summary.ts';
+import { canonicalPhotoSource, collectPostPhotoData, publishedPhotoMetadata, type PhotoFileMetadata } from './photo-media-summary.ts';
 
 export type NativePostStatus = 'draft' | 'published' | 'tombstone';
 export type AdminPostSort = 'created-desc' | 'created-asc' | 'updated-desc' | 'updated-asc';
@@ -294,13 +294,17 @@ export class NativePostStore {
     return [...images.values()];
   }
 
-  async photoSummaryForSnapshot(post: Pick<NativePost, 'id' | 'sourceKind' | 'bodyHtml'>) {
+  async photoDataForSnapshot(post: Pick<NativePost, 'id' | 'sourceKind' | 'bodyHtml'>) {
     let files:PhotoFileMetadata[]=[];
     try {
       const result=await this.database.prepare(`SELECT public_path, bytes, mime FROM ${post.sourceKind==='legacy'?'legacy_media':'native_media'} WHERE post_id=?1`).bind(post.id).all<{public_path:string;bytes:number;mime:string}>();
       files=(result.results??[]).map(item=>({path:item.public_path,bytes:item.bytes,mime:item.mime}));
     } catch { /* Missing file-size metadata must not prevent reading the post. */ }
-    return summarizePostPhotos(post.bodyHtml,files);
+    return collectPostPhotoData(post.bodyHtml,files);
+  }
+
+  async photoSummaryForSnapshot(post: Pick<NativePost, 'id' | 'sourceKind' | 'bodyHtml'>) {
+    return (await this.photoDataForSnapshot(post)).summary;
   }
 
   async normalizeInput(value: unknown, current: NativePost, requirePublishable = false) {
