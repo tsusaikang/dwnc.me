@@ -3368,3 +3368,14 @@
   .article-page .prose > :first-child,
   .article-page .prose > :is(.legacy-content, .naver-content):first-child > :first-child { margin-top: 0; }
 }
+
+/* The desktop browser side pane can be narrower than a phone. */
+@media (max-width: 319px) {
+  body { min-width: 0; }
+  .site-header__inner { gap: 4px; padding-inline: 8px; }
+  .site-header__inner > .brand { font-size: 0.86rem; letter-spacing: 0.07em; }
+  .site-menu-toggle:not([hidden]) { gap: 5px; padding-inline: 6px; font-size: 0.78rem; }
+  .site-header .public-admin-tools summary { gap: 4px; padding-inline: 6px; font-size: 0.78rem; }
+  .site-header .site-nav { grid-template-columns: minmax(0, 1fr); }
+  .site-header .public-admin-tools__links { position: fixed; top: 60px; right: 12px; left: 12px; width: auto; }
+}
