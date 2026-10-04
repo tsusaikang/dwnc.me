@@ -11,7 +11,7 @@ import { sanitizeNativeHtml, sanitizeLegacyHtml } from '../src/lib/native-conten
 // Cheerio supplies parsing/selector semantics; this adapter supplies DOM moves.
 // Pointer hit testing below uses deterministic rectangles. Actual browser layout
 // and pointer input are exercised in serve-editor-fixture.mjs.
-const $html=load('<div id="editorHeader"></div><div id="editorFooter"></div><div id="bodyHtml"></div><button id="deleteImage"></button><div id="imageTools">'+imageDirectToolsHtml+'</div>'+imageDirectOverlayHtml);
+const $html=load('<div id="editorHeader"></div><div id="editorFooter"></div><div id="bodyHtml"></div><div id="markdownMedia"></div><div id="formatToolbar"></div><div id="linkPanel"></div><div id="tablePanel"></div><button id="deleteImage"></button><div id="imageTools">'+imageDirectToolsHtml+'</div>'+imageDirectOverlayHtml);
 const wrappers=new WeakMap(),listeners=new Map(),widths=new Map();
 let hit=null,caretNode=null;
 class Element {
@@ -45,7 +45,7 @@ class Element {
   getBoundingClientRect(){return this.rect}
   setPointerCapture(id){assert.equal(field('imageTools').hidden,false,'Capture must precede hiding the floating tools');this.captured=id}
   hasPointerCapture(id){return this.captured===id} releasePointerCapture(){this.captured=null}
-  focus(){} addEventListener(name,fn){listeners.set(this.getAttribute('id')+':'+name,fn)}
+  focus(){document.activeElement=this} showModal(){this.open=true} close(){this.open=false;listeners.get(this.getAttribute('id')+':close')?.()} addEventListener(name,fn){listeners.set(this.getAttribute('id')+':'+name,fn)}
 }
 function wrap(node){if(!node)return null;if(!wrappers.has(node))wrappers.set(node,new Element(node));return wrappers.get(node)}
 const field=id=>wrap($html('#'+id)[0]),body=field('bodyHtml');
@@ -219,6 +219,42 @@ body.innerHTML=photo('a')+'<figure data-ke-type="opengraph"><img src="card.png">
 body.innerHTML=photo('b');run('resetEditorHistory();refreshDirectPhotoNumbers()');context.selected=image('b');run('selectMedia(selected);updateDirectPhotoTools()');assert.equal(field('directPhotoNumber').textContent,'사진 1 / 1');assert.equal(field('movePhotoByNumber').disabled,true);
 body.innerHTML=photo('a')+photo('b');run('resetEditorHistory();refreshDirectPhotoNumbers()');assert.equal(field('photoNumberOverlay').querySelectorAll('button').map(node=>node.textContent).join(','),'1,2');
 context.selected=image('a');run('selectMedia(selected);updateDirectPhotoTools()');run('busy=true');assert.equal(numberedMove('a',2),false);run('busy=false;editorComposing=true');assert.equal(numberedMove('a',2),false);run('editorComposing=false');
+// The overview reads current body order, keeps row grouping and only fills a
+// destination number. Browsing/selecting it never creates an editor change.
+body.innerHTML=original;run('resetEditorHistory()');assert.equal(group('b','a'),true);await tick();
+context.selected=image('b');run('selectMedia(selected);updateDirectPhotoTools()');
+const overviewBefore=checkpoint(),historyBefore=run('editorUndoStates.length');
+listeners.get('openPhotoOrder:click')();assert.equal(field('photoOrderDialog').open,true);
+const overviewUi=adminHtml('fixture@example.test');
+run(overviewUi.split('\n').find(line=>line.startsWith("document.addEventListener('click',event=>{const element=")));
+run(overviewUi.split('\n').find(line=>line.startsWith("document.addEventListener('keydown',event=>{if($('photoOrderDialog').open)")));
+const escapeInOverview={key:'Escape',preventDefault(){this.prevented=true}};
+listeners.get('document:keydown')(escapeInOverview);assert.equal(escapeInOverview.prevented,undefined,'Native dialog Escape must retain its default close behavior');assert.equal(run('selectedMedia.image'),image('b'));
+listeners.get('document:click')({target:field('photoOrderHeading')});assert.equal(run('selectedMedia.image'),image('b'),'Clicking the overview must retain the moving photo');
+assert.equal(field('photoOrderList').querySelectorAll('.photo-order-row').length,3);
+let choices=field('photoOrderList').querySelectorAll('button');
+assert.equal(choices.map(button=>button.textContent).join(','),'1번,2번 · 옮길 사진,3번,4번');
+assert.equal(field('photoOrderList').querySelectorAll('img').map(node=>node.getAttribute('src')).join(','),[src('a'),src('b'),src('c'),src('d')].join(','));
+assert.equal(choices[1].dataset.selected,'true');assert.equal(choices[0].getAttribute('aria-label'),'사진 1번 위치 선택');
+context.destination=image('d');run('chooseDirectPhotoOrder(destination)');
+assert.equal(field('photoOrderDialog').open,false);assert.equal(field('directPhotoPosition').value,'4');assert.equal(document.activeElement,field('directPhotoPosition'));
+assert.equal(checkpoint(),overviewBefore);assert.equal(run('editorUndoStates.length'),historyBefore,'Choosing a destination must not alter history');
+listeners.get('movePhotoByNumber:click')();await tick();assert.equal(order(),'acdb');run("editorHistoryCommand('undo')");assert.equal(checkpoint(),overviewBefore);
+context.selected=image('a');run('selectMedia(selected);updateDirectPhotoTools();openDirectPhotoOrder()');
+// Reordering and replacing a source URL are reflected without closing/reopening.
+body.insertBefore(image('d').closest('figure'),body.children[0]);image('c').setAttribute('src','/media/native/changed.png');
+run('refreshDirectPhotoOrder()');choices=field('photoOrderList').querySelectorAll('button');
+assert.equal(choices.map(button=>button.textContent).join(','),'1번,2번 · 옮길 사진,3번,4번');
+assert.equal(field('photoOrderList').querySelectorAll('img')[0].getAttribute('src'),src('d'));
+assert.equal(field('photoOrderList').querySelectorAll('img')[3].getAttribute('src'),'/media/native/changed.png');
+run('busy=true;refreshDirectPhotoOrder()');assert.ok(choices.every(button=>button.disabled));context.destination=image('d');run('chooseDirectPhotoOrder(destination)');assert.equal(field('photoOrderDialog').open,true);run('busy=false');
+listeners.get('closePhotoOrder:click')();assert.equal(document.activeElement,field('openPhotoOrder'));
+run('openDirectPhotoOrder();current={id:"other-post"};refreshDirectPhotoOrder()');assert.equal(field('photoOrderDialog').open,false);
+run('current={id:"synthetic-photo"}');context.selected=image('a');run('selectMedia(selected);openDirectPhotoOrder()');image('a').closest('figure').remove();run('refreshDirectPhotoOrder()');assert.equal(field('photoOrderDialog').open,false,'Deleted sources close the overview');
+body.innerHTML=photo('a')+'<figure data-ke-type="opengraph"><img src="card.png"></figure>'+photo('b');context.selected=image('a');run('selectMedia(selected);openDirectPhotoOrder()');assert.equal(field('photoOrderList').querySelectorAll('button').length,2,'Cards are excluded from the overview');
+assert.equal(checkpoint().includes('photo-order'),false);listeners.get('closePhotoOrder:click')();
+console.log(JSON.stringify({suite:'photo-order-overview',status:'PASS',behavior:'whole-body order and grouped rows, selected source, target fills number only, shared number move/undo, live order/source refresh, busy and post/deletion guards, card exclusion, external UI and focus return'}));
+
 console.log(JSON.stringify({suite:'image-direct',status:'PASS',behavior:'move/group/reorder/split, cap at three, captions and text preserved, shared undo/redo, sanitizer reopen, no-upscale, photo margin text insertion/reuse/caret, numbered final positions, atomic row split and external labels'}));
 
 // A foreign paragraph in an imported/hand-authored layout must never be erased

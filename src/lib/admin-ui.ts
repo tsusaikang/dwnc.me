@@ -186,8 +186,8 @@ $('bodyHtml').addEventListener('keydown',event=>{if(selectedMedia&&(event.key===
 $('bodyHtml').addEventListener('scroll',positionMediaSelection);
 window.addEventListener('resize',positionMediaSelection);
 window.addEventListener('scroll',positionMediaSelection,true);
-document.addEventListener('click',event=>{const element=event.target instanceof Element?event.target:null;if(!element||(!$('bodyHtml').contains(element)&&!$('markdownMedia').contains(element)&&!$('imageTools').contains(element)&&!$('formatToolbar').contains(element)&&!$('linkPanel').contains(element)&&!$('tablePanel').contains(element)))clearMediaSelection()});
-document.addEventListener('keydown',event=>{if(event.key==='Escape'&&selectedMedia){event.preventDefault();clearMediaSelection()}else if(selectedMedia?.kind==='markdown-image'&&(event.key==='Delete'||event.key==='Backspace')){event.preventDefault();deleteSelectedMedia()}});
+document.addEventListener('click',event=>{const element=event.target instanceof Element?event.target:null;if(!element||(!$('bodyHtml').contains(element)&&!$('markdownMedia').contains(element)&&!$('imageTools').contains(element)&&!$('photoOrderDialog').contains(element)&&!$('formatToolbar').contains(element)&&!$('linkPanel').contains(element)&&!$('tablePanel').contains(element)))clearMediaSelection()});
+document.addEventListener('keydown',event=>{if($('photoOrderDialog').open)return;if(event.key==='Escape'&&selectedMedia){event.preventDefault();clearMediaSelection()}else if(selectedMedia?.kind==='markdown-image'&&(event.key==='Delete'||event.key==='Backspace')){event.preventDefault();deleteSelectedMedia()}});
 $('deleteImage').onclick=()=>deleteSelectedMedia();
 $('editor').addEventListener('submit',event=>event.preventDefault());
 $('new').onclick=async()=>{let opened=false;await action(async()=>{if(!await flush())return;fill((await api('/posts',{method:'POST',body:JSON.stringify({kind:$('postKind').value||'post'})})).post);opened=true;await refreshList()});if(opened)openEditorLocation()};

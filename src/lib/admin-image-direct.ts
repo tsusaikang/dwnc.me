@@ -1,9 +1,9 @@
 // Editing controls and drop indicators live outside bodyHtml. Only the existing
 // saved layout vocabulary is moved into the post, so saving and history remain
 // shared with normal text editing.
-export const imageDirectToolsHtml = `<div id="directImageTools" class="direct-image-tools" hidden><button id="dragSelectedPhoto" type="button" title="끌어서 이동 · 방향키로 위치 이동" aria-label="선택 사진 이동">↕ 이동</button><div class="photo-number-tools"><span id="directPhotoNumber" aria-live="polite"></span><label for="directPhotoPosition">옮길 번호</label><input id="directPhotoPosition" type="number" inputmode="numeric" min="1" step="1" aria-describedby="directPhotoNumberHint"><button id="movePhotoByNumber" type="button">번호로 이동</button></div><span id="directPhotoNumberHint" class="direct-photo-hint">번호는 본문 사진 순서입니다. 다른 그룹 안으로 옮기면 그 줄이 나뉩니다.</span><div class="photo-align-tools" role="group" aria-label="사진 정렬"><button type="button" data-photo-align="left" aria-label="사진 왼쪽 정렬">왼쪽</button><button type="button" data-photo-align="center" aria-label="사진 가운데 정렬">가운데</button><button type="button" data-photo-align="right" aria-label="사진 오른쪽 정렬">오른쪽</button></div><label class="sr-only" for="directPhotoSize">사진 크기</label><select id="directPhotoSize" aria-describedby="directPhotoHint"><option value="original">100% 원본</option><option value="paragraph">문단 폭</option><option value="full">전체 폭</option></select><button id="splitSelectedPhoto" type="button" hidden>한 장 빼내기</button><span id="directPhotoHint" class="direct-photo-hint"></span></div>`;
+export const imageDirectToolsHtml = `<div id="directImageTools" class="direct-image-tools" hidden><button id="dragSelectedPhoto" type="button" title="끌어서 이동 · 방향키로 위치 이동" aria-label="선택 사진 이동">↕ 이동</button><div class="photo-number-tools"><span id="directPhotoNumber" aria-live="polite"></span><label for="directPhotoPosition">옮길 번호</label><input id="directPhotoPosition" type="number" inputmode="numeric" min="1" step="1" aria-describedby="directPhotoNumberHint"><button id="movePhotoByNumber" type="button">번호로 이동</button><button id="openPhotoOrder" type="button" aria-haspopup="dialog" aria-controls="photoOrderDialog">전체 사진 순서</button></div><span id="directPhotoNumberHint" class="direct-photo-hint">번호는 본문 사진 순서입니다. 다른 그룹 안으로 옮기면 그 줄이 나뉩니다.</span><div class="photo-align-tools" role="group" aria-label="사진 정렬"><button type="button" data-photo-align="left" aria-label="사진 왼쪽 정렬">왼쪽</button><button type="button" data-photo-align="center" aria-label="사진 가운데 정렬">가운데</button><button type="button" data-photo-align="right" aria-label="사진 오른쪽 정렬">오른쪽</button></div><label class="sr-only" for="directPhotoSize">사진 크기</label><select id="directPhotoSize" aria-describedby="directPhotoHint"><option value="original">100% 원본</option><option value="paragraph">문단 폭</option><option value="full">전체 폭</option></select><button id="splitSelectedPhoto" type="button" hidden>한 장 빼내기</button><span id="directPhotoHint" class="direct-photo-hint"></span></div>`;
 
-export const imageDirectOverlayHtml = `<div id="photoNumberOverlay" class="photo-number-overlay" aria-label="본문 사진 번호"></div><div id="photoDropIndicator" class="photo-drop-indicator" hidden><span id="photoDropLabel"></span></div><div id="photoTextHint" class="photo-text-hint" aria-hidden="true" hidden>＋ 글 쓰기</div>`;
+export const imageDirectOverlayHtml = `<div id="photoNumberOverlay" class="photo-number-overlay" aria-label="본문 사진 번호"></div><div id="photoDropIndicator" class="photo-drop-indicator" hidden><span id="photoDropLabel"></span></div><div id="photoTextHint" class="photo-text-hint" aria-hidden="true" hidden>＋ 글 쓰기</div><dialog id="photoOrderDialog" class="photo-order-dialog" aria-labelledby="photoOrderHeading" aria-describedby="photoOrderHint"><div class="photo-order-header"><h2 id="photoOrderHeading">전체 사진 순서</h2><button id="closePhotoOrder" type="button" aria-label="전체 사진 순서 닫기" autofocus>닫기 ✕</button><p id="photoOrderHint"></p></div><div id="photoOrderList" class="photo-order-list"></div></dialog>`;
 
 export const imageDirectCss = `
 .html-editor{display:flow-root;padding-block:18px}
@@ -11,20 +11,22 @@ export const imageDirectCss = `
 .image-tools button{background:#fff;color:#364357;padding:7px 9px;font-size:12px}.image-tools button:hover{background:#edf3fa}.image-tools #deleteImage{color:#a42929;background:#fff}.image-tools #setSelectedCover{background:#fff;color:#1769d2}.image-tools__label{display:none}
 .direct-image-tools{display:flex;align-items:center;flex-wrap:wrap;gap:5px;width:100%;border-bottom:1px solid #e8edf3;padding-bottom:6px}.photo-align-tools{display:flex;gap:1px}.image-tools [data-photo-align][aria-pressed="true"]{background:#e8f1ff;color:#145bac;border-color:#8bb5ee}.direct-image-tools select{width:auto;max-width:145px;padding:6px;font-size:12px}.direct-photo-hint{flex-basis:100%;font-size:11px;line-height:1.5;color:#647184}.image-tools #dragSelectedPhoto{touch-action:none;cursor:grab;color:#175fae}.html-editor img{cursor:grab}.html-editor figcaption{cursor:text}
 .photo-number-tools{display:flex;align-items:center;flex-wrap:wrap;gap:5px;font-size:12px}.photo-number-tools input{width:64px;min-height:44px;padding:7px;font-size:16px}.photo-number-tools button{min-height:44px}.photo-number-tools label{font-size:12px}.photo-number-tools #directPhotoNumber{font-weight:600;color:#175fae}.photo-number-overlay{position:fixed;inset:0;z-index:29;pointer-events:none}.photo-number-badge{position:absolute;pointer-events:auto;border:1px solid #fff;border-radius:5px;background:#175fae;color:#fff;padding:6px 9px;font:600 12px/1.4 system-ui;box-shadow:0 1px 5px #0005;min-height:44px;min-width:44px}.photo-number-badge[aria-pressed="true"]{background:#093f80;outline:2px solid #a5c8ff}.photo-number-badge:focus-visible{outline:3px solid #ffbd48}
+.photo-order-dialog{width:min(760px,calc(100vw - 24px));max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);padding:0;border:1px solid #cbd4df;border-radius:10px;color:#364357;background:#fff;overflow:hidden}.photo-order-dialog[open]{display:flex;flex-direction:column}.photo-order-dialog::backdrop{background:#14203399}.photo-order-header{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:16px;border-bottom:1px solid #e8edf3;flex-shrink:0}.photo-order-header h2{font-size:18px;margin:0}.photo-order-header p{flex-basis:100%;font-size:13px;line-height:1.6;margin:0;overflow-wrap:anywhere}.photo-order-header button{min-height:44px;font-size:13px}.photo-order-list{min-height:0;overflow:auto;padding:16px;overscroll-behavior:contain}.photo-order-row{display:flex;align-items:stretch;justify-content:center;gap:8px;padding:10px;margin-bottom:12px;border:1px solid #dbe3ed;border-radius:8px;background:#f5f7fa}.photo-order-row:last-child{margin-bottom:0}.photo-order-choice{flex:1;min-width:0;max-width:220px;display:flex;flex-direction:column;align-items:center;gap:8px;padding:8px;border:2px solid transparent;border-radius:6px;background:#fff;color:#364357;font-size:13px;cursor:pointer}.photo-order-choice:hover{border-color:#8bb5ee}.photo-order-choice:focus-visible{outline:3px solid #ffbd48;outline-offset:1px}.photo-order-choice[data-selected="true"]{border-color:#175fae;background:#e8f1ff}.photo-order-choice img{display:block;width:100%;height:160px;object-fit:contain;background:#edf0f4;pointer-events:none}.photo-order-choice span{min-height:36px;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.4}.photo-order-row[data-count="2"] .photo-order-choice,.photo-order-row[data-count="3"] .photo-order-choice{max-width:200px}
 .photo-drop-indicator{position:fixed;z-index:70;pointer-events:none;background:#1769d2;border-radius:2px;box-shadow:0 0 0 2px #ffffffd9}.photo-drop-indicator span{position:absolute;left:6px;top:7px;white-space:nowrap;border-radius:4px;background:#1769d2;color:#fff;font:12px/1.4 system-ui;padding:4px 7px;box-shadow:0 2px 8px #0002}.photo-drop-indicator[data-mode="group"] span{top:-28px;left:0}.photo-drop-indicator[data-mode="blocked"]{background:#a43434}.photo-drop-indicator[data-mode="blocked"] span{background:#a43434}
 .photo-text-hint{position:fixed;z-index:65;pointer-events:none;transform:translateY(-50%);border:1px solid #bfd2ec;border-radius:4px;background:#f5f9ff;color:#285c9a;padding:2px 7px;font:12px/1.4 system-ui;white-space:nowrap}
-@media(max-width:480px){.image-tools{padding:6px;gap:4px}.image-tools button{padding:7px;font-size:11px}.direct-image-tools select{max-width:118px}.direct-photo-hint{font-size:10px}}
+@media(max-width:480px){.photo-order-header,.photo-order-list{padding:12px}.photo-order-row{padding:6px;gap:4px}.photo-order-choice{padding:4px;font-size:12px}.photo-order-choice img{height:130px}.photo-order-row[data-count="3"] .photo-order-choice img{height:100px}.image-tools{padding:6px;gap:4px}.image-tools button{padding:7px;font-size:11px}.direct-image-tools select{max-width:118px}.direct-photo-hint{font-size:10px}}
 `;
 
 export const imageDirectScript = String.raw`
 let photoDrag=null,photoScrollFrame=null,photoPointer=null,photoCapture=null;
 let photoTextPointer=null;
 let photoNumberFrame=null,photoNumberSelection=null,photoNumberIndex=-1,photoNumberCount=0;
+let photoOrderOwner=null,photoOrderSource=null,photoOrderSnapshot=[],photoOrderFocusInput=false;
 function directBodyPhotos(){return Array.from($('bodyHtml').querySelectorAll('img')).filter(image=>!image.closest('[data-ke-type="opengraph"],.se_component.se_oglink,.se-component.se-oglink'))}
 function updateDirectPhotoNumberControls(){
   const images=directBodyPhotos(),image=selectedMedia?.image,index=images.indexOf(image),input=$('directPhotoPosition');
   $('directPhotoNumber').textContent=index<0?'':'사진 '+(index+1)+' / '+images.length;
-  input.max=String(images.length);input.disabled=busy||index<0||images.length<2;$('movePhotoByNumber').disabled=input.disabled;
+  input.max=String(images.length);input.disabled=busy||index<0||images.length<2;$('movePhotoByNumber').disabled=input.disabled;$('openPhotoOrder').disabled=busy||index<0;
   if(photoNumberSelection!==image||photoNumberIndex!==index||photoNumberCount!==images.length)input.value=index<0?'':String(index+1);
   photoNumberSelection=image;photoNumberIndex=index;photoNumberCount=images.length;
 }
@@ -36,9 +38,39 @@ function refreshDirectPhotoNumbers(){
     const badge=document.createElement('button');badge.type='button';badge.className='photo-number-badge';badge.textContent=String(index+1);badge.setAttribute('aria-label','사진 '+(index+1)+' 선택');badge.setAttribute('aria-pressed',String(selectedMedia?.image===image));badge.disabled=busy;
     badge.style.left=Math.max(4,box.left+6)+'px';badge.style.top=Math.max(top+4,box.top+6)+'px';badge.addEventListener('mousedown',event=>event.preventDefault());badge.addEventListener('click',event=>{event.stopPropagation();if(!busy&&body.contains(image))selectMedia(image)});overlay.append(badge);
   });
-  updateDirectPhotoNumberControls();
+  updateDirectPhotoNumberControls();refreshDirectPhotoOrder();
 }
 function scheduleDirectPhotoNumbers(){if(photoNumberFrame===null&&typeof window.requestAnimationFrame==='function')photoNumberFrame=window.requestAnimationFrame(refreshDirectPhotoNumbers)}
+function refreshDirectPhotoOrder(){
+  const dialog=$('photoOrderDialog');if(!dialog.open)return;
+  const images=directBodyPhotos(),from=images.indexOf(photoOrderSource);
+  if(!current||current.id!==photoOrderOwner||from<0||selectedMedia?.image!==photoOrderSource){dialog.close();return}
+  $('photoOrderHint').textContent='옮길 사진: '+(from+1)+'번 / 전체 '+images.length+'장. 원하는 최종 번호의 사진을 누르면 옮길 번호가 채워집니다. 이동은 번호로 이동 버튼을 눌러 실행합니다. 함께 놓인 사진은 같은 줄로 표시합니다.';
+  const snapshot=images.map(image=>({image,src:image.currentSrc||image.getAttribute('src')||'',alt:image.getAttribute('alt')||'',group:image.closest('.dwnc-image-layout')}));
+  const changed=snapshot.length!==photoOrderSnapshot.length||snapshot.some((item,index)=>Object.keys(item).some(key=>item[key]!==photoOrderSnapshot[index]?.[key]));
+  if(!changed){for(const button of $('photoOrderList').querySelectorAll('button'))button.disabled=busy;return}
+  const focusedIndex=Array.from($('photoOrderList').querySelectorAll('button')).indexOf(document.activeElement),focusedImage=photoOrderSnapshot[focusedIndex]?.image;
+  photoOrderSnapshot=snapshot;const list=$('photoOrderList');list.replaceChildren();let row=null,previous=null;
+  snapshot.forEach((item,index)=>{
+    if(!row||!item.group||item.group!==previous){row=document.createElement('div');row.className='photo-order-row';list.append(row)}
+    previous=item.group;const button=document.createElement('button'),preview=document.createElement('img'),label=document.createElement('span');
+    button.type='button';button.className='photo-order-choice';button.dataset.selected=String(item.image===photoOrderSource);button.disabled=busy;button.setAttribute('aria-label','사진 '+(index+1)+'번 위치 선택'+(item.image===photoOrderSource?' · 옮길 사진':''));
+    preview.setAttribute('src',item.src);preview.setAttribute('alt',item.alt);preview.setAttribute('loading','lazy');preview.setAttribute('decoding','async');preview.draggable=false;
+    label.textContent=(index+1)+'번'+(item.image===photoOrderSource?' · 옮길 사진':'');button.append(preview,label);row.append(button);row.dataset.count=String(row.children.length);
+    button.addEventListener('click',()=>chooseDirectPhotoOrder(item.image));if(item.image===focusedImage)button.focus({preventScroll:true});
+  });
+}
+function openDirectPhotoOrder(){
+  if(busy||!current||!directBodyPhotos().includes(selectedMedia?.image))return;
+  photoOrderOwner=current.id;photoOrderSource=selectedMedia.image;photoOrderSnapshot=[];photoOrderFocusInput=false;
+  $('photoOrderDialog').showModal();refreshDirectPhotoOrder();
+}
+function chooseDirectPhotoOrder(image){
+  const images=directBodyPhotos(),index=images.indexOf(image);
+  if(busy||current?.id!==photoOrderOwner||selectedMedia?.image!==photoOrderSource||!images.includes(photoOrderSource)||index<0){refreshDirectPhotoOrder();return}
+  updateDirectPhotoNumberControls();$('directPhotoPosition').value=String(index+1);photoOrderFocusInput=true;$('photoOrderDialog').close();
+  status('옮길 번호를 '+(index+1)+'번으로 선택했습니다. 번호로 이동을 누르면 사진이 이동합니다.');
+}
 function moveDirectPhotoByNumber(){
   const images=directBodyPhotos(),image=selectedMedia?.image,from=images.indexOf(image),value=$('directPhotoPosition').value,to=Number(value);
   if(busy||!current||editorComposing||from<0)return false;
@@ -253,13 +285,16 @@ $('dragSelectedPhoto').addEventListener('keydown',event=>{if(!['ArrowUp','ArrowD
 for(const button of $('directImageTools').querySelectorAll('[data-photo-align]'))button.addEventListener('click',()=>setDirectPhotoLayout('align',button.dataset.photoAlign));
 $('directPhotoSize').addEventListener('change',()=>setDirectPhotoLayout('size',$('directPhotoSize').value));
 $('splitSelectedPhoto').addEventListener('click',()=>{const unit=directPhotoUnit(selectedMedia?.image);if(unit?.group)moveDirectPhoto(unit.image,{type:'move',parent:unit.group.parentNode,before:unit.group.nextSibling})});
+$('openPhotoOrder').addEventListener('click',openDirectPhotoOrder);
+$('closePhotoOrder').addEventListener('click',()=>$('photoOrderDialog').close());
+$('photoOrderDialog').addEventListener('close',()=>{const input=photoOrderFocusInput;photoOrderOwner=null;photoOrderSource=null;photoOrderSnapshot=[];photoOrderFocusInput=false;if(selectedMedia?.image&&$('bodyHtml').contains(selectedMedia.image)&&current)(input?$('directPhotoPosition'):$('openPhotoOrder')).focus({preventScroll:true})});
 $('movePhotoByNumber').addEventListener('click',moveDirectPhotoByNumber);
 $('directPhotoPosition').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();moveDirectPhotoByNumber()}});
 $('bodyHtml').addEventListener('scroll',scheduleDirectPhotoNumbers);
 document.addEventListener('input',scheduleDirectPhotoNumbers);
 window.addEventListener('scroll',scheduleDirectPhotoNumbers,true);window.addEventListener('resize',scheduleDirectPhotoNumbers);
 if(typeof MutationObserver!=='undefined'){
-  const photoNumberObserver=new MutationObserver(scheduleDirectPhotoNumbers);photoNumberObserver.observe($('bodyHtml'),{childList:true,subtree:true});
+  const photoNumberObserver=new MutationObserver(scheduleDirectPhotoNumbers);photoNumberObserver.observe($('bodyHtml'),{childList:true,subtree:true,attributes:true,attributeFilter:['src','srcset','alt','class']});
   const viewObserver=new MutationObserver(scheduleDirectPhotoNumbers);viewObserver.observe(document.body,{attributes:true,attributeFilter:['data-view']});
 }
 $('bodyHtml').addEventListener('load',event=>{const group=event.target.closest?.('.dwnc-image-layout');if(group)refreshImageGroupGeometry(group);updateDirectPhotoTools();positionMediaSelection();scheduleDirectPhotoNumbers()},true);
