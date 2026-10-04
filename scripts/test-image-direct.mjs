@@ -445,6 +445,7 @@ image('a').rect={left:100,right:700,top:150,bottom:650,width:600,height:500};ima
 context.window.innerWidth=1000;context.window.innerHeight=900;document.activeElement=body;
 context.selected=image('b');run('selectMedia(selected);refreshDirectPhotoNumbers()');
 const hoverBody=checkpoint(),hoverHistory=run('editorUndoStates.length'),hoverDialog=field('photoInfoDialog');hoverDialog.rect={left:0,right:320,top:0,bottom:260,width:320,height:260};hoverDialog.showModal=()=>assert.fail('Photo details must never show a modal');
+Object.defineProperty(hoverDialog,'scrollHeight',{get(){assert.equal(this.parentElement.style.width,Math.min(360,context.window.innerWidth-16)+'px','The current expanded width is applied before measuring the detail height');return 260}});
 const infoTrigger=letter=>field('photoNumberOverlay').querySelectorAll('.photo-file-info').find(node=>node.photoInfoImage===image(letter));
 const trigger=infoTrigger('a');trigger.rect={left:150,right:310,top:160,bottom:204,width:160,height:44};
 assert.match(trigger.textContent,/1400×1050px/);assert.equal(field('photoNumberOverlay').querySelectorAll('.photo-file-info-button').length,0);assert.equal(trigger.textContent.includes('사진 정보'),false);
@@ -456,21 +457,23 @@ run('editorComposing=true');assert.equal(escapeInfo().stopped,undefined);run('ed
 trigger.listeners.get('pointerenter')({pointerType:'mouse'});assert.equal(hoverDialog.open,true);assert.equal(hoverRequests.length,1,'Reentering while the read is pending does not download it again');
 firstRequest.resolve({info:{format:'JPEG',bytes:9876,width:1400,height:1050,colorSpace:'sRGB',profileName:null,hdr:'not-indicated',metadataComplete:true}});await tick();assert.match(detailsText(),/sRGB/);assert.equal(trigger.getAttribute('aria-expanded'),'true');
 const popupRect=()=>{const panel=trigger.parentElement;return{left:parseFloat(panel.style.left),top:parseFloat(panel.style.top),width:parseFloat(panel.style.width),height:parseFloat(panel.style.height)}};
-const assertOutsidePhotoCenter=()=>{const popup=popupRect(),box=image('a').getBoundingClientRect(),cx=(box.left+box.right)/2,cy=(box.top+box.bottom)/2;assert.equal(cx>=popup.left&&cx<=popup.left+popup.width&&cy>=popup.top&&cy<=popup.top+popup.height,false,'Popup must not cover the photo center');assert.ok(popup.left>=8&&popup.top>=8&&popup.left+popup.width<=context.window.innerWidth-8&&popup.top+popup.height<=context.window.innerHeight-8);};
-assertOutsidePhotoCenter();
+const assertInfoReadable=()=>{const popup=popupRect(),top=Math.max(8,field('editorHeader').rect.bottom+6),bottom=field('editorFooter').hidden?context.window.innerHeight-8:field('editorFooter').rect.top-6;assert.ok(popup.left>=8&&popup.top>=top&&popup.left+popup.width<=context.window.innerWidth-8&&popup.top+popup.height<=bottom);assert.equal(popup.height,Math.min(44+hoverDialog.scrollHeight,bottom-top),'All six detail rows fit unless the usable screen itself is too short');assert.equal(parseFloat(hoverDialog.style.maxHeight),popup.height-44);};
+assertInfoReadable();
 const expandingPanel=trigger.parentElement;
 assert.equal(hoverDialog.parentElement,expandingPanel);assert.equal(expandingPanel.dataset.expanded,'true');
 assert.equal(trigger.listeners.has('pointerleave'),false,'The whole expanding area owns hover leave');
 expandingPanel.listeners.get('pointerleave')({relatedTarget:expandingPanel});hoverDialog.listeners.get('pointerleave')({relatedTarget:expandingPanel});flushInfoTimers();assert.equal(hoverDialog.open,true,'Crossing into the expanded background keeps one continuous area open');
 assert.match(imageDirectCss,/body:has\(#photoInfoDialog\[open\]\):not\(:has\(dialog\[open\]:not\(#photoInfoDialog\)\)\)\{overflow:visible\}/,'A photo expansion must not apply the other dialogs’ document scroll lock');
+assert.match(imageDirectCss,/\.photo-info-panel \.photo-file-info\{[^}]*background:transparent/,'The summary background rule has enough specificity to override the shared button:hover background');
 // Mouse may cross the small gap and read the tooltip; leaving both closes it.
 document.activeElement=body;trigger.parentElement.listeners.get('pointerleave')({relatedTarget:null});hoverDialog.listeners.get('pointerenter')();flushInfoTimers();assert.equal(hoverDialog.open,true);hoverDialog.listeners.get('pointerleave')({relatedTarget:null});flushInfoTimers();assert.equal(hoverDialog.open,false);
 trigger.listeners.get('pointerenter')({pointerType:'touch'});assert.equal(hoverDialog.open,false,'Touch hover is ignored');trigger.click();assert.equal(hoverDialog.open,true);trigger.click();assert.equal(hoverDialog.open,false,'Touch/click on the same metadata toggles the tooltip');
 trigger.click();listeners.get('document:pointerdown')({target:body});assert.equal(hoverDialog.open,false,'Outside pointer closes without changing content or selection');assert.equal(hoverDialog.parentElement,field('photoInfoHost'),'Closed details return to the hidden shared host');
-// A tall full-width photo leaves no room outside it: use a bounded edge strip.
-context.window.innerWidth=390;context.window.innerHeight=720;image('a').rect={left:12,right:378,top:70,bottom:970,width:366,height:900};trigger.rect={left:62,right:202,top:76,bottom:120,width:140,height:44};trigger.click();assertOutsidePhotoCenter();assert.ok(parseFloat(trigger.parentElement.style.height)<720);assert.equal(hoverDialog.parentElement,trigger.parentElement,'Summary and details share the same expanding panel');
-// Small grouped photos retain pixels and bytes; their tooltip sits outside.
-image('a').rect={left:20,right:98,top:160,bottom:254,width:78,height:94};image('b').rect={left:102,right:222,top:160,bottom:254,width:120,height:94};run('refreshDirectPhotoNumbers()');assert.equal(infoTrigger('a'),trigger);assert.match(trigger.textContent,/1400×1050px/);assert.match(trigger.textContent,/9.88 KB/);assertOutsidePhotoCenter();
+// A tall photo still allows every row when the usable screen is tall enough.
+context.window.innerWidth=390;context.window.innerHeight=720;image('a').rect={left:12,right:378,top:70,bottom:970,width:366,height:900};trigger.rect={left:62,right:202,top:76,bottom:120,width:140,height:44};trigger.click();assertInfoReadable();assert.ok(parseFloat(trigger.parentElement.style.height)<720);assert.equal(hoverDialog.parentElement,trigger.parentElement,'Summary and details share the same expanding panel');
+context.window.innerHeight=260;run('positionDirectPhotoInfo()');assertInfoReadable();assert.ok(parseFloat(hoverDialog.style.maxHeight)<hoverDialog.scrollHeight,'Only a short usable screen requires scrolling inside the details');context.window.innerHeight=720;run('positionDirectPhotoInfo()');assertInfoReadable();assert.equal(parseFloat(hoverDialog.style.maxHeight),hoverDialog.scrollHeight,'A taller screen restores the full detail height');
+// Small grouped photos retain pixels and bytes, and their complete details.
+image('a').rect={left:20,right:98,top:160,bottom:254,width:78,height:94};image('b').rect={left:102,right:222,top:160,bottom:254,width:120,height:94};run('refreshDirectPhotoNumbers()');assert.equal(infoTrigger('a'),trigger);assert.match(trigger.textContent,/1400×1050px/);assert.match(trigger.textContent,/9.88 KB/);assertInfoReadable();
 trigger.listeners.get('blur')({relatedTarget:field('closePhotoInfo')});assert.equal(hoverDialog.open,true);hoverDialog.listeners.get('focusout')({relatedTarget:body});assert.equal(hoverDialog.open,false);
 trigger.click();run('busy=true;refreshDirectPhotoNumbers()');assert.equal(hoverDialog.open,false,'Busy operations close the tooltip');run('busy=false;refreshDirectPhotoNumbers()');trigger.click();image('a').rect.top=-20;image('a').rect.bottom=74;run('refreshDirectPhotoNumbers()');assert.equal(hoverDialog.open,false,'The summary does not follow scrolling down over the lower photo or its capture text');
 assert.equal(checkpoint(),hoverBody);assert.equal(run('editorUndoStates.length'),hoverHistory);assert.equal(run('selectedMedia.image'),image('b'));assert.equal(hoverRequests.length,1);
@@ -493,8 +496,8 @@ const actualTarget=realHit((safeAnchor.left+safeAnchor.right)/2,(safeAnchor.top+
 assert.equal(actualTarget===trigger,true);actualTarget.click();assert.equal(hoverDialog.open,true);assert.equal(document.body.dataset.photoInfo,'open');
 assert.match(imageDirectCss,/body\[data-photo-info="open"\] #imageTools,body\[data-photo-info="open"\] #photoOrderPanel\{visibility:hidden;pointer-events:none\}/,'Expanded details fold controls without moving or resetting them');
 let expandedSafe=popupRect();assert.equal(trigger.parentElement.dataset.direction,'down');
-assert.ok(expandedSafe.top>=field('editorHeader').rect.bottom+6);assert.ok(expandedSafe.top+expandedSafe.height<=image('a').rect.top-6);
-assert.ok(parseFloat(hoverDialog.style.maxHeight)>=150,'The detail area retains usable reading height instead of a narrow slit');assertOutsidePhotoCenter();
+assert.ok(expandedSafe.top>=field('editorHeader').rect.bottom+6);
+assertInfoReadable();assert.equal(parseFloat(hoverDialog.style.maxHeight),hoverDialog.scrollHeight,'The complete details remain readable after avoiding the collapsed toolbar');
 run('refreshDirectPhotoNumbers()');assert.deepEqual({...trigger.parentElement.photoBaseRect},safeAnchor,'Metadata refresh retains the safe basic anchor while controls are folded');
 assert.equal(list.scrollTop,67);assert.equal(imageTools.hidden,false);assert.equal(panel.hidden,false);
 escapeInfo();assert.equal(hoverDialog.open,false);assert.equal(document.body.dataset.photoInfo,undefined,'Closing restores the same editing controls');assert.equal(imageTools.hidden,false);assert.equal(panel.hidden,false);assert.equal(list.scrollTop,67);

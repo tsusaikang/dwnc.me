@@ -51,17 +51,20 @@ function positionPopover(){
   const summaryHeight=button.offsetHeight||44,summaryWidth=button.offsetWidth||Math.min(140,Math.max(44,rect.width-8)),small=rect.height<128;
   const anchorTop=small?rect.top-summaryHeight:rect.top+4;
   if(!image.isConnected||anchorTop+summaryHeight<=0||anchorTop>=viewportHeight){closeInfo();return}
-  const width=Math.min(300,viewportWidth-16),left=Math.max(8,Math.min(viewportWidth-width-8,rect.right-4-width));
+  const width=Math.min(360,viewportWidth-16),left=Math.max(8,Math.min(viewportWidth-width-8,rect.right-4-width));
   card.style.position='fixed';card.style.width=width+'px';card.style.maxWidth=width+'px';card.style.left=left+'px';
   const anchorRight=Math.max(left+summaryWidth,Math.min(left+width,rect.right-4));button.style.marginRight=(left+width-anchorRight)+'px';
   const top=Math.max(8,Math.min(viewportHeight-summaryHeight-8,anchorTop));
+  popover.style.maxHeight='';
   const detailHeight=popover.scrollHeight||popover.getBoundingClientRect().height,desiredHeight=summaryHeight+detailHeight;
-  const centerY=(Math.max(0,rect.top)+Math.min(viewportHeight,rect.bottom))/2;
-  const down=Math.max(0,Math.min(viewportHeight-8,centerY-12)-top),up=Math.max(0,top+summaryHeight-8);
+  const down=Math.max(0,viewportHeight-8-top),up=Math.max(0,top+summaryHeight-8);
   let direction=small?'up':'down';
-  if((direction==='up'?up:down)<Math.min(desiredHeight,summaryHeight+80)&&(direction==='up'?down:up)>(direction==='up'?up:down))direction=direction==='up'?'down':'up';
-  const height=Math.min(desiredHeight,direction==='up'?up:down);
-  card.setAttribute('data-direction',direction);card.style.maxHeight=height+'px';card.style.top=(direction==='up'?top+summaryHeight-height:top)+'px';
+  if((direction==='up'?up:down)<desiredHeight&&(direction==='up'?down:up)>(direction==='up'?up:down))direction=direction==='up'?'down':'up';
+  // Read every row when the screen can fit them. Shift the card if needed;
+  // only a genuinely short viewport requires scrolling inside the details.
+  const height=Math.min(desiredHeight,Math.max(summaryHeight,viewportHeight-16));
+  const panelTop=Math.max(8,Math.min(viewportHeight-height-8,direction==='up'?top+summaryHeight-height:top));
+  card.setAttribute('data-direction',direction);card.style.maxHeight=height+'px';card.style.top=panelTop+'px';
   popover.style.maxHeight=Math.max(0,height-summaryHeight)+'px';
 }
 async function openInfo(control,trigger){
@@ -89,7 +92,6 @@ const controls=photos.map((image,index)=>{
   card.addEventListener('pointerenter',()=>clearTimeout(closeTimer));card.addEventListener('pointerleave',leaveHover);
   button.addEventListener('pointerenter',event=>{if(event.pointerType==='touch')return;clearTimeout(hoverTimer);clearTimeout(closeTimer);hoverTimer=setTimeout(()=>openInfo(control,'hover'),140)});
   button.addEventListener('pointerleave',leaveHover);
-  image.addEventListener('pointerenter',()=>{if(active===control)clearTimeout(closeTimer)});
   image.addEventListener('pointerleave',event=>{if(active===control)leaveHover(event)});
   button.addEventListener('pointerdown',()=>{button.suppressPhotoFocus=true;setTimeout(()=>{button.suppressPhotoFocus=false},0)});
   button.addEventListener('focus',()=>{if(!button.suppressPhotoFocus)window.requestAnimationFrame(()=>{if(document.activeElement===button&&!button.suppressPhotoFocus&&!(active===control&&reason==='click'))openInfo(control,'focus')})});
