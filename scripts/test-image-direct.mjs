@@ -11,7 +11,7 @@ import { sanitizeNativeHtml, sanitizeLegacyHtml } from '../src/lib/native-conten
 // Cheerio supplies parsing/selector semantics; this adapter supplies DOM moves.
 // Pointer hit testing below uses deterministic rectangles. Actual browser layout
 // and pointer input are exercised in serve-editor-fixture.mjs.
-const $html=load('<div id="bodyHtml"></div><button id="deleteImage"></button><div id="imageTools">'+imageDirectToolsHtml+'</div>'+imageDirectOverlayHtml);
+const $html=load('<div id="editorHeader"></div><div id="editorFooter"></div><div id="bodyHtml"></div><button id="deleteImage"></button><div id="imageTools">'+imageDirectToolsHtml+'</div>'+imageDirectOverlayHtml);
 const wrappers=new WeakMap(),listeners=new Map(),widths=new Map();
 let hit=null,caretNode=null;
 class Element {
@@ -36,6 +36,7 @@ class Element {
   querySelectorAll(selector){return $html(this.node).find(selector).toArray().map(wrap)} querySelector(selector){return this.querySelectorAll(selector)[0]||null}
   contains(node){while(node){if(node===this)return true;node=node.parentNode}return false}
   getAttribute(name){return this.node.attribs[name]??null} hasAttribute(name){return name in this.node.attribs} setAttribute(name,value){this.node.attribs[name]=String(value)} removeAttribute(name){delete this.node.attribs[name]}
+  replaceChildren(...nodes){$html(this.node).empty();this.append(...nodes)}
   append(...nodes){for(const node of nodes)$html(this.node).append(node.node)}
   before(node){$html(this.node).before(node.node)}
   insertBefore(node,before){if(before)$html(before.node).before(node.node);else this.append(node)}
@@ -49,7 +50,7 @@ class Element {
 function wrap(node){if(!node)return null;if(!wrappers.has(node))wrappers.set(node,new Element(node));return wrappers.get(node)}
 const field=id=>wrap($html('#'+id)[0]),body=field('bodyHtml');
 const document={createElement:tag=>wrap($html('<'+tag+'>')[0]),createRange:()=>({selectNodeContents(node){caretNode=node},collapse(){}}),elementFromPoint:()=>hit,addEventListener(name,fn){listeners.set('document:'+name,fn)}};
-const context=vm.createContext({document,Element,$:field,window:{getSelection:()=>({removeAllRanges(){},addRange(){}}),addEventListener(){},requestAnimationFrame:()=>1,cancelAnimationFrame(){},innerHeight:900},Promise,Date,JSON,console});
+const context=vm.createContext({document,Element,$:field,window:{getSelection:()=>({removeAllRanges(){},addRange(){}}),addEventListener(){},requestAnimationFrame:()=>1,cancelAnimationFrame(){},innerHeight:900,innerWidth:1000},Promise,Date,JSON,console});
 vm.runInContext(`let current={id:'synthetic-photo'},busy=false,selectedMedia=null,uploadRange=null,formatRange=null,pendingFontSpans=null,pastedImageNodes=null;function status(message){lastStatus=message}let lastStatus='';function bodyRange(){return null}function captureFormatRange(){}function updateFormatState(){}function positionMediaSelection(){}function clearMediaSelection(){selectedMedia=null}function selectMedia(image){selectedMedia={image};}function schedule(){rememberEditorChange()}`,context);
 vm.runInContext(editorHistoryScript,context);vm.runInContext(IMAGE_LAYOUT_DOM_SCRIPT,context);
 for(const [start,end] of [['function layoutRoot','function openImageLayout'],['function layoutSizeAvailability','function updateLayoutSizes'],['function prepareLayoutItem','function applyImageLayout']])vm.runInContext(imageLayoutScript.slice(imageLayoutScript.indexOf(start),imageLayoutScript.indexOf(end)),context);
@@ -58,6 +59,7 @@ const run=source=>vm.runInContext(source,context),tick=()=>new Promise(resolve=>
 const src=letter=>'/media/native/'+letter.repeat(8)+'-'+letter.repeat(4)+'-4'+letter.repeat(3)+'-8'+letter.repeat(3)+'-'+letter.repeat(12)+'.png';
 for(const [letter,width] of [['a',1400],['b',1400],['c',1400],['d',320]])widths.set(src(letter),width);
 const photo=letter=>'<figure class="imageblock"><a href="https://example.test/'+letter+'"><img src="'+src(letter)+'" alt="'+letter+'" style="width:80%;height:30px"></a><figcaption><em>caption '+letter+'</em></figcaption></figure>';
+field('editorHeader').rect={left:0,right:1000,top:0,bottom:0,width:1000,height:0};field('editorFooter').hidden=true;
 const original='<h2>Heading</h2><p>Before <strong>bold</strong></p>'+photo('a')+'<p>Middle <em>italic</em></p>'+photo('b')+photo('c')+'<table><tbody><tr><td>Untouched</td></tr></tbody></table>'+photo('d')+'<p>After</p>';
 body.innerHTML=original;run('resetEditorHistory()');
 const image=letter=>body.querySelector('img[alt="'+letter+'"]');
@@ -176,7 +178,48 @@ for(const kind of ['single','consecutive','group']){
     const written=checkpoint();for(const sanitize of [sanitizeNativeHtml,sanitizeLegacyHtml]){const saved=sanitize(written),reopened=load(saved);assert.equal(reopened('img').length,kind==='single'?1:2);assert.equal(reopened('figcaption em,.dwnc-image-caption em').length,kind==='single'?1:2);assert.ok(saved.includes('<p>Boundary <strong>text</strong></p>'));assert.equal(reopened('.dwnc-image-cols-2').length,kind==='group'?1:0);assert.ok(!saved.includes('photoTextHint'))}
   }
 }
-console.log(JSON.stringify({suite:'image-direct',status:'PASS',behavior:'move/group/reorder/split, cap at three, captions and text preserved, shared undo/redo, sanitizer reopen, no-upscale, photo margin text insertion/reuse/caret and pointer exclusions'}));
+// Numbered moves are final global positions. Labels remain outside saved HTML,
+// and a destination in another row splits only that row in the same undo step.
+body.innerHTML=original;run('resetEditorHistory()');
+const numberedMove=(letter,value,via='click')=>{context.selected=image(letter);run('selectMedia(selected);updateDirectPhotoTools()');field('directPhotoPosition').value=String(value);if(via==='enter'){const event={key:'Enter',preventDefault(){this.prevented=true}};listeners.get('directPhotoPosition:keydown')(event);assert.equal(event.prevented,true);return}return listeners.get('movePhotoByNumber:click')()};
+assert.equal(numberedMove('a',4),true);await tick();assert.equal(order(),'bcda');assert.equal(field('directPhotoPosition').value,'4');assert.equal(originalParagraphs(),surrounding);
+assert.equal(numberedMove('a',1),true);await tick();assert.equal(order(),'abcd');
+const valid=checkpoint(),history=run('editorUndoStates.length');
+for(const value of ['',0,5,1.5,'nope']){assert.equal(numberedMove('a',value),false);assert.equal(checkpoint(),valid)}
+assert.equal(numberedMove('a',1),false);await tick();assert.equal(run('editorUndoStates.length'),history,'Invalid and unchanged positions create no history');
+assert.equal(group('b','a'),true);assert.equal(group('c','b'),true);await tick();
+const three=checkpoint();assert.equal(numberedMove('c',1),true);await tick();assert.equal(order(),'cabd');assert.equal(image('c').closest('.dwnc-image-layout'),image('a').closest('.dwnc-image-layout'));
+run("editorHistoryCommand('undo')");assert.equal(checkpoint(),three);run("editorHistoryCommand('redo')");assert.equal(order(),'cabd');
+assert.equal(numberedMove('d',2),true);await tick();assert.equal(order(),'cdab');
+assert.equal(body.querySelectorAll('.dwnc-image-layout').length,2,'Only destination row is split; independent photo stays separate');
+assert.equal(image('d').closest('.dwnc-image-layout'),null);assert.equal(image('c').closest('.dwnc-image-layout').querySelectorAll('.dwnc-image-caption').length,1,'Shared caption stays on first destination row');
+assert.equal(image('a').closest('.dwnc-image-layout').querySelectorAll('.dwnc-image-caption').length,0);
+assert.equal(body.querySelectorAll('figcaption em,.dwnc-image-caption em').length,4);assert.equal(originalParagraphs(),surrounding);
+const between=checkpoint();run("editorHistoryCommand('undo')");assert.equal(order(),'cabd');assert.equal(body.querySelectorAll('.dwnc-image-layout').length,1,'One undo restores split and move');run("editorHistoryCommand('redo')");assert.equal(checkpoint(),between);
+// Moving out of another group, into a target row from either direction.
+body.innerHTML=original;run('resetEditorHistory()');assert.equal(group('b','a'),true);assert.equal(group('d','c'),true);await tick();
+const paired=checkpoint();assert.equal(numberedMove('d',2),true);await tick();assert.equal(order(),'adbc');assert.equal(body.querySelectorAll('img').length,4);assert.equal(originalParagraphs(),surrounding);assert.equal(body.querySelectorAll('figcaption em,.dwnc-image-caption em').length,4);
+run("editorHistoryCommand('undo')");assert.equal(checkpoint(),paired);
+numberedMove('a',3,'enter');await tick();assert.equal(order(),'bcad');assert.equal(body.querySelectorAll('img').length,4);assert.equal(body.querySelectorAll('figcaption em,.dwnc-image-caption em').length,4);
+// Adjacent row boundaries must not treat a necessary split as a no-op.
+// Check every pair of original/final positions across representative 1/2/3 rows.
+for(const arrangement of [[['a','b','c']],[['b','c','d']],[['a','b'],['c','d']],[['c','d']]])for(let from=0;from<4;from++)for(let to=0;to<4;to++){
+  body.innerHTML=['a','b','c','d'].map(photo).join('');run('resetEditorHistory()');
+  for(const row of arrangement)for(let index=1;index<row.length;index++)assert.equal(group(row[index],row[index-1]),true);
+  await tick();const prior=checkpoint(),letters=['a','b','c','d'],letter=letters.splice(from,1)[0];letters.splice(to,0,letter);
+  assert.equal(numberedMove(letter,to+1),from!==to);await tick();assert.equal(order(),letters.join(''),JSON.stringify({arrangement,from,to}));
+  assert.equal(body.querySelectorAll('figcaption em,.dwnc-image-caption em').length,4);
+  if(from!==to){run("editorHistoryCommand('undo')");assert.equal(checkpoint(),prior,'One undo restores original rows');run("editorHistoryCommand('redo')");assert.equal(order(),letters.join(''))}
+}
+body.innerHTML=original;run('resetEditorHistory()');numberedMove('a',3);await tick();
+// The numbers are selectable controls, never body markup or saved captions.
+body.rect={left:0,right:800,top:0,bottom:800,width:800,height:800};run('refreshDirectPhotoNumbers()');assert.equal(field('photoNumberOverlay').querySelectorAll('button').length,4);assert.equal(checkpoint().includes('photo-number'),false);assert.equal(field('directPhotoNumber').textContent,'사진 3 / 4');
+for(const sanitize of [sanitizeNativeHtml,sanitizeLegacyHtml]){const saved=sanitize(checkpoint());assert.equal(load(saved)('img').length,4);assert.equal(load(saved)('figcaption em,.dwnc-image-caption em').length,4);assert.equal(saved.includes('photo-number'),false);assert.equal(saved.includes('directPhotoPosition'),false);assert.equal(sanitize(saved),saved)}
+body.innerHTML=photo('a')+'<figure data-ke-type="opengraph"><img src="card.png"></figure>'+photo('b');run('resetEditorHistory();refreshDirectPhotoNumbers()');assert.equal(field('photoNumberOverlay').querySelectorAll('button').length,2,'URL card thumbnails have no photo number');
+body.innerHTML=photo('b');run('resetEditorHistory();refreshDirectPhotoNumbers()');context.selected=image('b');run('selectMedia(selected);updateDirectPhotoTools()');assert.equal(field('directPhotoNumber').textContent,'사진 1 / 1');assert.equal(field('movePhotoByNumber').disabled,true);
+body.innerHTML=photo('a')+photo('b');run('resetEditorHistory();refreshDirectPhotoNumbers()');assert.equal(field('photoNumberOverlay').querySelectorAll('button').map(node=>node.textContent).join(','),'1,2');
+context.selected=image('a');run('selectMedia(selected);updateDirectPhotoTools()');run('busy=true');assert.equal(numberedMove('a',2),false);run('busy=false;editorComposing=true');assert.equal(numberedMove('a',2),false);run('editorComposing=false');
+console.log(JSON.stringify({suite:'image-direct',status:'PASS',behavior:'move/group/reorder/split, cap at three, captions and text preserved, shared undo/redo, sanitizer reopen, no-upscale, photo margin text insertion/reuse/caret, numbered final positions, atomic row split and external labels'}));
 
 // A foreign paragraph in an imported/hand-authored layout must never be erased
 // by extracting its final image.

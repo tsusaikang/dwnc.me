@@ -1,15 +1,16 @@
 // Editing controls and drop indicators live outside bodyHtml. Only the existing
 // saved layout vocabulary is moved into the post, so saving and history remain
 // shared with normal text editing.
-export const imageDirectToolsHtml = `<div id="directImageTools" class="direct-image-tools" hidden><button id="dragSelectedPhoto" type="button" title="끌어서 이동 · 방향키로 위치 이동" aria-label="선택 사진 이동">↕ 이동</button><div class="photo-align-tools" role="group" aria-label="사진 정렬"><button type="button" data-photo-align="left" aria-label="사진 왼쪽 정렬">왼쪽</button><button type="button" data-photo-align="center" aria-label="사진 가운데 정렬">가운데</button><button type="button" data-photo-align="right" aria-label="사진 오른쪽 정렬">오른쪽</button></div><label class="sr-only" for="directPhotoSize">사진 크기</label><select id="directPhotoSize" aria-describedby="directPhotoHint"><option value="original">100% 원본</option><option value="paragraph">문단 폭</option><option value="full">전체 폭</option></select><button id="splitSelectedPhoto" type="button" hidden>한 장 빼내기</button><span id="directPhotoHint" class="direct-photo-hint"></span></div>`;
+export const imageDirectToolsHtml = `<div id="directImageTools" class="direct-image-tools" hidden><button id="dragSelectedPhoto" type="button" title="끌어서 이동 · 방향키로 위치 이동" aria-label="선택 사진 이동">↕ 이동</button><div class="photo-number-tools"><span id="directPhotoNumber" aria-live="polite"></span><label for="directPhotoPosition">옮길 번호</label><input id="directPhotoPosition" type="number" inputmode="numeric" min="1" step="1" aria-describedby="directPhotoNumberHint"><button id="movePhotoByNumber" type="button">번호로 이동</button></div><span id="directPhotoNumberHint" class="direct-photo-hint">번호는 본문 사진 순서입니다. 다른 그룹 안으로 옮기면 그 줄이 나뉩니다.</span><div class="photo-align-tools" role="group" aria-label="사진 정렬"><button type="button" data-photo-align="left" aria-label="사진 왼쪽 정렬">왼쪽</button><button type="button" data-photo-align="center" aria-label="사진 가운데 정렬">가운데</button><button type="button" data-photo-align="right" aria-label="사진 오른쪽 정렬">오른쪽</button></div><label class="sr-only" for="directPhotoSize">사진 크기</label><select id="directPhotoSize" aria-describedby="directPhotoHint"><option value="original">100% 원본</option><option value="paragraph">문단 폭</option><option value="full">전체 폭</option></select><button id="splitSelectedPhoto" type="button" hidden>한 장 빼내기</button><span id="directPhotoHint" class="direct-photo-hint"></span></div>`;
 
-export const imageDirectOverlayHtml = `<div id="photoDropIndicator" class="photo-drop-indicator" hidden><span id="photoDropLabel"></span></div><div id="photoTextHint" class="photo-text-hint" aria-hidden="true" hidden>＋ 글 쓰기</div>`;
+export const imageDirectOverlayHtml = `<div id="photoNumberOverlay" class="photo-number-overlay" aria-label="본문 사진 번호"></div><div id="photoDropIndicator" class="photo-drop-indicator" hidden><span id="photoDropLabel"></span></div><div id="photoTextHint" class="photo-text-hint" aria-hidden="true" hidden>＋ 글 쓰기</div>`;
 
 export const imageDirectCss = `
 .html-editor{display:flow-root;padding-block:18px}
-.image-tools{max-width:min(660px,calc(100vw - 24px));gap:6px;background:#fff;border-color:#cbd4df;padding:8px}
+.image-tools{width:min(660px,calc(100vw - 24px));max-width:calc(100vw - 24px);gap:6px;background:#fff;border-color:#cbd4df;padding:8px}
 .image-tools button{background:#fff;color:#364357;padding:7px 9px;font-size:12px}.image-tools button:hover{background:#edf3fa}.image-tools #deleteImage{color:#a42929;background:#fff}.image-tools #setSelectedCover{background:#fff;color:#1769d2}.image-tools__label{display:none}
 .direct-image-tools{display:flex;align-items:center;flex-wrap:wrap;gap:5px;width:100%;border-bottom:1px solid #e8edf3;padding-bottom:6px}.photo-align-tools{display:flex;gap:1px}.image-tools [data-photo-align][aria-pressed="true"]{background:#e8f1ff;color:#145bac;border-color:#8bb5ee}.direct-image-tools select{width:auto;max-width:145px;padding:6px;font-size:12px}.direct-photo-hint{flex-basis:100%;font-size:11px;line-height:1.5;color:#647184}.image-tools #dragSelectedPhoto{touch-action:none;cursor:grab;color:#175fae}.html-editor img{cursor:grab}.html-editor figcaption{cursor:text}
+.photo-number-tools{display:flex;align-items:center;flex-wrap:wrap;gap:5px;font-size:12px}.photo-number-tools input{width:64px;min-height:44px;padding:7px;font-size:16px}.photo-number-tools button{min-height:44px}.photo-number-tools label{font-size:12px}.photo-number-tools #directPhotoNumber{font-weight:600;color:#175fae}.photo-number-overlay{position:fixed;inset:0;z-index:29;pointer-events:none}.photo-number-badge{position:absolute;pointer-events:auto;border:1px solid #fff;border-radius:5px;background:#175fae;color:#fff;padding:6px 9px;font:600 12px/1.4 system-ui;box-shadow:0 1px 5px #0005;min-height:44px;min-width:44px}.photo-number-badge[aria-pressed="true"]{background:#093f80;outline:2px solid #a5c8ff}.photo-number-badge:focus-visible{outline:3px solid #ffbd48}
 .photo-drop-indicator{position:fixed;z-index:70;pointer-events:none;background:#1769d2;border-radius:2px;box-shadow:0 0 0 2px #ffffffd9}.photo-drop-indicator span{position:absolute;left:6px;top:7px;white-space:nowrap;border-radius:4px;background:#1769d2;color:#fff;font:12px/1.4 system-ui;padding:4px 7px;box-shadow:0 2px 8px #0002}.photo-drop-indicator[data-mode="group"] span{top:-28px;left:0}.photo-drop-indicator[data-mode="blocked"]{background:#a43434}.photo-drop-indicator[data-mode="blocked"] span{background:#a43434}
 .photo-text-hint{position:fixed;z-index:65;pointer-events:none;transform:translateY(-50%);border:1px solid #bfd2ec;border-radius:4px;background:#f5f9ff;color:#285c9a;padding:2px 7px;font:12px/1.4 system-ui;white-space:nowrap}
 @media(max-width:480px){.image-tools{padding:6px;gap:4px}.image-tools button{padding:7px;font-size:11px}.direct-image-tools select{max-width:118px}.direct-photo-hint{font-size:10px}}
@@ -18,6 +19,47 @@ export const imageDirectCss = `
 export const imageDirectScript = String.raw`
 let photoDrag=null,photoScrollFrame=null,photoPointer=null,photoCapture=null;
 let photoTextPointer=null;
+let photoNumberFrame=null,photoNumberSelection=null,photoNumberIndex=-1,photoNumberCount=0;
+function directBodyPhotos(){return Array.from($('bodyHtml').querySelectorAll('img')).filter(image=>!image.closest('[data-ke-type="opengraph"],.se_component.se_oglink,.se-component.se-oglink'))}
+function updateDirectPhotoNumberControls(){
+  const images=directBodyPhotos(),image=selectedMedia?.image,index=images.indexOf(image),input=$('directPhotoPosition');
+  $('directPhotoNumber').textContent=index<0?'':'사진 '+(index+1)+' / '+images.length;
+  input.max=String(images.length);input.disabled=busy||index<0||images.length<2;$('movePhotoByNumber').disabled=input.disabled;
+  if(photoNumberSelection!==image||photoNumberIndex!==index||photoNumberCount!==images.length)input.value=index<0?'':String(index+1);
+  photoNumberSelection=image;photoNumberIndex=index;photoNumberCount=images.length;
+}
+function refreshDirectPhotoNumbers(){
+  photoNumberFrame=null;const overlay=$('photoNumberOverlay'),body=$('bodyHtml'),bounds=body.getBoundingClientRect(),images=directBodyPhotos();overlay.replaceChildren();
+  const top=Math.max(0,$('editorHeader').getBoundingClientRect().bottom,bounds.top),bottom=Math.min(window.innerHeight,$('editorFooter').hidden?window.innerHeight:$('editorFooter').getBoundingClientRect().top,bounds.bottom);
+  if(current&&bounds.width>0&&bounds.height>0&&!photoDrag)images.forEach((image,index)=>{
+    const box=image.getBoundingClientRect();if(box.width<=0||box.height<=0||box.bottom<=top||box.top>=bottom||box.right<=0||box.left>=window.innerWidth)return;
+    const badge=document.createElement('button');badge.type='button';badge.className='photo-number-badge';badge.textContent=String(index+1);badge.setAttribute('aria-label','사진 '+(index+1)+' 선택');badge.setAttribute('aria-pressed',String(selectedMedia?.image===image));badge.disabled=busy;
+    badge.style.left=Math.max(4,box.left+6)+'px';badge.style.top=Math.max(top+4,box.top+6)+'px';badge.addEventListener('mousedown',event=>event.preventDefault());badge.addEventListener('click',event=>{event.stopPropagation();if(!busy&&body.contains(image))selectMedia(image)});overlay.append(badge);
+  });
+  updateDirectPhotoNumberControls();
+}
+function scheduleDirectPhotoNumbers(){if(photoNumberFrame===null&&typeof window.requestAnimationFrame==='function')photoNumberFrame=window.requestAnimationFrame(refreshDirectPhotoNumbers)}
+function moveDirectPhotoByNumber(){
+  const images=directBodyPhotos(),image=selectedMedia?.image,from=images.indexOf(image),value=$('directPhotoPosition').value,to=Number(value);
+  if(busy||!current||editorComposing||from<0)return false;
+  if(!value.trim()||!Number.isInteger(to)||to<1||to>images.length){status('옮길 번호는 1부터 '+images.length+' 사이의 정수로 입력해 주세요.');$('directPhotoPosition').focus();return false}
+  if(to===from+1){status('이미 사진 '+to+'번 위치입니다.');return false}
+  const anchor=images[to-1],source=directPhotoUnit(image),destination=directPhotoUnit(anchor),side=to<from+1?'before':'after';
+  if(!source||!destination){status('이 사진의 기존 배치를 번호로 옮길 수 없습니다. 본문은 유지했습니다.');return false}
+  let target;
+  if(source.group&&source.group===destination.group)target={type:'group',image:anchor,side};
+  else if(destination.group){
+    const items=imageLayoutItems(destination.group),at=items.indexOf(destination.item)+(side==='after'?1:0);
+    target={type:'move',parent:destination.group.parentNode,before:at===0?destination.group:destination.group.nextSibling};
+    if(at>0&&at<items.length)target.split={group:destination.group,items:items.slice(at)};
+  }else{
+    const block=directBodyBlock(anchor),photos=images.filter(photo=>block?.contains(photo)&&photo!==image);
+    if(!block||(side==='before'?photos[0]!==anchor:photos.at(-1)!==anchor)){status('글이나 표 안에 함께 있는 사진 사이로는 번호 이동을 할 수 없습니다. 사진을 별도 문단으로 분리해 주세요.');return false}
+    target={type:'move',parent:block.parentNode,before:side==='before'?block:block.nextSibling};
+  }
+  if(!moveDirectPhoto(image,target))return false;
+  updateDirectPhotoNumberControls();scheduleDirectPhotoNumbers();status('사진 '+(from+1)+'번을 '+to+'번 위치로 옮겼습니다. 실행 취소할 수 있으며 작업본에 자동저장됩니다.');return true;
+}
 function emptyPhotoParagraph(node){return!!node&&node.tagName==='P'&&!node.textContent.replace(/[\s\u200b]/g,'')&&!node.querySelector('img,video,audio,iframe,table,hr,input,button,svg,canvas')}
 function photoTextBlock(node){const image=node?.matches('img')?node:node?.querySelector('img'),unit=directPhotoUnit(image);return!!unit&&unit.root===node}
 function directPhotoTextTarget(x,y,hit){
@@ -121,10 +163,17 @@ function moveDirectPhoto(image,target){
     group.insertBefore(item,next);if(old&&old!==group){if(!imageLayoutItems(old).length&&imageLayoutCaption(old)){const from=imageLayoutCaption(old),to=imageLayoutCaption(group);if(to){appendImageCaptionPart(to,from);from.remove()}else group.append(from)}normalizeDirectLayout(old);}normalizeDirectLayout(group);
     finishDirectPhotoChange(image,same?'사진 순서를 바꿨습니다.':'사진을 한 줄로 묶었습니다.');return true;
   }
-  const parent=target.parent,before=target.before||null;
+  const parent=target.parent;let before=target.before||null;
   if(!parent||(parent!==body&&!body.contains(parent))||before&&before.parentNode!==parent||source.root.contains(parent))return false;
-  if(!source.group||imageLayoutItems(source.group).length===1){if(before===source.root||source.root.parentNode===parent&&source.root.nextSibling===before)return false}
+  if(!target.split&&(!source.group||imageLayoutItems(source.group).length===1)){if(before===source.root||source.root.parentNode===parent&&source.root.nextSibling===before)return false}
   commitEditorHistory();captureEditorBefore();editorTyping=null;
+  // A numbered destination inside another row needs a boundary between cells.
+  // Split and move in one history entry; the shared caption stays on the first row.
+  if(target.split){
+    const original=target.split.group,trailing=document.createElement('div');normalizeImageGroupCaption(original);trailing.className=original.className;
+    for(const attr of ['style','lang','dir','align'])if(original.getAttribute(attr))trailing.setAttribute(attr,original.getAttribute(attr));
+    trailing.append(...target.split.items);parent.insertBefore(trailing,original.nextSibling);normalizeDirectLayout(original);normalizeDirectLayout(trailing);before=trailing;
+  }
   if(source.group&&imageLayoutItems(source.group).length>1){
     normalizeImageGroupCaption(source.group);
     const group=document.createElement('div');group.className='dwnc-image-layout dwnc-image-'+directLayoutValue(source.group,['left','center','right'],'center')+' dwnc-image-original';group.append(source.item);parent.insertBefore(group,before);normalizeDirectLayout(source.group);normalizeDirectLayout(group);
@@ -132,7 +181,7 @@ function moveDirectPhoto(image,target){
   finishDirectPhotoChange(image,source.group?'사진을 옮겼습니다.':'사진과 설명을 함께 옮겼습니다.');return true;
 }
 function updateDirectPhotoTools(){
-  const unit=directPhotoUnit(selectedMedia?.image),tools=$('directImageTools');tools.hidden=!unit;
+  const unit=directPhotoUnit(selectedMedia?.image),tools=$('directImageTools');tools.hidden=!unit;updateDirectPhotoNumberControls();scheduleDirectPhotoNumbers();
   if(!unit)return;
   const images=unit.group?Array.from(unit.group.querySelectorAll('img')):[unit.image],columns=images.length,available=layoutSizeAvailability(images,columns),align=directLayoutValue(unit.group,['left','center','right'],'center'),size=directLayoutValue(unit.group,['original','paragraph','full'],'original');
   const supported=directLayoutSupported(unit);
@@ -183,13 +232,13 @@ function showDirectPhotoDrop(x,y){
   const indicator=$('photoDropIndicator'),target=photoDrag.target;indicator.hidden=!target;if(!target)return;
   indicator.dataset.mode=target.type;indicator.style.left=target.left+'px';indicator.style.top=target.top+'px';indicator.style.width=target.width+'px';indicator.style.height=target.height+'px';$('photoDropLabel').textContent=target.label;
 }
-function stopDirectPhotoDrag(){if(photoCapture&&photoCapture.hasPointerCapture(photoPointer))photoCapture.releasePointerCapture(photoPointer);photoCapture=null;photoDrag=null;photoPointer=null;$('photoDropIndicator').hidden=true;if(photoScrollFrame!==null){window.cancelAnimationFrame(photoScrollFrame);photoScrollFrame=null}}
+function stopDirectPhotoDrag(){scheduleDirectPhotoNumbers();if(photoCapture&&photoCapture.hasPointerCapture(photoPointer))photoCapture.releasePointerCapture(photoPointer);photoCapture=null;photoDrag=null;photoPointer=null;$('photoDropIndicator').hidden=true;if(photoScrollFrame!==null){window.cancelAnimationFrame(photoScrollFrame);photoScrollFrame=null}}
 function scrollDirectPhotoDrag(){
   if(!photoDrag)return;const top=$('editorHeader').getBoundingClientRect().bottom+45,bottom=$('editorFooter').getBoundingClientRect().top-45,y=photoDrag.y;
   if(y<top||y>bottom){window.scrollBy(0,y<top?-12:12);showDirectPhotoDrop(photoDrag.x,y)}
   photoScrollFrame=window.requestAnimationFrame(scrollDirectPhotoDrag);
 }
-function startDirectPhotoDrag(image,hideTools=true){if(busy||!current||editorComposing||!directPhotoUnit(image))return false;stopDirectPhotoDrag();hidePhotoTextHint();selectMedia(image);photoDrag={image,owner:current.id,target:null,x:0,y:window.innerHeight/2};if(hideTools)$('imageTools').hidden=true;status('문단 사이 가로선에 놓으면 이동·분리, 사진 옆 세로선에 놓으면 묶기·순서 변경');photoScrollFrame=window.requestAnimationFrame(scrollDirectPhotoDrag);return true}
+function startDirectPhotoDrag(image,hideTools=true){if(busy||!current||editorComposing||!directPhotoUnit(image))return false;stopDirectPhotoDrag();hidePhotoTextHint();selectMedia(image);photoDrag={image,owner:current.id,target:null,x:0,y:window.innerHeight/2};$('photoNumberOverlay').replaceChildren();if(hideTools)$('imageTools').hidden=true;status('문단 사이 가로선에 놓으면 이동·분리, 사진 옆 세로선에 놓으면 묶기·순서 변경');photoScrollFrame=window.requestAnimationFrame(scrollDirectPhotoDrag);return true}
 function finishDirectPhotoDrop(){const drag=photoDrag;stopDirectPhotoDrag();if(drag?.owner===current?.id&&$('bodyHtml').contains(drag.image)){if(!moveDirectPhoto(drag.image,drag.target)){selectMedia(drag.image);status(drag.target?.type==='blocked'?drag.target.label:'사진 위치를 바꾸지 않았습니다.')}}}
 $('bodyHtml').addEventListener('dragstart',event=>{const image=event.target instanceof Element?event.target.closest('img'):null;if(!startDirectPhotoDrag(image))return;event.stopPropagation();event.dataTransfer.effectAllowed='move';event.dataTransfer.clearData();event.dataTransfer.setData('text/plain','');event.dataTransfer.setData('application/x-dwnc-photo','photo')});
 document.addEventListener('dragover',event=>{if(!photoDrag)return;event.preventDefault();showDirectPhotoDrop(event.clientX,event.clientY);if(event.dataTransfer)event.dataTransfer.dropEffect=photoDrag.target&&photoDrag.target.type!=='blocked'?'move':'none'});
@@ -204,5 +253,15 @@ $('dragSelectedPhoto').addEventListener('keydown',event=>{if(!['ArrowUp','ArrowD
 for(const button of $('directImageTools').querySelectorAll('[data-photo-align]'))button.addEventListener('click',()=>setDirectPhotoLayout('align',button.dataset.photoAlign));
 $('directPhotoSize').addEventListener('change',()=>setDirectPhotoLayout('size',$('directPhotoSize').value));
 $('splitSelectedPhoto').addEventListener('click',()=>{const unit=directPhotoUnit(selectedMedia?.image);if(unit?.group)moveDirectPhoto(unit.image,{type:'move',parent:unit.group.parentNode,before:unit.group.nextSibling})});
-$('bodyHtml').addEventListener('load',event=>{const group=event.target.closest?.('.dwnc-image-layout');if(group)refreshImageGroupGeometry(group);updateDirectPhotoTools();positionMediaSelection()},true);
+$('movePhotoByNumber').addEventListener('click',moveDirectPhotoByNumber);
+$('directPhotoPosition').addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();moveDirectPhotoByNumber()}});
+$('bodyHtml').addEventListener('scroll',scheduleDirectPhotoNumbers);
+document.addEventListener('input',scheduleDirectPhotoNumbers);
+window.addEventListener('scroll',scheduleDirectPhotoNumbers,true);window.addEventListener('resize',scheduleDirectPhotoNumbers);
+if(typeof MutationObserver!=='undefined'){
+  const photoNumberObserver=new MutationObserver(scheduleDirectPhotoNumbers);photoNumberObserver.observe($('bodyHtml'),{childList:true,subtree:true});
+  const viewObserver=new MutationObserver(scheduleDirectPhotoNumbers);viewObserver.observe(document.body,{attributes:true,attributeFilter:['data-view']});
+}
+$('bodyHtml').addEventListener('load',event=>{const group=event.target.closest?.('.dwnc-image-layout');if(group)refreshImageGroupGeometry(group);updateDirectPhotoTools();positionMediaSelection();scheduleDirectPhotoNumbers()},true);
+scheduleDirectPhotoNumbers();
 `;
