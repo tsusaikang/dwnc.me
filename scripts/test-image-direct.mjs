@@ -400,7 +400,7 @@ assert.ok(parseFloat(narrowInfo.style.left)+66<=image('a').rect.right);
 assert.ok(parseFloat(narrowInfo.style.left)+66<parseFloat(nextInfo.style.left),'Adjacent summaries stay within their own photo width');
 assert.ok(parseFloat(narrowInfo.style.top)+44<=image('a').rect.top,'A narrow photo summary sits above the photo and its left-hand number');
 assert.ok(parseFloat(mobileMarkers[0].style.top)>=image('a').rect.top);
-assert.match(imageDirectCss,/background:rgb\(0 0 0 \/ 14%\)/);assert.match(imageDirectCss,/background:rgb\(0 0 0 \/ 22%\)/);
+assert.match(imageDirectCss,/\.photo-info-panel\{[^}]*background:transparent/);assert.match(imageDirectCss,/text-shadow:[^;]*rgb\(0 0 0 \/ 95%\)/);assert.equal(imageDirectCss.includes('backdrop-filter'),false);
 assert.match(imageDirectCss,/photo-file-info\{[^}]*min-width:44px;min-height:44px/);assert.equal(imageDirectCss.includes('photo-file-info{display:none}'),false);
 mobileMarkers[0].querySelector('.photo-number-badge').click();assert.equal(run('selectedMedia.image'),image('a'),'The narrow photo number still selects that exact image');
 assert.equal(checkpoint(),beforeNarrow);
@@ -502,4 +502,4 @@ run('refreshDirectPhotoNumbers()');assert.deepEqual({...trigger.parentElement.ph
 assert.equal(list.scrollTop,67);assert.equal(imageTools.hidden,false);assert.equal(panel.hidden,false);
 escapeInfo();assert.equal(hoverDialog.open,false);assert.equal(document.body.dataset.photoInfo,undefined,'Closing restores the same editing controls');assert.equal(imageTools.hidden,false);assert.equal(panel.hidden,false);assert.equal(list.scrollTop,67);
 assert.equal(checkpoint(),collisionBody);assert.equal(run('editorUndoStates.length'),collisionHistory);assert.equal(run('selectedMedia.image'),image('a'));assert.equal(body.querySelectorAll('img').length,2);assert.equal(context.window.scrollY,collisionScroll);
-console.log(JSON.stringify({suite:'photo-info-tooltip',status:'PASS',behavior:'pixels/bytes hover and keyboard focus, no separate info button/modal/focus theft, trigger and in-flight request reuse, click/touch toggle, Escape/outside/leave cleanup, one light translucent panel, upper-right/above-photo summary, desktop/mobile/group geometry, Delete-button hit avoidance, readable expansion below header, editing controls restored, busy/offscreen and source/history/body preservation'}));
+console.log(JSON.stringify({suite:'photo-info-tooltip',status:'PASS',behavior:'pixels/bytes hover and keyboard focus, no separate info button/modal/focus theft, trigger and in-flight request reuse, click/touch toggle, Escape/outside/leave cleanup, transparent panel with dark text shadows, upper-right/above-photo summary, desktop/mobile/group geometry, Delete-button hit avoidance, readable expansion below header, editing controls restored, busy/offscreen and source/history/body preservation'}));

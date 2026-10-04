@@ -9,13 +9,13 @@
     overflow: hidden;
     border: 0;
     border-radius: 3px;
-    background: rgb(0 0 0 / 14%);
+    background: transparent;
     color: #fff;
-    text-shadow: 0 1px 2px rgb(0 0 0 / 65%);
+    text-shadow: 1px 0 1px rgb(0 0 0 / 95%), -1px 0 1px rgb(0 0 0 / 95%), 0 1px 1px rgb(0 0 0 / 95%), 0 -1px 1px rgb(0 0 0 / 95%), 0 2px 3px rgb(0 0 0 / 90%);
     font-family: var(--sans);
     pointer-events: auto;
   }
-  .public-photo-info-card[data-expanded="true"] { z-index: 2; background: rgb(0 0 0 / 22%); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  .public-photo-info-card[data-expanded="true"] { z-index: 2; }
   .public-photo-info-card[data-expanded="true"][data-direction="up"] { flex-direction: column-reverse; }
   .public-photo-info-card[hidden], .public-photo-info-button[hidden], .public-photo-info-popover[hidden] { display: none; }
   .public-photo-info-button {

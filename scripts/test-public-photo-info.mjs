@@ -97,6 +97,6 @@ second.rect={...second.rect,top:250,bottom:550};group.rect={...second.rect};wind
 buttons[0].focus();document.body.focus();paint();assert.equal(popover.hidden,true,'A stale deferred focus does not reopen a photo after focus has moved away');
 assert.equal(body.innerHTML,initialBody);assert.equal(requests.length,5);vm.runInContext(PUBLIC_PHOTO_INFO_BOOTSTRAP,context);assert.equal($('.public-photo-info-controls').length,1,'Bootstrap is idempotent');
 const layout=await readFile(new URL('../src/layouts/PostLayout.astro',import.meta.url),'utf8');assert.match(layout,/set:html=\{PUBLIC_PHOTO_INFO_BOOTSTRAP\}/);
-const css=await readFile(new URL('../src/styles/photo-info.css',import.meta.url),'utf8');assert.match(css,/background: rgb\(0 0 0 \/ 14%\)/);assert.match(css,/background: rgb\(0 0 0 \/ 22%\)/);assert.ok(!css.includes('::backdrop'));
+const css=await readFile(new URL('../src/styles/photo-info.css',import.meta.url),'utf8');assert.match(css,/\.public-photo-info-card\s*\{[^}]*background: transparent/);assert.match(css,/text-shadow: [^;]*rgb\(0 0 0 \/ 95%\)/);assert.ok(!css.includes('::backdrop')&&!css.includes('backdrop-filter'));
 assert.ok(!PUBLIC_PHOTO_INFO_BOOTSTRAP.includes('mediaManifest')&&!PUBLIC_PHOTO_INFO_BOOTSTRAP.includes('cheerio'));
 console.log(JSON.stringify({suite:'public-photo-info',status:'PASS',behavior:'upper-corner basic info, one continuous expanded region, small-photo upward expansion, hover/focus/touch, no external fetch, preserved body, cache/race/retry, keyboard dismissal'}));
