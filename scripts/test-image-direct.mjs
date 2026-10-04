@@ -15,7 +15,7 @@ const $html=load('<div id="editorHeader"></div><div id="editorFooter"></div><div
 const wrappers=new WeakMap(),listeners=new Map(),widths=new Map();
 let hit=null,caretNode=null;
 class Element {
-  constructor(node){this.node=node;this.dataset={};this.hidden=false;this.value='';this.rect={left:0,top:0,right:800,bottom:100,width:800,height:100};this.style={getPropertyValue:name=>this.styles()[name]?.replace(/\s*!important$/,'' )||'',getPropertyPriority:name=>/!important$/.test(this.styles()[name]||'')?'important':'',setProperty:(name,value,priority)=>{const styles=this.styles();styles[name]=value+(priority?' !important':'');this.writeStyles(styles)},removeProperty:name=>{const styles=this.styles();delete styles[name];this.writeStyles(styles)}};this.classList={contains:name=>(this.node.attribs.class||'').split(/\s+/).includes(name),add:(...names)=>this.node.attribs.class=[...new Set((this.node.attribs.class||'').split(/\s+/).filter(Boolean).concat(names))].join(' '),remove:(...names)=>this.node.attribs.class=(this.node.attribs.class||'').split(/\s+/).filter(name=>!names.includes(name)).join(' ')};}
+  constructor(node){this.node=node;this.listeners=new Map();this.dataset=new Proxy({},{get:(_,key)=>this.getAttribute('data-'+String(key).replace(/[A-Z]/g,letter=>'-'+letter.toLowerCase()))??undefined,set:(_,key,value)=>{this.setAttribute('data-'+String(key).replace(/[A-Z]/g,letter=>'-'+letter.toLowerCase()),value);return true}});this.hidden='hidden' in (node.attribs||{});this.value='';this.scrollTop=0;this.rect={left:0,top:0,right:800,bottom:100,width:800,height:100};this.style={getPropertyValue:name=>this.styles()[name]?.replace(/\s*!important$/,'' )||'',getPropertyPriority:name=>/!important$/.test(this.styles()[name]||'')?'important':'',setProperty:(name,value,priority)=>{const styles=this.styles();styles[name]=value+(priority?' !important':'');this.writeStyles(styles)},removeProperty:name=>{const styles=this.styles();delete styles[name];this.writeStyles(styles)}};this.classList={contains:name=>(this.node.attribs.class||'').split(/\s+/).includes(name),add:(...names)=>this.node.attribs.class=[...new Set((this.node.attribs.class||'').split(/\s+/).filter(Boolean).concat(names))].join(' '),remove:(...names)=>this.node.attribs.class=(this.node.attribs.class||'').split(/\s+/).filter(name=>!names.includes(name)).join(' ')};}
   styles(){return Object.fromEntries((this.node.attribs.style||'').split(';').filter(value=>value.includes(':')).map(value=>{const index=value.indexOf(':');return[value.slice(0,index).trim(),value.slice(index+1).trim()]}))}
   writeStyles(styles){const value=Object.entries(styles).map(([key,value])=>key+':'+value).join(';');if(value)this.node.attribs.style=value;else delete this.node.attribs.style}
   get tagName(){return this.node.name?.toUpperCase()}
@@ -45,13 +45,20 @@ class Element {
   getBoundingClientRect(){return this.rect}
   setPointerCapture(id){assert.equal(field('imageTools').hidden,false,'Capture must precede hiding the floating tools');this.captured=id}
   hasPointerCapture(id){return this.captured===id} releasePointerCapture(){this.captured=null}
-  focus(){document.activeElement=this} showModal(){this.open=true} close(){this.open=false;listeners.get(this.getAttribute('id')+':close')?.()} addEventListener(name,fn){listeners.set(this.getAttribute('id')+':'+name,fn)}
+  focus(){document.activeElement=this} scrollIntoView(){} showModal(){this.open=true} close(){this.open=false;listeners.get(this.getAttribute('id')+':close')?.()} addEventListener(name,fn){this.listeners.set(name,fn);listeners.set(this.getAttribute('id')+':'+name,fn)}
+  click(){
+    if(this.disabled)return;
+    const path=[];for(let node=this;node;node=node.parentNode)path.push(node);
+    const event={target:this,currentTarget:this,preventDefault(){this.defaultPrevented=true},stopPropagation(){this.propagationStopped=true},stopImmediatePropagation(){this.propagationStopped=true},composedPath:()=>path};
+    let result;for(const node of path){event.currentTarget=node;result=node.listeners.get('click')?.(event);if(event.propagationStopped)return result}
+    listeners.get('document:click')?.(event);return result;
+  }
 }
 function wrap(node){if(!node)return null;if(!wrappers.has(node))wrappers.set(node,new Element(node));return wrappers.get(node)}
 const field=id=>wrap($html('#'+id)[0]),body=field('bodyHtml');
-const document={createElement:tag=>wrap($html('<'+tag+'>')[0]),createRange:()=>({selectNodeContents(node){caretNode=node},collapse(){}}),elementFromPoint:()=>hit,addEventListener(name,fn){listeners.set('document:'+name,fn)}};
+const document={body:wrap($html('body')[0]),createElement:tag=>wrap($html('<'+tag+'>')[0]),createRange:()=>({selectNodeContents(node){caretNode=node},collapse(){}}),elementFromPoint:()=>hit,addEventListener(name,fn){listeners.set('document:'+name,fn)}};
 const context=vm.createContext({document,Element,$:field,window:{getSelection:()=>({removeAllRanges(){},addRange(){}}),addEventListener(){},requestAnimationFrame:()=>1,cancelAnimationFrame(){},innerHeight:900,innerWidth:1000},Promise,Date,JSON,console});
-vm.runInContext(`let current={id:'synthetic-photo'},busy=false,selectedMedia=null,uploadRange=null,formatRange=null,pendingFontSpans=null,pastedImageNodes=null;function status(message){lastStatus=message}let lastStatus='';function bodyRange(){return null}function captureFormatRange(){}function updateFormatState(){}function positionMediaSelection(){}function clearMediaSelection(){selectedMedia=null}function selectMedia(image){selectedMedia={image};}function schedule(){rememberEditorChange()}`,context);
+vm.runInContext(`let current={id:'synthetic-photo'},busy=false,selectedMedia=null,uploadRange=null,formatRange=null,pendingFontSpans=null,pastedImageNodes=null;function status(message){lastStatus=message}let lastStatus='';function bodyRange(){return null}function captureFormatRange(){}function updateFormatState(){}function positionMediaSelection(){}function clearMediaSelection(){selectedMedia=null;if(typeof closeDirectPhotoOrder==='function')closeDirectPhotoOrder()}function selectMedia(image){selectedMedia={image};updateDirectPhotoTools()}function schedule(){rememberEditorChange()}`,context);
 vm.runInContext(editorHistoryScript,context);vm.runInContext(IMAGE_LAYOUT_DOM_SCRIPT,context);
 for(const [start,end] of [['function layoutRoot','function openImageLayout'],['function layoutSizeAvailability','function updateLayoutSizes'],['function prepareLayoutItem','function applyImageLayout']])vm.runInContext(imageLayoutScript.slice(imageLayoutScript.indexOf(start),imageLayoutScript.indexOf(end)),context);
 vm.runInContext(imageDirectScript,context);
@@ -178,84 +185,116 @@ for(const kind of ['single','consecutive','group']){
     const written=checkpoint();for(const sanitize of [sanitizeNativeHtml,sanitizeLegacyHtml]){const saved=sanitize(written),reopened=load(saved);assert.equal(reopened('img').length,kind==='single'?1:2);assert.equal(reopened('figcaption em,.dwnc-image-caption em').length,kind==='single'?1:2);assert.ok(saved.includes('<p>Boundary <strong>text</strong></p>'));assert.equal(reopened('.dwnc-image-cols-2').length,kind==='group'?1:0);assert.ok(!saved.includes('photoTextHint'))}
   }
 }
-// Numbered moves are final global positions. Labels remain outside saved HTML,
-// and a destination in another row splits only that row in the same undo step.
+// Position moves keep captions/text and split only the destination group in
+// one history step. Final-index coverage exercises the same anchor API as slots.
 body.innerHTML=original;run('resetEditorHistory()');
-const numberedMove=(letter,value,via='click')=>{context.selected=image(letter);run('selectMedia(selected);updateDirectPhotoTools()');field('directPhotoPosition').value=String(value);if(via==='enter'){const event={key:'Enter',preventDefault(){this.prevented=true}};listeners.get('directPhotoPosition:keydown')(event);assert.equal(event.prevented,true);return}return listeners.get('movePhotoByNumber:click')()};
-assert.equal(numberedMove('a',4),true);await tick();assert.equal(order(),'bcda');assert.equal(field('directPhotoPosition').value,'4');assert.equal(originalParagraphs(),surrounding);
-assert.equal(numberedMove('a',1),true);await tick();assert.equal(order(),'abcd');
+const selectPhoto=letter=>{context.selected=image(letter);run('selectMedia(selected);updateDirectPhotoTools()')};
+const positionMove=(letter,anchor,side)=>{selectPhoto(letter);context.anchor=image(anchor);context.side=side;return run('moveDirectPhotoToPosition(anchor,side)')};
+const finalPositionMove=(letter,value)=>{const images=body.querySelectorAll('img'),from=images.indexOf(image(letter));return positionMove(letter,images[value-1].getAttribute('alt'),value<from+1?'before':'after')};
+assert.equal(finalPositionMove('a',4),true);await tick();assert.equal(order(),'bcda');assert.equal(field('directPhotoNumber').textContent,'사진 4 / 4');assert.equal(originalParagraphs(),surrounding);
+assert.equal(finalPositionMove('a',1),true);await tick();assert.equal(order(),'abcd');
 const valid=checkpoint(),history=run('editorUndoStates.length');
-for(const value of ['',0,5,1.5,'nope']){assert.equal(numberedMove('a',value),false);assert.equal(checkpoint(),valid)}
-assert.equal(numberedMove('a',1),false);await tick();assert.equal(run('editorUndoStates.length'),history,'Invalid and unchanged positions create no history');
+assert.equal(positionMove('a','a','before'),false);assert.equal(positionMove('a','a','after'),false);assert.equal(positionMove('a','b','invalid'),false);await tick();assert.equal(checkpoint(),valid);assert.equal(run('editorUndoStates.length'),history,'Unchanged positions create no history');
 assert.equal(group('b','a'),true);assert.equal(group('c','b'),true);await tick();
-const three=checkpoint();assert.equal(numberedMove('c',1),true);await tick();assert.equal(order(),'cabd');assert.equal(image('c').closest('.dwnc-image-layout'),image('a').closest('.dwnc-image-layout'));
+const three=checkpoint();assert.equal(finalPositionMove('c',1),true);await tick();assert.equal(order(),'cabd');assert.equal(image('c').closest('.dwnc-image-layout'),image('a').closest('.dwnc-image-layout'));
 run("editorHistoryCommand('undo')");assert.equal(checkpoint(),three);run("editorHistoryCommand('redo')");assert.equal(order(),'cabd');
-assert.equal(numberedMove('d',2),true);await tick();assert.equal(order(),'cdab');
+assert.equal(finalPositionMove('d',2),true);await tick();assert.equal(order(),'cdab');
 assert.equal(body.querySelectorAll('.dwnc-image-layout').length,2,'Only destination row is split; independent photo stays separate');
 assert.equal(image('d').closest('.dwnc-image-layout'),null);assert.equal(image('c').closest('.dwnc-image-layout').querySelectorAll('.dwnc-image-caption').length,1,'Shared caption stays on first destination row');
 assert.equal(image('a').closest('.dwnc-image-layout').querySelectorAll('.dwnc-image-caption').length,0);
 assert.equal(body.querySelectorAll('figcaption em,.dwnc-image-caption em').length,4);assert.equal(originalParagraphs(),surrounding);
 const between=checkpoint();run("editorHistoryCommand('undo')");assert.equal(order(),'cabd');assert.equal(body.querySelectorAll('.dwnc-image-layout').length,1,'One undo restores split and move');run("editorHistoryCommand('redo')");assert.equal(checkpoint(),between);
-// Moving out of another group, into a target row from either direction.
 body.innerHTML=original;run('resetEditorHistory()');assert.equal(group('b','a'),true);assert.equal(group('d','c'),true);await tick();
-const paired=checkpoint();assert.equal(numberedMove('d',2),true);await tick();assert.equal(order(),'adbc');assert.equal(body.querySelectorAll('img').length,4);assert.equal(originalParagraphs(),surrounding);assert.equal(body.querySelectorAll('figcaption em,.dwnc-image-caption em').length,4);
+const paired=checkpoint();assert.equal(finalPositionMove('d',2),true);await tick();assert.equal(order(),'adbc');assert.equal(body.querySelectorAll('img').length,4);assert.equal(originalParagraphs(),surrounding);assert.equal(body.querySelectorAll('figcaption em,.dwnc-image-caption em').length,4);
 run("editorHistoryCommand('undo')");assert.equal(checkpoint(),paired);
-numberedMove('a',3,'enter');await tick();assert.equal(order(),'bcad');assert.equal(body.querySelectorAll('img').length,4);assert.equal(body.querySelectorAll('figcaption em,.dwnc-image-caption em').length,4);
-// Adjacent row boundaries must not treat a necessary split as a no-op.
-// Check every pair of original/final positions across representative 1/2/3 rows.
+assert.equal(finalPositionMove('a',3),true);await tick();assert.equal(order(),'bcad');assert.equal(body.querySelectorAll('img').length,4);assert.equal(body.querySelectorAll('figcaption em,.dwnc-image-caption em').length,4);
+// Check all original/final positions in representative 1/2/3-photo rows.
 for(const arrangement of [[['a','b','c']],[['b','c','d']],[['a','b'],['c','d']],[['c','d']]])for(let from=0;from<4;from++)for(let to=0;to<4;to++){
   body.innerHTML=['a','b','c','d'].map(photo).join('');run('resetEditorHistory()');
   for(const row of arrangement)for(let index=1;index<row.length;index++)assert.equal(group(row[index],row[index-1]),true);
   await tick();const prior=checkpoint(),letters=['a','b','c','d'],letter=letters.splice(from,1)[0];letters.splice(to,0,letter);
-  assert.equal(numberedMove(letter,to+1),from!==to);await tick();assert.equal(order(),letters.join(''),JSON.stringify({arrangement,from,to}));
+  assert.equal(finalPositionMove(letter,to+1),from!==to);await tick();assert.equal(order(),letters.join(''),JSON.stringify({arrangement,from,to}));
   assert.equal(body.querySelectorAll('figcaption em,.dwnc-image-caption em').length,4);
   if(from!==to){run("editorHistoryCommand('undo')");assert.equal(checkpoint(),prior,'One undo restores original rows');run("editorHistoryCommand('redo')");assert.equal(order(),letters.join(''))}
 }
-body.innerHTML=original;run('resetEditorHistory()');numberedMove('a',3);await tick();
-// The numbers are selectable controls, never body markup or saved captions.
+body.innerHTML=original;run('resetEditorHistory()');finalPositionMove('a',3);await tick();
 body.rect={left:0,right:800,top:0,bottom:800,width:800,height:800};run('refreshDirectPhotoNumbers()');assert.equal(field('photoNumberOverlay').querySelectorAll('button').length,4);assert.equal(checkpoint().includes('photo-number'),false);assert.equal(field('directPhotoNumber').textContent,'사진 3 / 4');
-for(const sanitize of [sanitizeNativeHtml,sanitizeLegacyHtml]){const saved=sanitize(checkpoint());assert.equal(load(saved)('img').length,4);assert.equal(load(saved)('figcaption em,.dwnc-image-caption em').length,4);assert.equal(saved.includes('photo-number'),false);assert.equal(saved.includes('directPhotoPosition'),false);assert.equal(sanitize(saved),saved)}
+for(const sanitize of [sanitizeNativeHtml,sanitizeLegacyHtml]){const saved=sanitize(checkpoint());assert.equal(load(saved)('img').length,4);assert.equal(load(saved)('figcaption em,.dwnc-image-caption em').length,4);assert.equal(saved.includes('photo-number'),false);assert.equal(saved.includes('photoOrderPanel'),false);assert.equal(sanitize(saved),saved)}
 body.innerHTML=photo('a')+'<figure data-ke-type="opengraph"><img src="card.png"></figure>'+photo('b');run('resetEditorHistory();refreshDirectPhotoNumbers()');assert.equal(field('photoNumberOverlay').querySelectorAll('button').length,2,'URL card thumbnails have no photo number');
-body.innerHTML=photo('b');run('resetEditorHistory();refreshDirectPhotoNumbers()');context.selected=image('b');run('selectMedia(selected);updateDirectPhotoTools()');assert.equal(field('directPhotoNumber').textContent,'사진 1 / 1');assert.equal(field('movePhotoByNumber').disabled,true);
+body.innerHTML=photo('b');run('resetEditorHistory();refreshDirectPhotoNumbers()');selectPhoto('b');assert.equal(field('directPhotoNumber').textContent,'사진 1 / 1');
+const singlePhoto=checkpoint();for(const button of field('photoOrderList').querySelectorAll('.photo-order-slot'))button.click();assert.equal(checkpoint(),singlePhoto,'A single photo cannot move relative to itself');
 body.innerHTML=photo('a')+photo('b');run('resetEditorHistory();refreshDirectPhotoNumbers()');assert.equal(field('photoNumberOverlay').querySelectorAll('button').map(node=>node.textContent).join(','),'1,2');
-context.selected=image('a');run('selectMedia(selected);updateDirectPhotoTools()');run('busy=true');assert.equal(numberedMove('a',2),false);run('busy=false;editorComposing=true');assert.equal(numberedMove('a',2),false);run('editorComposing=false');
-// The overview reads current body order, keeps row grouping and only fills a
-// destination number. Browsing/selecting it never creates an editor change.
-body.innerHTML=original;run('resetEditorHistory()');assert.equal(group('b','a'),true);await tick();
-context.selected=image('b');run('selectMedia(selected);updateDirectPhotoTools()');
-const overviewBefore=checkpoint(),historyBefore=run('editorUndoStates.length');
-listeners.get('openPhotoOrder:click')();assert.equal(field('photoOrderDialog').open,true);
-const overviewUi=adminHtml('fixture@example.test');
-run(overviewUi.split('\n').find(line=>line.startsWith("document.addEventListener('click',event=>{const element=")));
-run(overviewUi.split('\n').find(line=>line.startsWith("document.addEventListener('keydown',event=>{if($('photoOrderDialog').open)")));
-const escapeInOverview={key:'Escape',preventDefault(){this.prevented=true}};
-listeners.get('document:keydown')(escapeInOverview);assert.equal(escapeInOverview.prevented,undefined,'Native dialog Escape must retain its default close behavior');assert.equal(run('selectedMedia.image'),image('b'));
-listeners.get('document:click')({target:field('photoOrderHeading')});assert.equal(run('selectedMedia.image'),image('b'),'Clicking the overview must retain the moving photo');
-assert.equal(field('photoOrderList').querySelectorAll('.photo-order-row').length,3);
-let choices=field('photoOrderList').querySelectorAll('button');
-assert.equal(choices.map(button=>button.textContent).join(','),'1번,2번 · 옮길 사진,3번,4번');
-assert.equal(field('photoOrderList').querySelectorAll('img').map(node=>node.getAttribute('src')).join(','),[src('a'),src('b'),src('c'),src('d')].join(','));
-assert.equal(choices[1].dataset.selected,'true');assert.equal(choices[0].getAttribute('aria-label'),'사진 1번 위치 선택');
-context.destination=image('d');run('chooseDirectPhotoOrder(destination)');
-assert.equal(field('photoOrderDialog').open,false);assert.equal(field('directPhotoPosition').value,'4');assert.equal(document.activeElement,field('directPhotoPosition'));
-assert.equal(checkpoint(),overviewBefore);assert.equal(run('editorUndoStates.length'),historyBefore,'Choosing a destination must not alter history');
-listeners.get('movePhotoByNumber:click')();await tick();assert.equal(order(),'acdb');run("editorHistoryCommand('undo')");assert.equal(checkpoint(),overviewBefore);
-context.selected=image('a');run('selectMedia(selected);updateDirectPhotoTools();openDirectPhotoOrder()');
-// Reordering and replacing a source URL are reflected without closing/reopening.
-body.insertBefore(image('d').closest('figure'),body.children[0]);image('c').setAttribute('src','/media/native/changed.png');
-run('refreshDirectPhotoOrder()');choices=field('photoOrderList').querySelectorAll('button');
-assert.equal(choices.map(button=>button.textContent).join(','),'1번,2번 · 옮길 사진,3번,4번');
-assert.equal(field('photoOrderList').querySelectorAll('img')[0].getAttribute('src'),src('d'));
-assert.equal(field('photoOrderList').querySelectorAll('img')[3].getAttribute('src'),'/media/native/changed.png');
-run('busy=true;refreshDirectPhotoOrder()');assert.ok(choices.every(button=>button.disabled));context.destination=image('d');run('chooseDirectPhotoOrder(destination)');assert.equal(field('photoOrderDialog').open,true);run('busy=false');
-listeners.get('closePhotoOrder:click')();assert.equal(document.activeElement,field('openPhotoOrder'));
-run('openDirectPhotoOrder();current={id:"other-post"};refreshDirectPhotoOrder()');assert.equal(field('photoOrderDialog').open,false);
-run('current={id:"synthetic-photo"}');context.selected=image('a');run('selectMedia(selected);openDirectPhotoOrder()');image('a').closest('figure').remove();run('refreshDirectPhotoOrder()');assert.equal(field('photoOrderDialog').open,false,'Deleted sources close the overview');
-body.innerHTML=photo('a')+'<figure data-ke-type="opengraph"><img src="card.png"></figure>'+photo('b');context.selected=image('a');run('selectMedia(selected);openDirectPhotoOrder()');assert.equal(field('photoOrderList').querySelectorAll('button').length,2,'Cards are excluded from the overview');
-assert.equal(checkpoint().includes('photo-order'),false);listeners.get('closePhotoOrder:click')();
-console.log(JSON.stringify({suite:'photo-order-overview',status:'PASS',behavior:'whole-body order and grouped rows, selected source, target fills number only, shared number move/undo, live order/source refresh, busy and post/deletion guards, card exclusion, external UI and focus return'}));
+run('busy=true');assert.equal(positionMove('a','b','after'),false);run('busy=false;editorComposing=true');assert.equal(positionMove('a','b','after'),false);run('editorComposing=false');
 
-console.log(JSON.stringify({suite:'image-direct',status:'PASS',behavior:'move/group/reorder/split, cap at three, captions and text preserved, shared undo/redo, sanitizer reopen, no-upscale, photo margin text insertion/reuse/caret, numbered final positions, atomic row split and external labels'}));
+// Selecting a photo opens a persistent, nonmodal array. Thumbnail selection
+// changes only the moving source; an explicit gap click performs the move.
+const panel=field('photoOrderPanel'),list=field('photoOrderList');
+assert.ok(panel);assert.equal(panel.tagName,'ASIDE');
+for(const id of ['directPhotoPosition','movePhotoByNumber','openPhotoOrder','photoOrderDialog'])assert.equal(field(id),null,id+' is removed');
+body.innerHTML=original;run('resetEditorHistory()');assert.equal(group('b','a'),true);await tick();selectPhoto('b');
+assert.equal(panel.hidden,false,'Selecting a photo automatically shows the arrangement');
+const panelBefore=checkpoint(),historyBefore=run('editorUndoStates.length');
+const panelUi=adminHtml('fixture@example.test');
+run(panelUi.split('\n').find(line=>line.startsWith("document.addEventListener('click',event=>{const element=")));
+listeners.get('document:click')({target:field('photoOrderHeading')});assert.equal(run('selectedMedia.image'),image('b'),'Clicking the panel retains the source');
+assert.equal(list.querySelectorAll('.photo-order-row').length,3);
+let choices=list.querySelectorAll('.photo-order-choice');
+assert.equal(choices.length,4);assert.equal(list.querySelectorAll('img').map(node=>node.getAttribute('src')).join(','),[src('a'),src('b'),src('c'),src('d')].join(','));
+assert.equal(choices[1].dataset.selected,'true');
+choices[3].click();assert.equal(run('selectedMedia.image'),image('d'));assert.equal(panel.hidden,false);assert.equal(checkpoint(),panelBefore);assert.equal(run('editorUndoStates.length'),historyBefore,'Choosing a source must not alter history');
+const slot=(anchor,side)=>list.querySelectorAll('.photo-order-slot').find(button=>button.dataset.photoOrderAnchor===String(anchor)&&button.dataset.photoOrderSide===side);
+const clickSlot=(anchor,side)=>{const button=slot(anchor,side);assert.ok(button,'Visible slot '+anchor+' '+side);assert.equal(button.disabled,false,'Available slot '+anchor+' '+side);button.click()};
+clickSlot(2,'before');await tick();assert.equal(order(),'adbc');assert.equal(panel.hidden,false);assert.equal(body.querySelectorAll('.dwnc-image-layout').length,2);assert.equal(run('selectedMedia.image'),image('d'));
+const panelKey=(key,options={})=>{const event={key,metaKey:true,preventDefault(){this.prevented=true},stopImmediatePropagation(){this.stopped=true},...options};listeners.get('photoOrderPanel:keydown')(event);return event};
+const undoFromPanel=panelKey('z');assert.equal(undoFromPanel.prevented,true);assert.equal(undoFromPanel.stopped,true);assert.equal(checkpoint(),panelBefore,'One keyboard undo from the panel restores move and destination row');assert.equal(panel.hidden,true,'Undo clears the stale selected photo');
+selectPhoto('b');const redoFromPanel=panelKey('z',{shiftKey:true});assert.equal(redoFromPanel.prevented,true);assert.equal(order(),'adbc');run("editorHistoryCommand('undo')");assert.equal(checkpoint(),panelBefore);
+// First, last, forward and backward slots all execute with a single click.
+for(const [source,anchor,side,expected] of [['d',1,'before','dabc'],['a',4,'after','bcda'],['b',4,'before','acbd'],['c',2,'before','acbd']]){
+  body.innerHTML=original;run('resetEditorHistory()');selectPhoto(source);const before=checkpoint();clickSlot(anchor,side);await tick();assert.equal(order(),expected);assert.equal(originalParagraphs(),surrounding);run("editorHistoryCommand('undo')");assert.equal(checkpoint(),before);
+}
+// Same-group inner gaps reorder; gaps immediately adjoining the source do not.
+body.innerHTML=photo('a')+photo('b')+photo('c')+photo('d');run('resetEditorHistory()');assert.equal(group('b','a'),true);assert.equal(group('c','b'),true);await tick();selectPhoto('c');const rowBefore=checkpoint();clickSlot(2,'before');await tick();assert.equal(order(),'acbd');assert.equal(body.querySelectorAll('.dwnc-image-layout').length,1);run("editorHistoryCommand('undo')");assert.equal(checkpoint(),rowBefore);
+selectPhoto('b');const noOpBefore=checkpoint(),noOpHistory=run('editorUndoStates.length');const adjacent=slot(3,'before');assert.ok(adjacent);adjacent.click();await tick();assert.equal(checkpoint(),noOpBefore);assert.equal(run('editorUndoStates.length'),noOpHistory);
+// At an adjacent group boundary, an outside source gets one inter-row slot.
+// A source in that group additionally gets a visibly internal "same row end"
+// slot; it must keep the group, unlike the next row's leading slot.
+body.innerHTML=photo('a')+photo('b')+photo('c')+photo('d');run('resetEditorHistory()');assert.equal(group('b','a'),true);await tick();selectPhoto('d');
+assert.equal(list.querySelectorAll('.photo-order-slot').length,5);assert.equal(slot(2,'after'),undefined,'An outside photo has no duplicate trailing group slot');assert.ok(slot(3,'before'));
+const boundaryBefore=checkpoint();clickSlot(3,'before');await tick();assert.equal(order(),'abdc');assert.equal(image('d').closest('.dwnc-image-layout'),null);run("editorHistoryCommand('undo')");assert.equal(checkpoint(),boundaryBefore);
+selectPhoto('a');assert.equal(list.querySelectorAll('.photo-order-slot').length,6);
+const sameRowEnd=slot(2,'after');assert.equal(sameRowEnd.textContent,'같은 줄 끝');assert.equal(sameRowEnd.dataset.photoOrderPlacement,'row-end');assert.equal(sameRowEnd.parentElement.className,'photo-order-row');assert.equal(slot(3,'before').textContent,'다음 줄 앞으로 이동');
+assert.equal(list.querySelectorAll('.photo-order-slot').filter(button=>button.dataset.photoOrderAnchor==='2'&&button.dataset.photoOrderSide==='after').length,1,'Same-row end appears only inside the row');
+clickSlot(2,'after');await tick();assert.equal(order(),'bacd');assert.equal(image('a').closest('.dwnc-image-layout'),image('b').closest('.dwnc-image-layout'),'Same-row end preserves grouping');run("editorHistoryCommand('undo')");assert.equal(checkpoint(),boundaryBefore);
+selectPhoto('a');clickSlot(3,'before');await tick();assert.equal(order(),'bacd');assert.equal(image('a').closest('.dwnc-image-layout')===image('b').closest('.dwnc-image-layout'),false,'Next-row leading slot moves the photo outside its original group');assert.equal(image('a').closest('.dwnc-image-layout').querySelectorAll('img').length,1);run("editorHistoryCommand('undo')");assert.equal(checkpoint(),boundaryBefore);
+// A paragraph creates genuinely different positions, so both sides remain.
+body.innerHTML=photo('a')+photo('b')+'<p>Group gap</p>'+photo('c')+photo('d');run('resetEditorHistory()');assert.equal(group('b','a'),true);await tick();selectPhoto('d');
+assert.equal(list.querySelectorAll('.photo-order-slot').length,6);assert.equal(slot(2,'after').parentElement,list);assert.equal(slot(3,'before').parentElement,list);assert.equal(list.querySelectorAll('.photo-order-gap').length,1);
+const groupGapBefore=checkpoint();clickSlot(2,'after');await tick();assert.equal(order(),'abdc');assert.equal(image('d').closest('figure').nextElementSibling.textContent,'Group gap');run("editorHistoryCommand('undo')");assert.equal(checkpoint(),groupGapBefore);
+selectPhoto('a');assert.equal(slot(2,'after').dataset.photoOrderPlacement,'row-end');assert.equal(list.querySelectorAll('.photo-order-slot').filter(button=>button.dataset.photoOrderAnchor==='2'&&button.dataset.photoOrderSide==='after').length,1);assert.ok(slot(3,'before'));
+// The document's final position stays reachable for either kind of source.
+body.innerHTML=photo('a')+photo('b')+photo('c')+photo('d');run('resetEditorHistory()');assert.equal(group('d','c'),true);await tick();selectPhoto('a');
+assert.equal(slot(4,'after').parentElement,list);assert.equal(slot(4,'after').dataset.photoOrderPlacement,'boundary');const finalGroupBefore=checkpoint();clickSlot(4,'after');await tick();assert.equal(order(),'bcda');assert.equal(image('a').closest('.dwnc-image-layout'),null);run("editorHistoryCommand('undo')");assert.equal(checkpoint(),finalGroupBefore);
+selectPhoto('c');assert.equal(slot(4,'after').dataset.photoOrderPlacement,'row-end');assert.equal(list.querySelectorAll('.photo-order-slot').filter(button=>button.dataset.photoOrderAnchor==='4'&&button.dataset.photoOrderSide==='after').length,1);clickSlot(4,'after');await tick();assert.equal(order(),'abdc');assert.equal(image('c').closest('.dwnc-image-layout'),image('d').closest('.dwnc-image-layout'));run("editorHistoryCommand('undo')");assert.equal(checkpoint(),finalGroupBefore);
+// Equal photo order can still be a different position relative to a paragraph.
+body.innerHTML=photo('a')+'<p>Between photos</p>'+photo('b')+photo('c');run('resetEditorHistory()');selectPhoto('c');assert.ok(slot(1,'after'));assert.ok(slot(2,'before'));const textBefore=checkpoint();clickSlot(1,'after');await tick();assert.equal(order(),'acb');assert.equal(image('c').closest('figure').nextElementSibling.textContent,'Between photos');run("editorHistoryCommand('undo')");assert.equal(checkpoint(),textBefore);
+selectPhoto('c');clickSlot(2,'before');await tick();assert.equal(order(),'acb');assert.equal(image('c').closest('figure').previousElementSibling.textContent,'Between photos');
+
+// Reordering/source URL changes refresh live; controls remain outside saved HTML.
+body.innerHTML=original;run('resetEditorHistory()');selectPhoto('a');
+body.insertBefore(image('d').closest('figure'),body.children[0]);image('c').setAttribute('src','/media/native/changed.png');run('refreshDirectPhotoOrder()');
+assert.equal(list.querySelectorAll('img')[0].getAttribute('src'),src('d'));assert.equal(list.querySelectorAll('img')[3].getAttribute('src'),'/media/native/changed.png');
+selectPhoto('c');assert.equal(list.querySelectorAll('.photo-order-choice')[3].dataset.selected,'true','Selecting another body photo updates the source');
+run('busy=true;refreshDirectPhotoOrder()');assert.ok(list.querySelectorAll('button').every(button=>button.disabled));const locked=checkpoint();context.destination=image('d');run('chooseDirectPhotoOrder(destination)');assert.equal(run('selectedMedia.image'),image('c'));assert.equal(checkpoint(),locked);run('busy=false;editorComposing=true;refreshDirectPhotoOrder()');assert.ok(list.querySelectorAll('.photo-order-slot').every(button=>button.disabled));assert.equal(positionMove('c','d','before'),false);run('editorComposing=false');
+run('clearMediaSelection();refreshDirectPhotoOrder()');assert.equal(panel.hidden,true,'Clearing photo selection closes the panel');
+selectPhoto('a');const staleSlot=slot(1,'before'),staleBody=checkpoint();run('current={id:"other-post"};refreshDirectPhotoOrder()');assert.equal(panel.hidden,true,'Switching posts closes the stale panel');staleSlot.click();assert.equal(checkpoint(),staleBody,'A detached old-post control cannot move current content');
+run('current={id:"synthetic-photo"}');selectPhoto('a');image('a').closest('figure').remove();run('refreshDirectPhotoOrder()');assert.equal(panel.hidden,true,'Deleted sources close the panel');
+body.innerHTML=photo('a')+'<figure data-ke-type="opengraph"><img src="card.png"></figure>'+photo('b');selectPhoto('a');assert.equal(list.querySelectorAll('.photo-order-choice').length,2,'Cards are excluded from the arrangement');assert.equal(checkpoint().includes('photo-order'),false);
+for(const sanitize of [sanitizeNativeHtml,sanitizeLegacyHtml]){const saved=sanitize(checkpoint());assert.equal(saved.includes('photoOrderPanel'),false);assert.equal(saved.includes('photo-order-slot'),false)}
+selectPhoto('a');const escaped=panelKey('Escape',{metaKey:false});assert.equal(escaped.prevented,true);assert.equal(panel.hidden,true);assert.equal(document.activeElement,body,'Escape restores editor focus');
+// Ordinary inline text/table structures are not split to manufacture a gap.
+body.innerHTML=photo('a')+'<p>Text before <img src="'+src('b')+'" alt="b"> between <img src="'+src('c')+'" alt="c"> after</p>'+photo('d');run('resetEditorHistory()');const inlineBefore=checkpoint();assert.equal(positionMove('a','c','before'),false);assert.equal(positionMove('d','b','after'),false);assert.equal(checkpoint(),inlineBefore);
+console.log(JSON.stringify({suite:'photo-order-panel',status:'PASS',behavior:'automatic nonmodal array, real rows, source thumbnail selection, click slots at first/last/inner positions, paragraph boundary distinction, one-step undo, live refresh, busy/IME and post/deletion guards, card exclusion and external UI'}));
+console.log(JSON.stringify({suite:'image-direct',status:'PASS',behavior:'move/group/reorder/split, cap at three, captions and text preserved, shared undo/redo, sanitizer reopen, no-upscale, photo margin text insertion/reuse/caret, anchor positions, atomic row split and external labels'}));
 
 // A foreign paragraph in an imported/hand-authored layout must never be erased
 // by extracting its final image.

@@ -276,10 +276,27 @@ ok(uiScript.includes("event.key==='Delete'||event.key==='Backspace'"));
 ok(uiScript.includes("event.key==='Escape'&&selectedMedia"));
 ok(uiScript.includes("if(link)event.preventDefault()"));
 ok(uiScript.includes("target.remove();if(group)normalizeDirectLayout(group);placeCaret(parent,next);schedule()"));
-ok(uiScript.includes('box.top-tool.height-gap'));
-ok(uiScript.includes('if(top<topLimit)top=box.bottom+gap'));
-ok(uiScript.includes('bottomLimit-tool.height'));
-ok(uiScript.includes('window.innerWidth-tool.width-margin'));
+// The photo tools stay in the editor area beside the desktop array or above
+// the compact array. Exercise geometry instead of pinning an old expression.
+const positionToolsSource=uiScript.slice(uiScript.indexOf('function positionImageTools('),uiScript.indexOf('function positionMediaSelection('));
+const toolsPosition=({width,height=900,panelHidden,panelLeft,panelTop,toolWidth,toolHeight=200,imageTop=600,imageBottom=1000,imageRight=1150})=>{
+  const style={},fields={
+    imageTools:{style,getBoundingClientRect:()=>({width:toolWidth,height:toolHeight})},
+    photoOrderPanel:{hidden:panelHidden,getBoundingClientRect:()=>({left:panelLeft,top:panelTop})},
+    editorHeader:{getBoundingClientRect:()=>({bottom:80})},
+    editorFooter:{hidden:false,getBoundingClientRect:()=>({top:height-80})},
+  };
+  new Script(positionToolsSource+'\npositionImageTools(target)').runInNewContext({$:id=>fields[id],window:{innerWidth:width,innerHeight:height},target:{getBoundingClientRect:()=>({top:imageTop,bottom:imageBottom,right:imageRight})}});
+  return style;
+};
+const withoutArray=toolsPosition({width:1200,panelHidden:true,toolWidth:660});
+equal(withoutArray.left,'490px');equal(withoutArray.top,'392px');
+const besideArray=toolsPosition({width:1200,panelHidden:false,panelLeft:868,panelTop:88,toolWidth:660});
+equal(besideArray.left,'200px');equal(besideArray.top,'392px');ok(Number.parseFloat(besideArray.left)+660<868);
+const aboveCompactArray=toolsPosition({width:390,height:844,panelHidden:false,panelLeft:12,panelTop:520,toolWidth:366,toolHeight:240,imageRight:378});
+equal(aboveCompactArray.left,'12px');equal(aboveCompactArray.top,'272px');equal(aboveCompactArray.maxWidth,'366px');ok(Number.parseFloat(aboveCompactArray.top)+240<520);
+const nearHeader=toolsPosition({width:1200,panelHidden:true,toolWidth:660,imageTop:90,imageBottom:180});
+equal(nearHeader.top,'188px');
 ok(uiScript.includes("window.addEventListener('scroll',positionMediaSelection,true)"));
 ok(uiScript.includes("selectedMedia.kind==='markdown-image'"));
 ok(uiScript.includes("$('body').setRangeText('',start,end,'end')"));

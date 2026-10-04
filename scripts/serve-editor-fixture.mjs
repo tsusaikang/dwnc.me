@@ -2,6 +2,7 @@
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { createHash, generateKeyPairSync, sign } from 'node:crypto';
+import { deflateSync } from 'node:zlib';
 import adminWorker from '../src/admin-worker.ts';
 import { createNativePublicWorker } from '../src/lib/native-public-worker.ts';
 import { load } from 'cheerio';
@@ -73,6 +74,43 @@ if (process.env.DWNC_PHOTO_FIXTURE_DIR) {
     photos.push('<figure class="imageblock alignCenter"><a href="https://example.test/photo-'+name+'"><img src="'+path+'" alt="합성 사진 '+name+'"></a><figcaption><em>보존할 설명 '+name+'</em></figcaption></figure>');
   }
   await store.update(draft.id,draft.revision,{title:'사진 직접 조작 합성 시험',description:'CORE-014 로컬 시험',bodyFormat:'html',bodyMarkdown:process.env.DWNC_PHOTO_GAPS_FIXTURE==='1'?photos.join(''):'<h2>사진 조작 시험</h2><p>첫 문단의 <strong>굵은 글씨</strong>를 보존합니다.</p>'+photos[0]+'<p>사진 사이 문단의 <em>기울임</em>을 보존합니다.</p>'+photos[1]+'<p>두 번째 사진 뒤 문단입니다.</p>'+photos[2]+'<table><tbody><tr><td>보존할 표</td><td>합성 자료</td></tr></tbody></table>'+photos[3]+'<p>끝 문단입니다.</p>',categoryId:'daily',tags:[],coverMediaId:null});
+}
+// Opt-in whole-photo panel scenario. Generated, visibly numbered PNGs need no
+// files or network; all 41 photos, groups, captions and edits stay in memory.
+if (process.env.DWNC_PHOTO_ORDER_FIXTURE === '1') {
+  const crcTable=Array.from({length:256},(_,index)=>{let value=index;for(let bit=0;bit<8;bit+=1)value=value&1?0xedb88320^(value>>>1):value>>>1;return value>>>0});
+  const pngChunk=(name,data)=>{const type=Buffer.from(name),size=Buffer.alloc(4),crc=Buffer.alloc(4);size.writeUInt32BE(data.length);let value=0xffffffff;for(const byte of Buffer.concat([type,data]))value=crcTable[(value^byte)&255]^(value>>>8);crc.writeUInt32BE((value^0xffffffff)>>>0);return Buffer.concat([size,type,data,crc])};
+  const syntheticPng=(width,height,number)=>{
+    const pixel=Buffer.from([[33,93,137],[141,62,100],[55,116,87],[172,104,31]][number%4]),stride=width*3+1,raw=Buffer.alloc(stride*height),white=Buffer.from([255,255,255]);
+    for(let y=0;y<height;y+=1)raw.fill(pixel,y*stride+1,(y+1)*stride);
+    const rectangle=(x,y,w,h)=>{for(let row=y;row<Math.min(height,y+h);row+=1)raw.fill(white,row*stride+x*3+1,row*stride+Math.min(width,x+w)*3+1)};
+    rectangle(24,24,width-48,10);rectangle(24,height-34,width-48,10);rectangle(24,24,10,height-48);rectangle(width-34,24,10,height-48);
+    const size=260,digitWidth=130,weight=22,originX=Math.floor((width-digitWidth*2-32)/2),originY=Math.floor((height-size)/2);
+    const segments=[[0,0,digitWidth,weight],[digitWidth-weight,0,weight,size/2],[digitWidth-weight,size/2,weight,size/2],[0,size-weight,digitWidth,weight],[0,size/2,weight,size/2],[0,0,weight,size/2],[0,size/2-weight/2,digitWidth,weight]];
+    for(const [index,digit] of [...String(number).padStart(2,'0')].entries())for(const segment of ['012345','12','01346','01236','1256','02356','023456','012','0123456','012356'][Number(digit)]){const [x,y,w,h]=segments[Number(segment)];rectangle(originX+index*(digitWidth+32)+x,originY+y,w,h)}
+    const header=Buffer.alloc(13);header.writeUInt32BE(width,0);header.writeUInt32BE(height,4);header[8]=8;header[9]=2;
+    return Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),pngChunk('IHDR',header),pngChunk('IDAT',deflateSync(raw)),pngChunk('IEND',Buffer.alloc(0))]);
+  };
+  const draft=await store.createDraft({id:'daily',slug:'일상',label:'일상'}),photos=[];
+  for(let number=1;number<=41;number+=1){
+    const [width,height]=number%3===0?[900,1200]:number%3===1?[1600,900]:[1200,1200];
+    const bytes=syntheticPng(width,height,number);
+    const id='123e4567-e89b-42d3-a456-426614175'+String(number).padStart(3,'0'),path='/media/native/'+id+'.png',sha256=createHash('sha256').update(bytes).digest('hex');
+    await bucket.put(path.slice(1),bytes,{httpMetadata:{contentType:'image/png'},customMetadata:{sha256,contract:'dwnc-native-media-v1'}});
+    await store.addMedia({id,postId:draft.id,publicPath:path,objectKey:path.slice(1),sha256,bytes:bytes.length,mime:'image/png',alt:'합성 사진 '+number,createdAt:'2026-10-04T00:00:00Z'});
+    photos.push('<figure class="imageblock alignCenter"><img src="'+path+'" width="'+width+'" height="'+height+'" alt="합성 사진 '+number+'"><figcaption><em>사진 '+number+' 설명 보존</em></figcaption></figure>');
+  }
+  const groups=new Map([[2,2],[6,3],[12,2],[17,3],[24,2],[30,3],[36,3]]),parts=['<h2>41장 사진 배열 시험</h2><p>첫 문단의 <strong>굵은 글씨</strong>와 사진 설명을 보존합니다.</p>'];
+  for(let index=0;index<photos.length;){
+    const count=groups.get(index+1)||1;
+    parts.push(count===1?photos[index]:'<div class="dwnc-image-layout dwnc-image-center dwnc-image-paragraph dwnc-image-cols-'+count+'">'+photos.slice(index,index+count).map(photo=>'<div class="dwnc-image-item">'+photo+'</div>').join('')+'<div class="dwnc-image-caption">합성 그룹 '+(index+1)+'–'+(index+count)+' 공통 설명</div></div>');
+    index+=count;
+    if(index%4===0||index===9)parts.push('<p>사진 '+index+' 뒤 <em>문단 위치 보존</em> 시험입니다.</p>');
+    if(index===23)parts.push('<table><tbody><tr><td>보존할 표</td><td>합성 자료</td></tr></tbody></table>');
+  }
+  parts.push('<p>41번째 사진 뒤 마지막 문단입니다.</p>');
+  await store.update(draft.id,draft.revision,{title:'41장 사진 배열 합성 시험',description:'항상 보이는 배열과 클릭 이동 로컬 시험',bodyFormat:'html',bodyMarkdown:parts.join(''),categoryId:'daily',tags:[],coverMediaId:null});
+  console.log('Synthetic 41-photo post: '+draft.id+' (41장 사진 배열 합성 시험)');
 }
 // Optional category scenario; both original IDs stay in the local in-memory store.
 if (process.env.DWNC_CATEGORY_FIXTURE === '1') {
