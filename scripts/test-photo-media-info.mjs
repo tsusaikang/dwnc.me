@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import sharp from 'sharp';
-import { inspectPhotoPrefix, PHOTO_METADATA_PREFIX_BYTES } from '../src/lib/photo-file-metadata.ts';
+import { inspectPhotoPrefix, inspectPhotoWithAuxiliary, photoAuxiliaryRange, PHOTO_METADATA_PREFIX_BYTES } from '../src/lib/photo-file-metadata.ts';
 import { serveAdminPhotoInfo } from '../src/lib/photo-media-info.ts';
 import { NativePostStore } from '../src/lib/native-post-store.ts';
 import { ContentOperations } from '../src/lib/content-operations.ts';
@@ -16,7 +16,7 @@ const srgb = await create().withIccProfile('srgb').jpeg().toBuffer();
 const p3 = await create().withIccProfile('p3').jpeg().toBuffer();
 const plain = await create().jpeg().toBuffer();
 const inspect = (bytes, mime='image/jpeg') => inspectPhotoPrefix(bytes,bytes.length,mime);
-assert.deepEqual(inspect(srgb),{format:'JPEG',bytes:srgb.length,width:32,height:24,colorSpace:'sRGB',profileName:'sRGB',hdr:'not-indicated',metadataComplete:true});
+assert.deepEqual(inspect(srgb),{format:'JPEG',bytes:srgb.length,width:32,height:24,colorSpace:'sRGB',profileName:'sRGB',colorProfileFormat:'ICC',hdr:'not-indicated',metadataComplete:true});
 assert.equal(inspect(p3).colorSpace,'Display P3');
 assert.equal(inspect(plain).colorSpace,null,'An untagged JPEG is not assumed to be sRGB');
 const rotated=await create().withMetadata({orientation:6}).jpeg().toBuffer();
@@ -31,6 +31,8 @@ assert.deepEqual(inspect(inject(plain,xmp)).hdrDetails,{formats:['Adobe HDR 게�
 assert.deepEqual(inspect(inject(plain,iso)).hdrDetails,{formats:['ISO 21496-1 게인맵']},'An incomplete ISO version remains a declaration');
 const adobeNs='http://ns.adobe.com/hdr-gain-map/1.0/',rdfNs='http://www.w3.org/1999/02/22-rdf-syntax-ns#';
 const packet=xml=>segment(0xe1,Buffer.from('http://ns.adobe.com/xap/1.0/\0'+xml));
+const exifColor=Buffer.from('4578696600004d4d002a000000080001a0010003000000010001000000000000','hex');
+assert.equal(inspect(inject(plain,segment(0xe1,exifColor))).colorProfileFormat,'EXIF','An EXIF sRGB color-space declaration is distinguished from an embedded ICC profile');
 const adobe=(attributes='',children='')=>packet(`<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="${rdfNs}"><rdf:Description xmlns:gain="${adobeNs}" gain:Version="1.0" ${attributes}>${children}</rdf:Description></rdf:RDF></x:xmpmeta>`);
 const adobeDetails=adobe('gain:GainMapMin="-.5" gain:GainMapMax="4.25" gain:HDRCapacityMin="0" gain:HDRCapacityMax="4.5" gain:BaseRenditionIsHDR="False"');
 assert.deepEqual(inspect(inject(plain,adobeDetails)).hdrDetails,{formats:['Adobe HDR 게인맵'],versions:['Adobe 1.0'],gainMapMin:[-.5],gainMapMax:[4.25],hdrCapacityMin:0,hdrCapacityMax:4.5,baseRenditionIsHDR:false,parameterSource:'adobe'},'Recorded log2 values retain their unit, including explicit zero and false');
@@ -63,6 +65,27 @@ for(const body of [zeroDenominator,zeroMaximumDenominator,invalidRange,reservedL
 assert.deepEqual(inspect(inject(plain,adobeDetails,isoDetailed)).hdrDetails.gainMapMax,[3],'ISO and Adobe numeric schemes are not mixed');
 assert.equal(inspect(Buffer.concat([plain,adobeDetails])).hdrDetails,undefined,'Metadata appended after the primary scan is outside prefix inspection');
 assert.equal(inspect(inject(plain,segment(0xe2,Buffer.from('MPF\0stereo')))).hdr,'not-indicated','MPF alone does not imply HDR');
+function linkedJpeg(auxiliary, padding=0, mutate=()=>{}) {
+  const body=Buffer.alloc(86);body.write('MPF\0',0,'latin1');const tiff=body.subarray(4);tiff.write('MM',0);tiff.writeUInt16BE(42,2);tiff.writeUInt32BE(8,4);tiff.writeUInt16BE(3,8);
+  const entry=(at,tag,type,count,value)=>{tiff.writeUInt16BE(tag,at);tiff.writeUInt16BE(type,at+2);tiff.writeUInt32BE(count,at+4);tiff.writeUInt32BE(value,at+8)};
+  entry(10,0xb000,7,4,0);tiff.write('0100',18);entry(22,0xb001,4,1,2);entry(34,0xb002,7,32,50);
+  const primarySize=srgb.length+body.length+4+padding;
+  tiff.writeUInt32BE(0x00030000,50);tiff.writeUInt32BE(primarySize,54);tiff.writeUInt32BE(auxiliary.length,70);tiff.writeUInt32BE(primarySize-10,74);mutate(tiff);
+  const primary=inject(srgb,segment(0xe2,body));
+  return Buffer.concat([primary.subarray(0,-2),Buffer.alloc(padding),primary.subarray(-2),auxiliary]);
+}
+const gainMap=inject(await create().toColourspace('b-w').jpeg().toBuffer(),adobeDetails,isoDetailed);
+const linked=linkedJpeg(gainMap,300000),linkedRange=photoAuxiliaryRange(linked,linked.length);
+assert.ok(linkedRange.offset>PHOTO_METADATA_PREFIX_BYTES);
+const linkedInfo=inspectPhotoWithAuxiliary(linked,linked.length,'image/jpeg',linked.subarray(linkedRange.offset),linked.subarray(-2));
+assert.deepEqual(linkedInfo.hdrDetails.gainMapImage,{format:'JPEG',width:32,height:24,channels:1},'An MPF-linked gain map exposes actual JPEG header dimensions/channels');
+assert.equal(linkedInfo.colorSpace,'sRGB');assert.equal(linkedInfo.colorProfileFormat,'ICC','Auxiliary metadata never replaces primary color information');
+assert.equal(linkedInfo.hdrDetails.parameterSource,'iso');assert.deepEqual(linkedInfo.hdrDetails.gainMapMax,[3]);assert.equal(linkedInfo.hdrDetails.baseRenditionIsHDR,false,'Explicit Adobe base rendition survives a separate ISO numeric scheme');
+const stereo=linkedJpeg(p3),stereoRange=photoAuxiliaryRange(stereo,stereo.length);
+assert.equal(inspectPhotoWithAuxiliary(stereo,stereo.length,'image/jpeg',stereo.subarray(stereoRange.offset),stereo.subarray(-2)).hdrDetails,undefined,'Ordinary MPF stereo is never identified as a gain map');
+for(const bad of [linkedJpeg(gainMap,0,t=>t.writeUInt32BE(3,30)),linkedJpeg(gainMap,0,t=>t.writeUInt32BE(0xffffffff,74)),linkedJpeg(gainMap,0,t=>t.writeUInt32BE(0xffffffff,70)),linkedJpeg(gainMap,0,t=>t.writeUInt32BE(9,58)),linkedJpeg(gainMap,0,t=>t.writeUInt32BE(0x01000000,66))])assert.equal(photoAuxiliaryRange(bad,bad.length),null,'Unsupported counts, offsets, sizes, primary offsets and non-JPEG entries stay unresolved');
+for(const end of [Buffer.from([255]),Buffer.from([255,0])])assert.equal(inspectPhotoWithAuxiliary(linked,linked.length,'image/jpeg',gainMap,end).hdrDetails,undefined,'A missing gain-map EOI cannot verify its JPEG storage structure');
+assert.equal(inspectPhotoWithAuxiliary(linked,linked.length,'image/jpeg',gainMap.subarray(0,20),gainMap.subarray(-2)).hdrDetails,undefined,'A truncated auxiliary header cannot verify a gain-map image');
 assert.equal(inspect(inject(plain,segment(0xe1,Buffer.from('http://ns.adobe.com/xmp/extension/\0unparsed')))).hdr,'unknown');
 const padded=inject(plain,...Array.from({length:5},()=>segment(0xe0,Buffer.alloc(60000))));
 assert.equal(inspect(padded).metadataComplete,false);assert.equal(inspect(padded).hdr,'unknown');assert.equal(inspect(padded).width,null);
@@ -91,9 +114,9 @@ const env={NATIVE_DB:database,NATIVE_MEDIA_BUCKET:bucket};
 let published=await store.createDraft(category);const publicPath=await add(published),unused=await add(published,p3);
 published=await store.update(published.id,published.revision,{...published,title:'메타데이터 합성',bodyFormat:'html',bodyMarkdown:'<img src="'+publicPath+'" alt="공개 사진">'});published=await store.publish(published.id,published.revision);
 let working=await store.update(published.id,published.revision,{...published,bodyMarkdown:'<img src="'+unused+'" alt="작업본 사진">'});
-const draft=await store.createDraft(category),draftPath=await add(draft),largePath=await add(draft,Buffer.concat([srgb,Buffer.alloc(700000)])),hdrPath=await add(draft,inject(srgb,adobeDetails));
-const imported=manifest.entries.find(entry=>entry.contentType==='image/jpeg');let importedReads=0;
-const worker=createNativePublicWorker(async request=>{const url=new URL(request.url);if(url.pathname!==imported.publicPath)return new Response('Not found',{status:404});importedReads++;const length=Math.min(imported.size,PHOTO_METADATA_PREFIX_BYTES),body=Buffer.alloc(length);srgb.copy(body);return new Response(body,{status:206,headers:{'content-type':imported.contentType,'content-length':String(length),'content-range':`bytes 0-${length-1}/${imported.size}`}})});
+const draft=await store.createDraft(category),draftPath=await add(draft),largePath=await add(draft,Buffer.concat([srgb,Buffer.alloc(700000)])),hdrPath=await add(draft,inject(srgb,adobeDetails)),linkedPath=await add(draft,linked);
+const imported=manifest.entries.find(entry=>entry.contentType==='image/jpeg');let importedReads=0,importedPayload=null,importedRangeFault=false;
+const worker=createNativePublicWorker(async request=>{const url=new URL(request.url);if(url.pathname!==imported.publicPath)return new Response('Not found',{status:404});importedReads++;const [,start,last]=request.headers.get('range').match(/^bytes=(\d+)-(\d+)$/),offset=Number(start),length=Number(last)-offset+1,body=importedPayload?importedPayload.subarray(offset,offset+length):Buffer.alloc(length);if(!importedPayload)srgb.copy(body);return new Response(body,{status:206,headers:{'content-type':imported.contentType,'content-length':String(length),'content-range':`bytes ${offset}-${offset+length-1}/${imported.size+(importedRangeFault&&offset>0?1:0)}`}})});
 const get=(path,headers={},method='GET')=>worker(new Request('https://dwnc.me/api/photo-info?path='+encodeURIComponent(path),{method,headers}),env,{});
 let response=await get(publicPath);assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');assert.equal((await response.json()).info.colorSpace,'sRGB');
 const beforeDenied=reads.length;
@@ -104,6 +127,19 @@ assert.equal((await get('https://dwnc.me'+publicPath+'?version=2')).status,200);
 assert.equal((await serveAdminPhotoInfo(publicPath,draft.id,env,store,async()=>new Response())).status,404,'A post-scoped admin request cannot inspect another post file');
 response=await serveAdminPhotoInfo(largePath,draft.id,env,store,async()=>new Response());assert.equal(response.status,200);assert.equal((await response.json()).info.bytes,assets.get(largePath.slice(1)).bytes.length);assert.deepEqual(reads.at(-1).range,{offset:0,length:PHOTO_METADATA_PREFIX_BYTES});
 response=await serveAdminPhotoInfo(hdrPath,draft.id,env,store,async()=>new Response());assert.equal(response.status,200);assert.deepEqual((await response.json()).info.hdrDetails,inspect(assets.get(hdrPath.slice(1)).bytes).hdrDetails,'The same bounded API read forwards optional recorded HDR details');
+const beforeLinked=reads.length;
+response=await serveAdminPhotoInfo(linkedPath,draft.id,env,store,async()=>new Response());assert.equal(response.status,200);assert.deepEqual((await response.json()).info,linkedInfo);
+assert.deepEqual(reads.slice(beforeLinked).map(read=>read.range),[{offset:0,length:PHOTO_METADATA_PREFIX_BYTES},{offset:linkedRange.offset-2,length:gainMap.length+2}],'Only the authorized primary prefix and one MPF-linked auxiliary are read');
+const largeGainMap=Buffer.concat([gainMap.subarray(0,-2),Buffer.alloc(300000),gainMap.subarray(-2)]),largeLinked=linkedJpeg(largeGainMap,300000),largeLinkedPath=await add(draft,largeLinked),largeLinkedRange=photoAuxiliaryRange(largeLinked,largeLinked.length),beforeLargeLinked=reads.length;
+response=await serveAdminPhotoInfo(largeLinkedPath,draft.id,env,store,async()=>new Response());assert.equal(response.status,200);assert.deepEqual((await response.json()).info.hdrDetails.gainMapImage,{format:'JPEG',width:32,height:24,channels:1});
+assert.deepEqual(reads.slice(beforeLargeLinked).map(read=>read.range),[{offset:0,length:PHOTO_METADATA_PREFIX_BYTES},{offset:largeLinkedRange.offset-2,length:PHOTO_METADATA_PREFIX_BYTES+2},{offset:largeLinked.length-2,length:2}],'A large gain map adds only its two exact end bytes after the bounded auxiliary prefix');
+assert.ok(reads.slice(beforeLargeLinked).reduce((sum,read)=>sum+read.range.length,0)<=2*PHOTO_METADATA_PREFIX_BYTES+4,'A complete metadata request never buffers the full photo or full large gain map');
+const originalBucketGet=bucket.get;
+for(const failure of ['checksum','short','throw','primary-eoi']){
+  bucket.get=async(key,options)=>{const object=await originalBucketGet(key,options);if(options?.range.offset===0)return object;if(failure==='throw')throw Error('synthetic auxiliary failure');if(failure==='checksum')object.customMetadata.sha256='0'.repeat(64);if(failure==='short')object.body=new Response(gainMap.subarray(0,2)).body;if(failure==='primary-eoi'){const data=Buffer.from(linked.subarray(options.range.offset,options.range.offset+options.range.length));data[0]=0;object.body=new Response(data).body}return object};
+  response=await serveAdminPhotoInfo(linkedPath,draft.id,env,store,async()=>new Response());assert.equal(response.status,200);const info=(await response.json()).info;assert.equal(info.colorSpace,'sRGB');assert.equal(info.hdrDetails?.gainMapImage,undefined,'Auxiliary failures retain primary metadata without claiming a linked gain map');
+}
+bucket.get=originalBucketGet;
 // A removed public reference revokes metadata access; a private working-copy
 // change did not revoke the still-published source before this publication.
 await store.publish(working.id,working.revision);assert.equal((await get(publicPath)).status,404);assert.equal((await get(unused)).status,200);
@@ -122,6 +158,11 @@ let legacy=await store.getForAdmin('legacy-1');legacy=await store.publish(legacy
 assert.equal((await get(imported.publicPath)).status,404);assert.equal(importedReads,0);
 legacy=await store.publish(legacy.id,legacy.revision,{visibility:'public'});
 response=await get(imported.publicPath);assert.equal(response.status,200);assert.equal((await response.json()).info.bytes,imported.size);assert.equal(importedReads,1);
+importedPayload=linkedJpeg(gainMap,imported.size-srgb.length-90-gainMap.length);
+assert.equal(importedPayload.length,imported.size);
+response=await get(imported.publicPath);assert.equal(response.status,200);assert.deepEqual((await response.json()).info.hdrDetails.gainMapImage,{format:'JPEG',width:32,height:24,channels:1},'Imported immutable media uses the same linked auxiliary inspection');
+importedRangeFault=true;
+response=await get(imported.publicPath);assert.equal(response.status,200);assert.equal((await response.json()).info.hdrDetails?.gainMapImage,undefined,'An incorrect auxiliary content-range retains only primary metadata');
 // Access and same-origin checks still wrap the read-only admin POST route.
 const {privateKey,publicKey}=generateKeyPairSync('rsa',{modulusLength:2048}),jwk={...publicKey.export({format:'jwk'}),kid:'metadata-fixture',alg:'RS256',use:'sig'};
 Object.assign(env,{ACCESS_TEAM_DOMAIN:'https://metadata-fixture.cloudflareaccess.com',ACCESS_AUD:'synthetic-metadata-audience',ACCESS_ALLOWED_EMAIL:'owner@example.test'});
@@ -130,6 +171,6 @@ clearAccessKeyCacheForTests();await verifyAccessIdentity(new Request('https://ad
 const adminRequest=(authenticated=true,origin='https://admin.dwnc.me')=>admin.fetch(new Request('https://admin.dwnc.me/api/posts/'+draft.id+'/media-info',{method:'POST',headers:{...(authenticated?{'cf-access-jwt-assertion':token}:{}),origin,'content-type':'application/json'},body:JSON.stringify({path:largePath})}),env,{});
 assert.equal((await adminRequest(false)).status,401);assert.equal((await adminRequest(true,'https://external.example')).status,403);
 const revisions=database.sqlite.prepare('SELECT id,revision FROM native_posts ORDER BY id').all();assert.equal((await adminRequest()).status,200);assert.deepEqual(database.sqlite.prepare('SELECT id,revision FROM native_posts ORDER BY id').all(),revisions,'Photo information POST never edits content');
-assert.ok(reads.every(read=>read.range.offset===0&&read.range.length<=PHOTO_METADATA_PREFIX_BYTES),'Every information request is a bounded one-image prefix read');
+assert.ok(reads.every(read=>Number.isSafeInteger(read.range.offset)&&read.range.offset>=0&&read.range.length<=PHOTO_METADATA_PREFIX_BYTES+2),'Every information range is bounded to a prefix plus two end-marker bytes');
 database.sqlite.close();
-console.log(JSON.stringify({suite:'photo-media-info',status:'PASS',behavior:'actual sRGB/P3 and orientation, recorded namespace-aware Adobe/Apple and bounded ISO HDR details without defaults, conflicting/invalid/truncated metadata, bounded one-image reads, published/private/scheduled/protected/admin ownership and same-origin checks'}));
+console.log(JSON.stringify({suite:'photo-media-info',status:'PASS',behavior:'actual ICC/EXIF sRGB/P3 and orientation, recorded Adobe/Apple/ISO HDR details without defaults, MPF-linked auxiliary JPEG header/end structure, conflicting/invalid/truncated metadata, bounded primary/auxiliary ranges and failure fallback, published/private/scheduled/protected/admin ownership and same-origin checks'}));

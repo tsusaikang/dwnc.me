@@ -1,4 +1,5 @@
-import { inspectPhotoPrefix, PHOTO_METADATA_PREFIX_BYTES } from './photo-file-metadata.ts';
+import { inspectPhotoPrefix, inspectPhotoWithAuxiliary, photoAuxiliaryRange, PHOTO_METADATA_PREFIX_BYTES } from './photo-file-metadata.ts';
+import type { PhotoFileInfo } from './photo-file-metadata.ts';
 import { canonicalPhotoSource, publishedPhotoMetadata } from './photo-media-summary.ts';
 import { boundedBody } from './content-operations.ts';
 import { NATIVE_MEDIA_PATH_PATTERN, IMPORTED_MEDIA_PATH_PATTERN } from './native-content.ts';
@@ -20,18 +21,42 @@ function localPath(value: unknown) {
   return path.startsWith('/media/') && !/[?#\\%\s]/u.test(path) && !path.includes('//') ? path : null;
 }
 
+type ReadRange = (offset:number, length:number) => Promise<Uint8Array | null>;
+async function photoInfo(bytes: Uint8Array, size: number, mime: string, read: ReadRange): Promise<PhotoFileInfo> {
+  const info = inspectPhotoPrefix(bytes, size, mime), auxiliary = photoAuxiliaryRange(bytes, size);
+  if (!auxiliary) return info;
+  try {
+    // Include the preceding primary EOI, then at most one auxiliary prefix.
+    const length = Math.min(auxiliary.length, PHOTO_METADATA_PREFIX_BYTES);
+    const head = await read(auxiliary.offset - 2, length + 2);
+    if (!head || head.length !== length + 2 || head[0] !== 255 || head[1] !== 217) return info;
+    const end = auxiliary.length <= length ? head.subarray(head.length - 2) : await read(auxiliary.offset + auxiliary.length - 2, 2);
+    return end ? inspectPhotoWithAuxiliary(bytes, size, mime, head.subarray(2), end) : info;
+  } catch { return info; } // Auxiliary failures never discard primary metadata.
+}
+
+function validNativeObject(object: R2Object | null, media: NativeMedia) {
+  const sha = object?.checksums?.sha256;
+  const digest = sha instanceof ArrayBuffer ? [...new Uint8Array(sha)].map(byte => byte.toString(16).padStart(2,'0')).join('') : '';
+  return Boolean(object && object.size === media.bytes && object.httpMetadata?.contentType?.toLowerCase() === media.mime
+    && object.customMetadata?.contract === 'dwnc-native-media-v1' && object.customMetadata?.sha256 === media.sha256
+    && /^[a-f0-9]{64}$/u.test(media.sha256) && digest === media.sha256);
+}
+
 async function nativeInfo(media: NativeMedia, env: PhotoMediaEnvironment) {
   if (!media.mime.startsWith('image/') || !Number.isSafeInteger(media.bytes) || media.bytes <= 0) return missing();
   const length = Math.min(media.bytes, PHOTO_METADATA_PREFIX_BYTES);
   const object = await env.NATIVE_MEDIA_BUCKET.get(media.objectKey, {range:{offset:0,length}});
-  const sha = object?.checksums?.sha256;
-  const digest = sha instanceof ArrayBuffer ? [...new Uint8Array(sha)].map(byte => byte.toString(16).padStart(2,'0')).join('') : '';
-  if (!object || !('body' in object) || !object.body || object.size !== media.bytes || object.httpMetadata?.contentType?.toLowerCase() !== media.mime
-    || object.customMetadata?.contract !== 'dwnc-native-media-v1' || object.customMetadata?.sha256 !== media.sha256
-    || !/^[a-f0-9]{64}$/u.test(media.sha256) || digest !== media.sha256) { if (object && 'body' in object) await object.body?.cancel(); return missing(); }
+  if (!object || !('body' in object) || !object.body || !validNativeObject(object, media)) { if (object && 'body' in object) await object.body?.cancel(); return missing(); }
   const bytes = await boundedBody(new Response(object.body), length);
   if (bytes.length !== length) return unavailable();
-  return json({info:inspectPhotoPrefix(bytes, media.bytes, media.mime)});
+  const read: ReadRange = async (offset, rangeLength) => {
+    const part = await env.NATIVE_MEDIA_BUCKET.get(media.objectKey, {range:{offset,length:rangeLength}});
+    if (!part || !('body' in part) || !part.body || !validNativeObject(part, media)) { if (part && 'body' in part) await part.body?.cancel(); return null; }
+    const data = await boundedBody(new Response(part.body), rangeLength);
+    return data.length === rangeLength ? data : null;
+  };
+  return json({info:await photoInfo(bytes, media.bytes, media.mime, read)});
 }
 
 async function importedInfo(path: string, readers: ImportedMediaReaders) {
@@ -47,7 +72,16 @@ async function importedInfo(path: string, readers: ImportedMediaReaders) {
   }
   const bytes = await boundedBody(response, length);
   if (bytes.length !== length) return unavailable();
-  return json({info:inspectPhotoPrefix(bytes, file.bytes, file.mime)});
+  const read: ReadRange = async (offset, rangeLength) => {
+    const part = await readers.readImported(new Request('https://dwnc.me' + path, {headers:{range:`bytes=${offset}-${offset + rangeLength - 1}`}}));
+    if (part.status !== 206 || part.headers.get('content-type')?.split(';',1)[0] !== file.mime
+      || Number(part.headers.get('content-length')) !== rangeLength || part.headers.get('content-range') !== `bytes ${offset}-${offset + rangeLength - 1}/${file.bytes}`) {
+      await part.body?.cancel(); return null;
+    }
+    const data = await boundedBody(part, rangeLength);
+    return data.length === rangeLength ? data : null;
+  };
+  return json({info:await photoInfo(bytes, file.bytes, file.mime, read)});
 }
 
 export async function servePublicPhotoInfo(request: Request, env: PhotoMediaEnvironment, store: NativePostStore, readers: ImportedMediaReaders) {

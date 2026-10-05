@@ -1,5 +1,6 @@
 // Metadata inspection only: never decode pixels, rewrite a file, or infer JPEG
-// quality. A prefix cannot verify an appended HDR gain-map image's contents.
+// quality. Linked JPEG headers/end markers verify storage structure, not pixels
+// or whether the uploaded source had identical color/HDR data.
 export interface PhotoHdrDetails {
   formats: string[];
   versions?: string[];
@@ -13,6 +14,7 @@ export interface PhotoHdrDetails {
   // Apple's recorded headroom is a linear ratio to SDR white, not log2.
   appleHeadroom?: number;
   baseRenditionIsHDR?: boolean;
+  gainMapImage?: {format:'JPEG'; width:number; height:number; channels:number};
 }
 
 export interface PhotoFileInfo {
@@ -22,6 +24,7 @@ export interface PhotoFileInfo {
   height: number | null;
   colorSpace: string | null;
   profileName: string | null;
+  colorProfileFormat?: 'ICC' | 'EXIF';
   hdr: 'metadata-present' | 'not-indicated' | 'unknown';
   hdrDetails?: PhotoHdrDetails;
   metadataComplete: boolean;
@@ -234,6 +237,11 @@ function combineHdrInfo(records: PhotoHdrDetails[]): PhotoHdrDetails | undefined
     if (parameters.every(values => JSON.stringify(values) === JSON.stringify(parameters[0]))) Object.assign(details, parameters[0]);
     break;
   }
+  // Base rendition is an independent explicit boolean, not a brightness value
+  // borrowed from a different numeric scheme. Conflicting declarations omit it.
+  const bases = [...new Set(records.flatMap(record => typeof record.baseRenditionIsHDR === 'boolean' ? [record.baseRenditionIsHDR] : []))];
+  if (bases.length === 1) details.baseRenditionIsHDR = bases[0];
+  else delete details.baseRenditionIsHDR;
   return details;
 }
 
@@ -291,8 +299,8 @@ function srgbCurve(bytes: Uint8Array): boolean {
   return true;
 }
 
-function iccInfo(bytes: Uint8Array): {profileName: string | null; colorSpace: string | null} {
-  const result = {profileName: null as string | null, colorSpace: null as string | null};
+function iccInfo(bytes: Uint8Array): Pick<PhotoFileInfo, 'profileName' | 'colorSpace' | 'colorProfileFormat'> {
+  const result: Pick<PhotoFileInfo, 'profileName' | 'colorSpace' | 'colorProfileFormat'> = {profileName:null, colorSpace:null};
   if (bytes.length < 132 || text(bytes, 36, 4) !== 'acsp') return result;
   const size = u32(bytes, 0), count = u32(bytes, 128);
   if (size > bytes.length || size < 132 || count > 512 || 132 + count * 12 > size) return result;
@@ -302,6 +310,7 @@ function iccInfo(bytes: Uint8Array): {profileName: string | null; colorSpace: st
     if (offset < 128 || length < 8 || offset + length > size || tags.has(name)) return result;
     tags.set(name, bytes.subarray(offset, offset + length));
   }
+  result.colorProfileFormat = 'ICC';
   const description = tags.get('desc');
   if (description && description.length >= 12) {
     const kind = text(description, 0, 4);
@@ -378,11 +387,97 @@ function jpegInfo(bytes: Uint8Array, result: PhotoFileInfo) {
     let offset = 0;
     for (let index = 1; index <= iccCount; index++) { const chunk = chunks.get(index)!; joined.set(chunk, offset); offset += chunk.length; }
     Object.assign(result, iccInfo(joined));
-  } else if (!iccCount && !iccInvalid && exifSrgb) result.colorSpace = 'sRGB';
+  } else if (!iccCount && !iccInvalid && exifSrgb) { result.colorSpace = 'sRGB'; result.colorProfileFormat = 'EXIF'; }
   if (iccInvalid || chunks.size !== iccCount || extendedXmp) result.metadataComplete = false;
   const details = combineHdrInfo(hdrRecords);
   if (details) { result.hdrDetails = details; result.hdr = 'metadata-present'; }
   if (result.hdr === 'unknown' && result.metadataComplete) result.hdr = 'not-indicated';
+  return hdrRecords;
+}
+
+export interface PhotoAuxiliaryRange {offset:number; length:number}
+
+// MPF offsets are relative to the TIFF endian bytes, except primary offset 0.
+// Read only the common two-JPEG layout; bursts and unknown layouts stay unknown.
+export function photoAuxiliaryRange(input: Uint8Array, size: number): PhotoAuxiliaryRange | null {
+  const bytes = input.subarray(0, PHOTO_METADATA_PREFIX_BYTES);
+  if (!Number.isSafeInteger(size) || size < 4 || bytes.length < 2 || bytes[0] !== 255 || bytes[1] !== 216) return null;
+  let found: PhotoAuxiliaryRange | null = null;
+  for (let at = 2; at + 4 <= bytes.length;) {
+    if (bytes[at] !== 255) return null;
+    const marker = bytes[at + 1], length = u16(bytes, at + 2);
+    if (marker === 0xda || marker === 0xd9) break;
+    if (length < 2 || at + 2 + length > bytes.length) return null;
+    if (marker === 0xe2 && text(bytes, at + 4, 4) === 'MPF\0') {
+      if (found) return null;
+      const tiffBase = at + 8, tiff = bytes.subarray(tiffBase, at + 2 + length);
+      const order = text(tiff, 0, 2), little = order === 'II';
+      if (tiff.length < 8 || !['II','MM'].includes(order) || u16(tiff, 2, little) !== 42) return null;
+      const directory = u32(tiff, 4, little);
+      if (directory < 8 || directory + 2 > tiff.length) return null;
+      const count = u16(tiff, directory, little);
+      if (count > 32 || directory + 2 + count * 12 + 4 > tiff.length) return null;
+      const tags = new Map<number, number>();
+      for (let index = 0; index < count; index++) {
+        const entry = directory + 2 + index * 12, tag = u16(tiff, entry, little);
+        if (tags.has(tag)) return null;
+        tags.set(tag, entry);
+      }
+      const version = tags.get(0xb000), images = tags.get(0xb001), entries = tags.get(0xb002);
+      if (version === undefined || images === undefined || entries === undefined
+        || u16(tiff, version + 2, little) !== 7 || u32(tiff, version + 4, little) !== 4 || text(tiff, version + 8, 4) !== '0100'
+        || u16(tiff, images + 2, little) !== 4 || u32(tiff, images + 4, little) !== 1 || u32(tiff, images + 8, little) !== 2
+        || u16(tiff, entries + 2, little) !== 7 || u32(tiff, entries + 4, little) !== 32) return null;
+      const records = u32(tiff, entries + 8, little);
+      if (records < 8 || records + 32 > tiff.length) return null;
+      const primarySize = u32(tiff, records + 4, little), primaryOffset = u32(tiff, records + 8, little);
+      const auxiliarySize = u32(tiff, records + 20, little), auxiliaryOffset = u32(tiff, records + 24, little);
+      const offset = tiffBase + auxiliaryOffset;
+      if ((u32(tiff, records, little) & 0x07000000) || (u32(tiff, records + 16, little) & 0x07000000)
+        || primaryOffset !== 0 || primarySize !== offset || offset <= at + length + 2 || auxiliarySize < 4 || offset + auxiliarySize > size) return null;
+      found = {offset, length:auxiliarySize};
+    }
+    at += 2 + length;
+  }
+  return found;
+}
+
+// The caller supplies only an authorized MPF-linked prefix and exact end bytes.
+// No auxiliary color profile or orientation is allowed to replace the primary.
+export function inspectPhotoWithAuxiliary(primary: Uint8Array, size: number, mime: string, auxiliary: Uint8Array, end: Uint8Array): PhotoFileInfo {
+  auxiliary = auxiliary.subarray(0, PHOTO_METADATA_PREFIX_BYTES);
+  const result = inspectPhotoPrefix(primary, size, mime);
+  const range = photoAuxiliaryRange(primary, size);
+  if (!range || auxiliary.length < 4 || auxiliary[0] !== 255 || auxiliary[1] !== 216 || end.length !== 2 || end[0] !== 255 || end[1] !== 217) return result;
+  let dimensions: {width:number; height:number; channels:number} | null = null, complete = false;
+  for (let at = 2; at + 4 <= auxiliary.length;) {
+    if (auxiliary[at] !== 255) return result;
+    const marker = auxiliary[at + 1], length = u16(auxiliary, at + 2);
+    if (length < 2 || at + length + 2 > auxiliary.length) return result;
+    const body = auxiliary.subarray(at + 4, at + length + 2);
+    if ([0xc0,0xc1,0xc2].includes(marker)) {
+      const channels = body[5];
+      if (dimensions || body.length !== 6 + 3 * channels || ![1,3].includes(channels) || !u16(body, 1) || !u16(body, 3)) return result;
+      dimensions = {width:u16(body, 3), height:u16(body, 1), channels};
+    }
+    if (marker === 0xda) {
+      complete = Boolean(dimensions && body.length === 4 + 2 * body[0] && body[0] >= 1 && body[0] <= dimensions.channels);
+      break;
+    }
+    at += 2 + length;
+  }
+  if (!complete || !dimensions) return result;
+  const secondary = inspectPhotoPrefix(auxiliary, range.length, 'image/jpeg');
+  if (!secondary.metadataComplete || !secondary.hdrDetails?.formats.length) return result;
+  // Parse raw records again to preserve ambiguity of duplicate numeric packets.
+  const primaryRecords = jpegInfo(primary.subarray(0, PHOTO_METADATA_PREFIX_BYTES), {...result});
+  const secondaryRecords = jpegInfo(auxiliary.subarray(0, PHOTO_METADATA_PREFIX_BYTES), {...secondary});
+  const details = combineHdrInfo([...primaryRecords, ...secondaryRecords]);
+  if (details) {
+    result.hdr = 'metadata-present';
+    result.hdrDetails = {...details, gainMapImage:{format:'JPEG', ...dimensions}};
+  }
+  return result;
 }
 
 export function inspectPhotoPrefix(input: Uint8Array, size: number, mime: string): PhotoFileInfo {
