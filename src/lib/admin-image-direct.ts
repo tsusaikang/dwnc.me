@@ -5,7 +5,7 @@ import { canonicalPhotoSource, formatPhotoBytes } from './photo-media-summary.ts
 // shared with normal text editing.
 export const imageDirectToolsHtml = `<div id="directImageTools" class="direct-image-tools" hidden><button id="dragSelectedPhoto" type="button" title="끌어서 이동 · 방향키로 위치 이동" aria-label="선택 사진 이동">↕ 이동</button><span id="directPhotoNumber" class="direct-photo-number" aria-live="polite"></span><div class="photo-align-tools" role="group" aria-label="사진 정렬"><button type="button" data-photo-align="left" aria-label="사진 왼쪽 정렬">왼쪽</button><button type="button" data-photo-align="center" aria-label="사진 가운데 정렬">가운데</button><button type="button" data-photo-align="right" aria-label="사진 오른쪽 정렬">오른쪽</button></div><label class="sr-only" for="directPhotoSize">사진 크기</label><select id="directPhotoSize" aria-describedby="directPhotoHint"><option value="original">100% 원본</option><option value="paragraph">문단 폭</option><option value="full">전체 폭</option></select><button id="splitSelectedPhoto" type="button" hidden>한 장 빼내기</button><span id="directPhotoHint" class="direct-photo-hint"></span></div>`;
 
-export const imageDirectOverlayHtml = `<div id="photoNumberOverlay" class="photo-number-overlay" aria-label="본문 사진 번호와 파일 정보"></div><div id="photoInfoHost" hidden><dialog id="photoInfoDialog" class="photo-info-dialog" aria-modal="false" aria-labelledby="photoInfoHeading"><div class="photo-info-heading"><h2 id="photoInfoHeading">사진 정보</h2><button id="closePhotoInfo" type="button" aria-label="사진 정보 닫기">닫기 ✕</button></div><dl id="photoInfoDetails"></dl><p id="photoInfoStatus" aria-live="polite"></p><p class="photo-info-note">현재 저장된 사진 파일 기준입니다.</p></dialog></div><div id="photoDropIndicator" class="photo-drop-indicator" hidden><span id="photoDropLabel"></span></div><div id="photoTextHint" class="photo-text-hint" aria-hidden="true" hidden>＋ 글 쓰기</div><aside id="photoOrderPanel" class="photo-order-panel" aria-labelledby="photoOrderHeading" aria-describedby="photoOrderHint" hidden><div class="photo-order-header"><h2 id="photoOrderHeading">사진 위치 옮기기</h2><p id="photoOrderSelection" aria-live="polite"></p><p id="photoOrderHint">사진을 눌러 옮길 사진을 고른 뒤, 원하는 곳의 ‘여기로 이동’을 누르세요. 즉시 이동하며 ⌘Z·Ctrl+Z로 실행 취소할 수 있습니다. 다른 그룹 안으로 옮기면 그 줄이 나뉩니다.</p></div><div id="photoOrderList" class="photo-order-list"></div></aside>`;
+export const imageDirectOverlayHtml = `<div id="photoNumberOverlay" class="photo-number-overlay" aria-label="본문 사진 번호와 파일 정보"></div><div id="photoMobileInfo" class="photo-mobile-info" hidden aria-label="지금 보는 사진 파일 정보"></div><div id="photoInfoHost" hidden><dialog id="photoInfoDialog" class="photo-info-dialog" aria-modal="false" aria-labelledby="photoInfoHeading"><div class="photo-info-heading"><h2 id="photoInfoHeading">사진 정보</h2><button id="closePhotoInfo" type="button" aria-label="사진 정보 닫기">닫기 ✕</button></div><dl id="photoInfoDetails"></dl><p id="photoInfoStatus" aria-live="polite"></p><p class="photo-info-note">현재 저장된 사진 파일 기준입니다.</p></dialog></div><div id="photoDropIndicator" class="photo-drop-indicator" hidden><span id="photoDropLabel"></span></div><div id="photoTextHint" class="photo-text-hint" aria-hidden="true" hidden>＋ 글 쓰기</div><aside id="photoOrderPanel" class="photo-order-panel" aria-labelledby="photoOrderHeading" aria-describedby="photoOrderHint" hidden><div class="photo-order-header"><h2 id="photoOrderHeading">사진 위치 옮기기</h2><p id="photoOrderSelection" aria-live="polite"></p><p id="photoOrderHint">사진을 눌러 옮길 사진을 고른 뒤, 원하는 곳의 ‘여기로 이동’을 누르세요. 즉시 이동하며 ⌘Z·Ctrl+Z로 실행 취소할 수 있습니다. 다른 그룹 안으로 옮기면 그 줄이 나뉩니다.</p></div><div id="photoOrderList" class="photo-order-list"></div></aside>`;
 
 export const imageDirectCss = `
 .html-editor{display:flow-root;padding-block:18px}
@@ -14,12 +14,18 @@ body[data-photo-info="open"] #imageTools,body[data-photo-info="open"] #photoOrde
 .image-tools{width:min(660px,calc(100vw - 24px));max-width:calc(100vw - 24px);gap:6px;background:#fff;border-color:#cbd4df;padding:8px}
 .image-tools button{background:#fff;color:#364357;padding:7px 9px;font-size:12px}.image-tools button:hover{background:#edf3fa}.image-tools #deleteImage{color:#a42929;background:#fff}.image-tools #setSelectedCover{background:#fff;color:#1769d2}.image-tools__label{display:none}
 .direct-image-tools{display:flex;align-items:center;flex-wrap:wrap;gap:5px;width:100%;border-bottom:1px solid #e8edf3;padding-bottom:6px}.photo-align-tools{display:flex;gap:1px}.image-tools [data-photo-align][aria-pressed="true"]{background:#e8f1ff;color:#145bac;border-color:#8bb5ee}.direct-image-tools select{width:auto;max-width:145px;padding:6px;font-size:12px}.direct-photo-hint{flex-basis:100%;font-size:11px;line-height:1.5;color:#647184}.image-tools #dragSelectedPhoto{touch-action:none;cursor:grab;color:#175fae}.html-editor img{cursor:grab}.html-editor figcaption{cursor:text}
-.direct-photo-number{font-size:12px;font-weight:600;color:#175fae}.photo-number-overlay{position:fixed;inset:0;z-index:29;pointer-events:none}.photo-number-marker{position:absolute;pointer-events:none}.photo-number-marker[data-info-open="true"]{z-index:2}.photo-info-panel{position:fixed;display:flex;flex-direction:column;align-items:stretch;pointer-events:auto;box-sizing:border-box;border-radius:5px;overflow:hidden;background:transparent;color:#fff;text-shadow:1px 0 1px rgb(0 0 0 / 95%),-1px 0 1px rgb(0 0 0 / 95%),0 1px 1px rgb(0 0 0 / 95%),0 -1px 1px rgb(0 0 0 / 95%),0 2px 3px rgb(0 0 0 / 90%)}.photo-info-panel[data-expanded="true"]{border-radius:7px}.photo-info-panel[data-direction="up"]{flex-direction:column-reverse}.photo-info-panel .photo-file-info{flex:0 0 44px;box-sizing:border-box;min-width:44px;min-height:44px;height:44px;padding:4px 6px;border:0;border-radius:0;background:transparent;color:inherit;text-shadow:inherit;font:10px/1.35 system-ui;text-align:right;cursor:help;touch-action:manipulation;overflow:hidden}.photo-file-info span{display:block;overflow-wrap:anywhere}.photo-file-info:focus-visible{outline:2px solid #fff;outline-offset:-2px}.photo-number-marker[data-compact="true"] .photo-file-info{font-size:9px;padding:3px}.photo-info-dialog{position:static;inset:auto;margin:0;box-sizing:border-box;flex:0 1 auto;width:100%;min-width:0;max-width:none;padding:9px 10px;border:0;border-radius:0;color:inherit;background:transparent;text-shadow:inherit;overflow:auto;overscroll-behavior:contain}.photo-info-dialog[open]{display:block}.photo-info-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}.photo-info-heading h2{font-size:12px;margin:0;color:#fff}.photo-info-heading button{min-height:32px;padding:3px 7px;font-size:11px;background:transparent;color:#fff;text-shadow:inherit;border-color:#ffffff50}.photo-info-dialog dl{display:grid;grid-template-columns:68px minmax(0,1fr);gap:7px 10px;margin:8px 0;font-size:11px;line-height:1.45}.photo-info-dialog dt{color:#fff}.photo-info-dialog dd{margin:0;overflow-wrap:anywhere}.photo-info-dialog p{font-size:10px;line-height:1.45;margin:7px 0 0}.photo-info-note{color:#fff}.photo-number-badge{position:static;pointer-events:auto;border:1px solid #fff;border-radius:5px;background:#175fae;color:#fff;padding:6px 9px;font:600 12px/1.4 system-ui;box-shadow:0 1px 5px #0005;min-height:44px;min-width:44px}.photo-number-badge[aria-pressed="true"]{background:#093f80;outline:2px solid #a5c8ff}.photo-number-badge:focus-visible{outline:3px solid #ffbd48}
+.direct-photo-number{font-size:12px;font-weight:600;color:#175fae}.photo-number-overlay{position:fixed;inset:0;z-index:29;pointer-events:none}.photo-number-marker{position:absolute;pointer-events:none}.photo-number-marker[data-info-open="true"]{z-index:2}.photo-info-panel{position:fixed;display:flex;flex-direction:column;align-items:stretch;pointer-events:auto;box-sizing:border-box;border-radius:5px;overflow:hidden;background:transparent;color:#fff;text-shadow:1px 0 1px rgb(0 0 0 / 95%),-1px 0 1px rgb(0 0 0 / 95%),0 1px 1px rgb(0 0 0 / 95%),0 -1px 1px rgb(0 0 0 / 95%),0 2px 3px rgb(0 0 0 / 90%)}.photo-info-panel[data-expanded="true"]{border-radius:7px}.photo-info-panel[data-direction="up"]{flex-direction:column-reverse}.photo-info-panel .photo-file-info{flex:0 0 44px;box-sizing:border-box;min-width:44px;min-height:44px;height:44px;padding:1px 12px;border:0;border-radius:0;background:transparent;color:inherit;text-shadow:inherit;font:14px/1.5 system-ui;text-align:right;cursor:help;touch-action:manipulation;overflow:hidden}.photo-info-panel[data-expanded="true"] .photo-file-info{position:absolute;top:0;right:0;opacity:0;pointer-events:none}.photo-file-info span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.photo-file-info:focus-visible{outline:2px solid #fff;outline-offset:-2px}.photo-info-dialog{position:static;inset:auto;margin:0;box-sizing:border-box;flex:0 1 auto;width:100%;min-width:0;max-width:none;padding:10px 12px;border:0;border-radius:0;color:inherit;background:transparent;text-shadow:inherit;overflow:auto;overscroll-behavior:contain}.photo-info-dialog[open]{display:block}.photo-info-heading{display:flex;align-items:center;justify-content:flex-end;gap:12px}.photo-info-heading h2{font-size:16px;line-height:1.5;margin:0;color:#fff}.photo-info-heading button{min-height:32px;padding:3px 7px;font-size:14px;background:transparent;color:#fff;text-shadow:inherit;border-color:#ffffff50}.photo-info-dialog dl{display:flex;flex-direction:column;gap:8px;margin:10px 0;font-size:14px;line-height:1.55}.photo-info-row{display:flex;align-items:baseline;justify-content:flex-end;gap:10px;min-width:0}.photo-info-dialog dt{flex:0 0 auto;color:#fff}.photo-info-dialog dd{min-width:0;margin:0;text-align:right;overflow-wrap:anywhere}.photo-info-dialog p{font-size:12px;line-height:1.6;text-align:right;margin:12px 0 0}.photo-info-dialog p:empty{display:none}.photo-info-note{color:#fff}.photo-number-badge{position:static;pointer-events:auto;border:1px solid #fff;border-radius:5px;background:#175fae;color:#fff;padding:6px 9px;font:600 12px/1.4 system-ui;box-shadow:0 1px 5px #0005;min-height:44px;min-width:44px}.photo-number-badge[aria-pressed="true"]{background:#093f80;outline:2px solid #a5c8ff}.photo-number-badge:focus-visible{outline:3px solid #ffbd48}
 .photo-order-panel{position:fixed;z-index:39;right:12px;width:320px;max-width:calc(100vw - 24px);display:flex;flex-direction:column;border:1px solid #cbd4df;border-radius:8px;background:#fff;color:#364357;box-shadow:0 4px 18px #0002;overflow:hidden}.photo-order-header{padding:10px 12px;border-bottom:1px solid #e8edf3;flex-shrink:0}.photo-order-header h2{font-size:14px;margin:0 0 4px}.photo-order-header p{font-size:11px;line-height:1.45;margin:3px 0 0;overflow-wrap:anywhere}.photo-order-header #photoOrderSelection{font-weight:600;color:#175fae;font-size:12px}.photo-order-list{min-height:0;overflow:auto;padding:6px 8px;overscroll-behavior:contain;scrollbar-gutter:stable}.photo-order-row{display:flex;align-items:stretch;justify-content:center;gap:3px;padding:4px;border:1px solid #dbe3ed;border-radius:6px;background:#f5f7fa}.photo-order-choice{flex:1;min-width:0;max-width:180px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:3px;border:2px solid transparent;border-radius:4px;background:#fff;color:#364357;font-size:11px;cursor:pointer}.photo-order-choice:hover{border-color:#8bb5ee}.photo-order-choice:focus-visible,.photo-order-slot:focus-visible{outline:3px solid #ffbd48;outline-offset:1px}.photo-order-choice[data-selected="true"]{border-color:#175fae;background:#e8f1ff}.photo-order-choice img{display:block;width:100%;height:72px;object-fit:contain;background:#edf0f4;pointer-events:none}.photo-order-choice span{display:block;text-align:center;line-height:1.4}.photo-order-row[data-count="3"] .photo-order-choice img{height:56px}.photo-order-slot{display:flex;align-items:center;justify-content:center;gap:4px;width:100%;min-height:32px;margin:2px 0;padding:3px 5px;border:1px dashed #adc5e4;background:#f5f9ff;color:#175fae;font-size:10px;line-height:1.25}.photo-order-slot:hover{background:#dceaff;border-color:#175fae}.photo-order-slot::before,.photo-order-slot::after{content:"";height:1px;flex:1;background:#b4cae6}.photo-order-slot--between{flex:0 0 30px;width:30px;margin:0;padding:3px;writing-mode:vertical-rl}.photo-order-slot--between::before,.photo-order-slot--between::after{width:1px;height:auto}.photo-order-gap{margin:5px 0;text-align:center;font-size:10px;color:#7a8796}.photo-order-panel button:disabled{opacity:.5}.photo-order-panel button{touch-action:manipulation}
 @media(min-width:960px){body[data-photo-order="open"] main{padding-right:356px}body[data-photo-order="open"] .status{right:356px;max-width:calc(100vw - 380px)}}
 @media(max-width:959px){.photo-order-panel{left:12px;right:12px;width:auto}.photo-order-header{padding:7px 10px}.photo-order-header h2{display:inline;margin-right:8px}.photo-order-header #photoOrderSelection{display:inline}.photo-order-header p{font-size:10px}.photo-order-list{padding:4px 8px}.photo-order-choice img{height:58px}.photo-order-row[data-count="3"] .photo-order-choice img{height:48px}.photo-order-slot{min-height:32px}.photo-order-slot--between{flex-basis:44px;width:44px}body[data-photo-order="open"] main{padding-bottom:calc(var(--editor-footer-height) + var(--photo-order-height,240px) + 40px)}body[data-photo-order="open"] .status{bottom:calc(var(--editor-footer-height) + var(--photo-order-height,240px) + 12px)}}
 .photo-drop-indicator{position:fixed;z-index:70;pointer-events:none;background:#1769d2;border-radius:2px;box-shadow:0 0 0 2px #ffffffd9}.photo-drop-indicator span{position:absolute;left:6px;top:7px;white-space:nowrap;border-radius:4px;background:#1769d2;color:#fff;font:12px/1.4 system-ui;padding:4px 7px;box-shadow:0 2px 8px #0002}.photo-drop-indicator[data-mode="group"] span{top:-28px;left:0}.photo-drop-indicator[data-mode="blocked"]{background:#a43434}.photo-drop-indicator[data-mode="blocked"] span{background:#a43434}
 .photo-text-hint{position:fixed;z-index:65;pointer-events:none;transform:translateY(-50%);border:1px solid #bfd2ec;border-radius:4px;background:#f5f9ff;color:#285c9a;padding:2px 7px;font:12px/1.4 system-ui;white-space:nowrap}
+.photo-mobile-info{position:fixed;left:8px;right:8px;z-index:29;pointer-events:none;background:transparent;color:#fff;font:13px/1.5 system-ui;text-shadow:1px 0 1px rgb(0 0 0 / 95%),-1px 0 1px rgb(0 0 0 / 95%),0 1px 1px rgb(0 0 0 / 95%),0 -1px 1px rgb(0 0 0 / 95%),0 2px 3px rgb(0 0 0 / 90%);overflow-wrap:anywhere}
+.photo-number-marker[data-compact="true"] .photo-file-info{padding:1px 4px;display:flex;align-items:center;justify-content:flex-end}
+.photo-info-panel[data-expanded="true"][data-presentation="bubble"]{overflow:visible;text-shadow:none}.photo-info-panel[data-presentation="bubble"] .photo-info-dialog{background:rgb(20 27 38 / 94%);border-radius:8px;box-shadow:0 3px 16px rgb(0 0 0 / 28%);margin-top:8px}.photo-info-panel[data-presentation="bubble"][data-direction="up"] .photo-info-dialog{margin-top:0;margin-bottom:8px}.photo-info-panel[data-expanded="true"][data-presentation="bubble"]::after{content:"";position:absolute;left:var(--photo-tail-left,50%);top:0;width:16px;height:8px;transform:translateX(-50%);clip-path:polygon(50% 0,0 100%,100% 100%);background:rgb(20 27 38 / 94%);pointer-events:none}.photo-info-panel[data-presentation="bubble"][data-direction="up"]::after{top:auto;bottom:0;clip-path:polygon(0 0,100% 0,50% 100%)}.photo-info-panel[data-presentation="bubble"] .photo-info-heading{justify-content:space-between}.photo-info-panel[data-presentation="bubble"] .photo-info-row{display:grid;grid-template-columns:80px minmax(0,1fr);align-items:baseline;gap:12px}.photo-info-panel[data-presentation="bubble"] .photo-info-dialog dd,.photo-info-panel[data-presentation="bubble"] .photo-info-dialog p{text-align:left}
+.photo-info-panel[data-expanded="true"][data-presentation="bubble"]::before{content:"";position:absolute;left:var(--photo-bridge-left,0);top:var(--photo-bridge-top,0);width:var(--photo-bridge-width,0);height:var(--photo-bridge-height,0);background:transparent;pointer-events:auto}
+@media(max-width:767px){.photo-info-panel{display:none}}
+@media(min-width:768px){.photo-mobile-info{display:none}}
 @media(max-width:480px){.image-tools{padding:6px;gap:4px}.image-tools button{padding:7px;font-size:11px}.direct-image-tools select{max-width:118px}.direct-photo-hint{font-size:10px}}
 `;
 
@@ -29,6 +35,7 @@ let photoTextPointer=null;
 let photoNumberFrame=null;
 let photoInfoOwner=null,photoInfoImage=null,photoInfoFocus=null,photoInfoMessage='',photoInfoSerial=0,photoInfoPinned=false,photoInfoCloseTimer=null,photoFileDetailsByPath=new Map(),photoFilePendingByPath=new Map();
 let photoMetadataOwner=null,photoMetadataSerial=0,photoMetadataState='idle',photoMetadataByPath=new Map();
+let photoMobileOwner=null,photoMobileFailedByPath=new Set();
 const formatDirectPhotoBytes=${formatPhotoBytes.toString()};
 const canonicalDirectPhotoSource=${canonicalPhotoSource.toString()};
 function directPhotoMediaPath(value){
@@ -46,7 +53,7 @@ function rememberDirectPhotoMetadata(postId,media){
 }
 async function loadDirectPhotoMetadata(postId){
   if(current?.id!==postId)return;
-  closeDirectPhotoInfo();const serial=++photoMetadataSerial;photoMetadataOwner=postId;photoMetadataByPath=new Map();photoFileDetailsByPath=new Map();photoFilePendingByPath=new Map();photoMetadataState='loading';scheduleDirectPhotoNumbers();
+  closeDirectPhotoInfo();const serial=++photoMetadataSerial;photoMetadataOwner=postId;photoMetadataByPath=new Map();photoFileDetailsByPath=new Map();photoFilePendingByPath=new Map();photoMobileOwner=null;photoMetadataState='loading';scheduleDirectPhotoNumbers();
   try{
     const result=await api('/posts/'+encodeURIComponent(postId)+'/media');
     if(serial!==photoMetadataSerial||current?.id!==postId||photoMetadataOwner!==postId)return;
@@ -64,6 +71,37 @@ function directPhotoFileInfo(image){
   const size=media?.bytes?formatDirectPhotoBytes(media.bytes):path&&photoMetadataOwner===current?.id&&photoMetadataState==='loading'?'용량 확인 중':'용량 미확인';
   return{dimensions,size,description:dimensions+' · 저장 용량 '+size,title:dimensions+' · '+(media?.bytes?'저장 파일 '+media.bytes.toLocaleString('ko-KR')+' 바이트':size)};
 }
+function directPhotoInfoIsMobile(){return window.innerWidth<=767}
+function directPhotoFormat(details,metadata){return details?.format||({'image/jpeg':'JPEG','image/png':'PNG','image/webp':'WebP','image/avif':'AVIF','image/gif':'GIF','image/svg+xml':'SVG','image/x-icon':'ICO','image/vnd.microsoft.icon':'ICO'}[metadata?.mime]||'미확인')}
+function requestDirectPhotoDetails(postId,path){
+  const pending=photoFilePendingByPath;let request=pending.get(path);if(request)return request;
+  request=api('/posts/'+encodeURIComponent(postId)+'/media-info',{method:'POST',body:JSON.stringify({path})}).then(result=>{
+    if(!result.info||typeof result.info!=='object')throw new Error('사진 정보 응답 없음');
+    if(photoFilePendingByPath===pending&&current?.id===postId){photoFileDetailsByPath.set(path,result.info);if(photoMobileOwner===postId)photoMobileFailedByPath.delete(path);const stored=photoMetadataByPath.get(path);rememberDirectPhotoMetadata(postId,{path,bytes:result.info.bytes,mime:stored?.mime||''});scheduleDirectPhotoNumbers()}
+    return result;
+  }).catch(error=>{
+    if(photoFilePendingByPath===pending&&current?.id===postId){if(photoMobileOwner!==postId){photoMobileOwner=postId;photoMobileFailedByPath=new Set()}photoMobileFailedByPath.add(path);scheduleDirectPhotoNumbers()}
+    throw error;
+  }).finally(()=>{if(pending.get(path)===request)pending.delete(path)});
+  pending.set(path,request);return request;
+}
+function refreshDirectMobilePhotoInfo(images){
+  const bar=$('photoMobileInfo'),postId=current?.id;
+  if(photoMobileOwner!==postId){photoMobileOwner=postId;photoMobileFailedByPath=new Set()}
+  if(!directPhotoInfoIsMobile()||!postId||busy||photoDrag){bar.hidden=true;bar.textContent='';return}
+  if($('photoInfoDialog').open)closeDirectPhotoInfo();
+  const body=$('bodyHtml').getBoundingClientRect(),top=Math.max(0,$('editorHeader').getBoundingClientRect().bottom,body.top),bottom=Math.min(window.innerHeight,$('editorFooter').hidden?window.innerHeight:$('editorFooter').getBoundingClientRect().top,body.bottom);
+  const visible=images.map(image=>({image,box:image.getBoundingClientRect()})).filter(({box})=>box.width>0&&box.height>0&&box.bottom>top&&box.top<bottom&&box.right>0&&box.left<window.innerWidth);
+  const chosen=visible.find(({image})=>image===selectedMedia?.image)||visible.sort((a,b)=>Math.max(a.box.top,top)-Math.max(b.box.top,top))[0];
+  if(!chosen){bar.hidden=true;bar.textContent='';return}
+  const image=chosen.image,path=directPhotoMediaPath(image.currentSrc||image.getAttribute('src')||''),details=path?photoFileDetailsByPath.get(path):null,metadata=path&&photoMetadataOwner===postId?photoMetadataByPath.get(path):null,basic=directPhotoFileInfo(image);
+  const pixels=Number.isSafeInteger(details?.width)&&details.width>0&&Number.isSafeInteger(details?.height)&&details.height>0?details.width+' × '+details.height+' px':basic.dimensions,bytes=Number.isSafeInteger(details?.bytes)&&details.bytes>0?details.bytes:metadata?.bytes;
+  const hdr=details?.hdr==='metadata-present'?'HDR 메타데이터 있음 (실제 지원 미확인)':details?.hdr==='not-indicated'?'HDR 표시 없음 (SDR 여부 미확인)':'HDR 정보 확인 불가';
+  const format=directPhotoFormat(details,metadata),parts=['사진 '+(images.indexOf(image)+1),pixels,bytes?formatDirectPhotoBytes(bytes):basic.size,format==='미확인'?'파일 형식 미확인':format,details?.colorSpace||'색영역 미확인','색상 프로필: '+(details?.profileName||'미확인'),hdr];
+  if(!path)parts.push('외부 사진의 파일 정보는 확인하지 않습니다.');else if(photoMobileFailedByPath.has(path))parts.push('추가 파일 정보 불러오기 실패');else if(!details)parts.push('파일 정보 확인 중');else if(!details.metadataComplete)parts.push('일부 파일 정보 미확인');
+  bar.style.top=Math.max(0,$('editorHeader').getBoundingClientRect().bottom)+4+'px';bar.textContent=parts.join(' / ');bar.hidden=false;
+  if(path&&!details&&!photoFilePendingByPath.has(path)&&!photoMobileFailedByPath.has(path))requestDirectPhotoDetails(postId,path).catch(()=>{});
+}
 let photoOrderOwner=null,photoOrderSource=null,photoOrderSnapshot=[],photoOrderPreservePosition=false;
 function cancelDirectPhotoInfoClose(){if(photoInfoCloseTimer!==null){clearTimeout(photoInfoCloseTimer);photoInfoCloseTimer=null}}
 function directPhotoInfoArea(){return photoInfoFocus?.parentElement}
@@ -78,7 +116,7 @@ function avoidDirectPhotoInfoTools(base){
   return next;
 }
 function resetDirectPhotoInfoPanel(panel){
-  if(!panel?.photoBaseRect)return;const box=panel.photoBaseRect;panel.dataset.expanded='false';panel.dataset.direction='down';panel.style.left=box.left+'px';panel.style.top=box.top+'px';panel.style.width=box.width+'px';panel.style.height='44px';
+  if(!panel?.photoBaseRect)return;const box=panel.photoBaseRect;panel.hidden=!!panel.photoBaseHidden;panel.dataset.expanded='false';panel.dataset.presentation='overlay';panel.dataset.direction='down';panel.style.left=box.left+'px';panel.style.top=box.top+'px';panel.style.width=box.width+'px';panel.style.height='44px';
   const trigger=panel.querySelector('.photo-file-info');trigger.style.width='100%';trigger.style.marginRight='0';panel.parentElement.dataset.infoOpen='false';
 }
 function closeDirectPhotoInfo(){
@@ -91,23 +129,36 @@ function leaveDirectPhotoInfo(event){
   cancelDirectPhotoInfoClose();photoInfoCloseTimer=setTimeout(()=>{photoInfoCloseTimer=null;if(!photoInfoPinned&&!directPhotoInfoArea()?.contains(document.activeElement))closeDirectPhotoInfo()},180);
 }
 function positionDirectPhotoInfo(){
+  if(directPhotoInfoIsMobile()){closeDirectPhotoInfo();return}
   const dialog=$('photoInfoDialog'),panel=directPhotoInfoArea();if(!dialog.open||!photoInfoImage||!panel?.photoBaseRect)return;
   const image=photoInfoImage.getBoundingClientRect(),base=panel.photoBaseRect;
   const left=8,right=window.innerWidth-8,top=Math.max(8,$('editorHeader').getBoundingClientRect().bottom+6),bottom=Math.min(window.innerHeight-8,$('editorFooter').hidden?window.innerHeight-8:$('editorFooter').getBoundingClientRect().top-6);
-  if(busy||photoDrag||panel.hidden||image.bottom<=Math.max(top,$('editorHeader').getBoundingClientRect().bottom)||image.top>=bottom||image.right<=left||image.left>=right||base.top>=bottom||right<=left){closeDirectPhotoInfo();return}
+  if(busy||photoDrag||image.bottom<=Math.max(top,$('editorHeader').getBoundingClientRect().bottom)||image.top>=bottom||image.right<=left||image.left>=right||right<=left){closeDirectPhotoInfo();return}
   const clamp=(value,min,max)=>Math.min(Math.max(value,min),max);
   // Keep the summary's safe anchor. While reading details, temporarily fold
   // editing controls without changing their layout, selection or scroll state.
-  const width=Math.min(360,right-left),preferDown=!base.above&&image.width>=260;
-  const panelLeft=clamp(base.right-width,left,right-width),panelRight=panelLeft+width;
+  const width=Math.min(440,right-left),preferDown=!base.above&&image.width>=260;
+  let panelLeft=clamp(base.right-width,left,right-width),panelRight=panelLeft+width;
   panel.style.width=width+'px';panel.style.left=panelLeft+'px';photoInfoFocus.style.width=base.width+'px';photoInfoFocus.style.marginRight=Math.max(0,panelRight-base.right)+'px';photoInfoFocus.style.alignSelf='flex-end';
   dialog.style.maxHeight='';
-  const desiredHeight=44+(dialog.scrollHeight||dialog.getBoundingClientRect().height),downSpace=bottom-base.top,aboveSpace=base.bottom-top;
+  panel.dataset.expanded='true';
+  panel.dataset.presentation='overlay';
+  const overlayHeight=dialog.scrollHeight||dialog.getBoundingClientRect().height,bubble=image.width<440||overlayHeight+12>image.height;
+  panel.dataset.presentation=bubble?'bubble':'overlay';
+  if(!bubble&&(panel.photoBaseHidden||base.top>=bottom)){closeDirectPhotoInfo();return}
+  // Bubble anchors follow the visible photo itself. The collapsed summary may
+  // have moved far above it to avoid editing tools, which are folded here.
+  const anchorY=bubble?clamp(image.top+6,top,Math.max(top,Math.min(bottom,image.bottom-6))):null;
+  if(bubble){panel.hidden=false;panelLeft=clamp(image.right-6-width,left,right-width);panelRight=panelLeft+width;panel.style.left=panelLeft+'px'}
+  const anchorX=bubble?clamp(image.left+image.width/2,left+16,right-16):base.left+base.width/2;panel.style.setProperty('--photo-tail-left',clamp(anchorX-panelLeft,16,width-16)+'px');
+  const tail=bubble?8:0,desiredHeight=(dialog.scrollHeight||dialog.getBoundingClientRect().height)+tail,downSpace=bottom-(bubble?anchorY:base.top),aboveSpace=(bubble?anchorY:base.bottom)-top;
   let down=preferDown;if(!down&&aboveSpace<desiredHeight)down=downSpace>aboveSpace;
   if((down?downSpace:aboveSpace)<desiredHeight&&(down?aboveSpace:downSpace)>(down?downSpace:aboveSpace))down=!down;
   const available=bottom-top;if(available<60){closeDirectPhotoInfo();return}
   panel.dataset.expanded='true';panel.dataset.direction=down?'down':'up';panel.parentElement.dataset.infoOpen='true';$('photoNumberOverlay').style.zIndex='85';document.body.dataset.photoInfo='open';
-  const height=Math.min(desiredHeight,available),panelTop=clamp(down?base.top:base.bottom-height,top,bottom-height);panel.style.height=height+'px';panel.style.top=panelTop+'px';dialog.style.maxHeight=Math.max(0,height-44)+'px';dialog.dataset.side=down?'top-band':'above';
+  const height=Math.min(desiredHeight,bubble?(down?downSpace:aboveSpace):available),panelTop=bubble?(down?anchorY:anchorY-height):clamp(down?base.top:base.bottom-height,top,bottom-height);panel.style.height=height+'px';panel.style.top=panelTop+'px';dialog.style.maxHeight=Math.max(0,height-tail)+'px';dialog.dataset.side=down?'top-band':'above';
+  const bridgeTop=base.top<panelTop?base.top-panelTop:height-1,bridgeHeight=base.top<panelTop?panelTop-base.top+1:base.bottom>panelTop+height?base.bottom-panelTop-height+1:0;
+  panel.style.setProperty('--photo-bridge-left',base.left-panelLeft+'px');panel.style.setProperty('--photo-bridge-top',bridgeTop+'px');panel.style.setProperty('--photo-bridge-width',base.width+'px');panel.style.setProperty('--photo-bridge-height',Math.max(0,bridgeHeight)+'px');
 }
 function renderDirectPhotoInfo(message){
   const dialog=$('photoInfoDialog');if(!dialog.open)return;
@@ -116,14 +167,15 @@ function renderDirectPhotoInfo(message){
   const image=photoInfoImage,path=directPhotoMediaPath(image.currentSrc||image.getAttribute('src')||''),details=path?photoFileDetailsByPath.get(path):null,metadata=path&&photoMetadataOwner===current.id?photoMetadataByPath.get(path):null,basic=directPhotoFileInfo(image);
   const pixels=Number.isSafeInteger(details?.width)&&details.width>0&&Number.isSafeInteger(details?.height)&&details.height>0?details.width+' × '+details.height+' px':basic.dimensions;
   const bytes=Number.isSafeInteger(details?.bytes)&&details.bytes>0?details.bytes:metadata?.bytes;
-  const format=details?.format||({'image/jpeg':'JPEG','image/png':'PNG','image/webp':'WebP','image/avif':'AVIF','image/gif':'GIF','image/svg+xml':'SVG','image/x-icon':'ICO','image/vnd.microsoft.icon':'ICO'}[metadata?.mime]||'미확인');
+  const format=directPhotoFormat(details,metadata);
   const hdr=details?.hdr==='metadata-present'?'HDR 메타데이터 있음 · 실제 HDR 지원 여부 미확인':details?.hdr==='not-indicated'?'HDR 표시 없음 · SDR 여부는 미확인':'확인 불가';
   $('photoInfoHeading').textContent='사진 '+(directBodyPhotos().indexOf(image)+1)+' 정보';
   const list=$('photoInfoDetails');list.replaceChildren();
-  for(const [label,value] of [['해상도',pixels],['저장 용량',bytes?formatDirectPhotoBytes(bytes)+' ('+bytes.toLocaleString('ko-KR')+' 바이트)':basic.size],['파일 형식',format],['색영역',details?.colorSpace||'미확인'],['색상 프로필',details?.profileName||'미확인'],['HDR 정보',hdr]]){const term=document.createElement('dt'),description=document.createElement('dd');term.textContent=label;description.textContent=value;list.append(term,description)}
+  for(const [label,value] of [['해상도',pixels],['저장 용량',bytes?formatDirectPhotoBytes(bytes)+' ('+bytes.toLocaleString('ko-KR')+' 바이트)':basic.size],['파일 형식',format],['색영역',details?.colorSpace||'미확인'],['색상 프로필',details?.profileName||'미확인'],['HDR 정보',hdr]]){const row=document.createElement('div'),term=document.createElement('dt'),description=document.createElement('dd');row.className='photo-info-row';term.textContent=label;description.textContent=value;row.append(term,description);list.append(row)}
   $('photoInfoStatus').textContent=photoInfoMessage;positionDirectPhotoInfo();
 }
 async function openDirectPhotoInfo(image,focus,pinned=false){
+  if(directPhotoInfoIsMobile()){refreshDirectMobilePhotoInfo(directBodyPhotos());return}
   if(busy||!current||!directBodyPhotos().includes(image))return;
   cancelDirectPhotoInfoClose();const dialog=$('photoInfoDialog');
   if(!focus){refreshDirectPhotoNumbers();focus=Array.from($('photoNumberOverlay').querySelectorAll('.photo-file-info')).find(node=>node.photoInfoImage===image)}if(!focus)return;
@@ -133,17 +185,14 @@ async function openDirectPhotoInfo(image,focus,pinned=false){
   focus.setAttribute('aria-expanded','true');focus.parentElement.append(dialog);dialog.open=true;renderDirectPhotoInfo(path?'파일에 기록된 정보를 확인하는 중…':'외부 사진의 파일 정보는 확인하지 않습니다.');
   if(!path||!dialog.open)return;
   if(photoFileDetailsByPath.has(path)){renderDirectPhotoInfo(photoFileDetailsByPath.get(path).metadataComplete?'':'이 파일에서 일부 정보를 확인할 수 없습니다.');return}
-  const pending=photoFilePendingByPath;let request=pending.get(path);
-  if(!request){request=api('/posts/'+encodeURIComponent(postId)+'/media-info',{method:'POST',body:JSON.stringify({path})});pending.set(path,request)}
   try{
-    const result=await request;if(!result.info||typeof result.info!=='object')throw new Error('사진 정보 응답 없음');
-    if(photoFilePendingByPath===pending&&current?.id===postId){photoFileDetailsByPath.set(path,result.info);const stored=photoMetadataByPath.get(path);rememberDirectPhotoMetadata(postId,{path,bytes:result.info.bytes,mime:stored?.mime||''})}
+    const result=await requestDirectPhotoDetails(postId,path);
     if(serial!==photoInfoSerial||current?.id!==postId||photoInfoOwner!==postId||photoInfoImage!==image||!dialog.open||!$('bodyHtml').contains(image))return;
     renderDirectPhotoInfo(result.info.metadataComplete?'':'이 파일에서 일부 정보를 확인할 수 없습니다.');
   }catch{
     if(serial!==photoInfoSerial||current?.id!==postId||photoInfoOwner!==postId||photoInfoImage!==image||!dialog.open)return;
     renderDirectPhotoInfo('추가 파일 정보를 불러오지 못했습니다. 확인된 해상도와 용량은 그대로 표시합니다.');
-  }finally{if(pending.get(path)===request)pending.delete(path)}
+  }
 }
 function directBodyPhotos(){return Array.from($('bodyHtml').querySelectorAll('img')).filter(image=>!image.closest('[data-ke-type="opengraph"],.se_component.se_oglink,.se-component.se-oglink'))}
 function updateDirectPhotoNumberControls(){
@@ -168,14 +217,14 @@ function refreshDirectPhotoNumbers(){
       panel.append(info);marker.append(badge,panel);overlay.append(marker);
     }
     const badge=marker.querySelector('.photo-number-badge'),panel=marker.querySelector('.photo-info-panel'),info=marker.querySelector('.photo-file-info'),[dimensions,size]=info.children;
-    marker.dataset.compact=String(box.width<230);marker.dataset.photoIndex=String(index+1);dimensions.textContent=metadata.dimensions.replaceAll(' × ','×').replace(' px','px');size.textContent=metadata.size;info.disabled=busy;info.setAttribute('aria-label','사진 '+(index+1)+' · '+metadata.description+' · 상세 정보');info.setAttribute('aria-expanded',String($('photoInfoDialog').open&&photoInfoImage===image));badge.textContent=String(index+1);badge.setAttribute('aria-label','사진 '+(index+1)+' 선택 · '+metadata.description);badge.setAttribute('aria-pressed',String(selectedMedia?.image===image));badge.disabled=busy;
+    const compact=box.width<230;marker.dataset.compact=String(compact);marker.dataset.photoIndex=String(index+1);dimensions.textContent=compact?'ⓘ 정보':metadata.dimensions.replaceAll(' × ','×').replace(' px','px');size.textContent=compact?'':metadata.size;size.hidden=compact;info.disabled=busy;info.setAttribute('aria-label','사진 '+(index+1)+' · '+metadata.description+' · 상세 정보');info.setAttribute('aria-expanded',String($('photoInfoDialog').open&&photoInfoImage===image));badge.textContent=String(index+1);badge.setAttribute('aria-label','사진 '+(index+1)+' 선택 · '+metadata.description);badge.setAttribute('aria-pressed',String(selectedMedia?.image===image));badge.disabled=busy;
     const width=Math.max(44,Math.min(170,box.width-12)),right=Math.min(window.innerWidth-8,box.right-6),left=Math.max(8,right-width),above=box.width<width+62;
-    const infoTop=above?box.top-46:box.top+6;panel.photoBaseRect=avoidDirectPhotoInfoTools({left,right:left+width,top:infoTop,bottom:infoTop+44,width,height:44,above});panel.hidden=panel.photoBaseRect.top<Math.max(8,top)||panel.photoBaseRect.bottom>bottom;
+    const infoTop=above?box.top-46:box.top+6;panel.photoBaseRect=avoidDirectPhotoInfoTools({left,right:left+width,top:infoTop,bottom:infoTop+44,width,height:44,above});panel.photoBaseHidden=panel.photoBaseRect.top<Math.max(8,top)||panel.photoBaseRect.bottom>bottom;panel.hidden=panel.photoBaseHidden;
     marker.style.left=Math.max(4,box.left+6)+'px';marker.style.top=Math.max(top+4,box.top+6)+'px';marker.style.width='44px';
     if(photoInfoImage!==image)resetDirectPhotoInfoPanel(panel);
   });
   for(const marker of existing.values()){if(marker.photoImage===photoInfoImage)closeDirectPhotoInfo();marker.remove()}
-  updateDirectPhotoNumberControls();refreshDirectPhotoOrder();renderDirectPhotoInfo();
+  updateDirectPhotoNumberControls();refreshDirectPhotoOrder();refreshDirectMobilePhotoInfo(images);renderDirectPhotoInfo();
 }
 function scheduleDirectPhotoNumbers(){if(photoNumberFrame===null&&typeof window.requestAnimationFrame==='function')photoNumberFrame=window.requestAnimationFrame(refreshDirectPhotoNumbers)}
 function closeDirectPhotoOrder(){
