@@ -1,5 +1,20 @@
 // Metadata inspection only: never decode pixels, rewrite a file, or infer JPEG
 // quality. A prefix cannot verify an appended HDR gain-map image's contents.
+export interface PhotoHdrDetails {
+  formats: string[];
+  versions?: string[];
+  parameterSource?: 'adobe' | 'iso' | 'apple';
+  // Recorded log2 values (stops), retaining one or three channels. Missing
+  // fields stay missing even when a format defines rendering defaults.
+  gainMapMin?: number[];
+  gainMapMax?: number[];
+  hdrCapacityMin?: number;
+  hdrCapacityMax?: number;
+  // Apple's recorded headroom is a linear ratio to SDR white, not log2.
+  appleHeadroom?: number;
+  baseRenditionIsHDR?: boolean;
+}
+
 export interface PhotoFileInfo {
   format: string | null;
   bytes: number;
@@ -8,6 +23,7 @@ export interface PhotoFileInfo {
   colorSpace: string | null;
   profileName: string | null;
   hdr: 'metadata-present' | 'not-indicated' | 'unknown';
+  hdrDetails?: PhotoHdrDetails;
   metadataComplete: boolean;
 }
 
@@ -18,10 +34,208 @@ const starts = (bytes: Uint8Array, prefix: string) => text(bytes, 0, prefix.leng
 const XMP_HEADER = 'http://ns.adobe.com/xap/1.0/\0';
 const EXTENDED_XMP_HEADER = 'http://ns.adobe.com/xmp/extension/\0';
 const ISO_GAIN_MAP_HEADER = 'urn:iso:std:iso:ts:21496:-1\0';
+const ADOBE_HDR_NS = 'http://ns.adobe.com/hdr-gain-map/1.0/';
+const APPLE_HDR_NS = 'http://ns.apple.com/HDRGainMap/1.0/';
+const APPLE_PIXEL_NS = 'http://ns.apple.com/pixeldatainfo/1.0/';
+const APPLE_HDR_TYPE = 'urn:com:apple:photo:2020:aux:hdrgainmap';
+const RDF_NS = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
 const u16 = (bytes: Uint8Array, at: number, little = false) => new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint16(at, little);
 const u32 = (bytes: Uint8Array, at: number, little = false) => new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(at, little);
 const fixed = (bytes: Uint8Array, at: number) => new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getInt32(at) / 65536;
 const label = (value: string) => value.replace(/[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/gu, '').trim().slice(0, 120) || null;
+
+interface XmpNode {
+  name: string;
+  key: string;
+  namespaces: Map<string, string>;
+  attributes: Map<string, string>;
+  children: XmpNode[];
+  content: string;
+}
+const xmpKey = (namespace: string, name: string) => namespace + '\0' + name;
+function xmlText(value: string): string | null {
+  let valid = true;
+  const decoded = value.replace(/&([^;]*);/gu, (_, entity: string) => {
+    const named: Record<string, string> = {amp:'&',lt:'<',gt:'>',quot:'"',apos:"'"};
+    if (Object.hasOwn(named, entity)) return named[entity];
+    const numeric = /^#(?:([0-9]+)|x([0-9a-f]+))$/iu.exec(entity);
+    const code = numeric ? parseInt(numeric[1] ?? numeric[2], numeric[1] ? 10 : 16) : 0;
+    if (!code || code > 0x10ffff || code >= 0xd800 && code <= 0xdfff) { valid = false; return ''; }
+    return String.fromCodePoint(code);
+  });
+  return valid && !/&[^;]*$/u.test(value) ? decoded : null;
+}
+
+// A small namespace-aware reader for scalar XMP and RDF sequences, not a
+// general XML processor. No DTD/entity expansion or extended-XMP assembly.
+function xmpNodes(input: string): XmpNode[] | null {
+  const source = input.replace(/\0+$/u, ''), nodes: XmpNode[] = [];
+  const root: XmpNode = {name:'',key:'',namespaces:new Map(),attributes:new Map(),children:[],content:''};
+  const stack = [root];
+  for (let at = 0; at < source.length;) {
+    if (source[at] !== '<') {
+      const end = source.indexOf('<', at), until = end < 0 ? source.length : end;
+      const content = xmlText(source.slice(at, until));
+      if (content === null) return null;
+      stack.at(-1)!.content += content; at = until; continue;
+    }
+    if (source.startsWith('<!--', at) || source.startsWith('<?', at)) {
+      const ending = source.startsWith('<!--', at) ? '-->' : '?>';
+      const end = source.indexOf(ending, at + 2);
+      if (end < 0) return null;
+      at = end + ending.length; continue;
+    }
+    if (source.startsWith('<!', at)) return null;
+    let end = at + 1, quote = '';
+    for (; end < source.length; end++) {
+      const character = source[end];
+      if (quote) { if (character === quote) quote = ''; }
+      else if (character === '"' || character === "'") quote = character;
+      else if (character === '>') break;
+    }
+    if (end === source.length) return null;
+    const tag = source.slice(at + 1, end);
+    at = end + 1;
+    if (tag.startsWith('/')) {
+      if (stack.length === 1 || tag.slice(1).trim() !== stack.at(-1)!.name) return null;
+      stack.pop(); continue;
+    }
+    const match = /^([A-Za-z_][\w.:-]*)([\s\S]*?)\/?$/u.exec(tag);
+    if (!match || nodes.length >= 2048 || stack.length > 32) return null;
+    const attributes = new Map<string, string>();
+    let rest = match[2];
+    while (rest.trim()) {
+      const attribute = /^\s+([A-Za-z_][\w.:-]*)\s*=\s*(?:"([^"<]*)"|'([^'<]*)')/u.exec(rest);
+      if (!attribute || attributes.size >= 128 || attributes.has(attribute[1])) return null;
+      const value = xmlText(attribute[2] ?? attribute[3]);
+      if (value === null) return null;
+      attributes.set(attribute[1], value); rest = rest.slice(attribute[0].length);
+    }
+    const namespaces = new Map(stack.at(-1)!.namespaces);
+    for (const [name, value] of attributes) {
+      if (name === 'xmlns') namespaces.set('', value);
+      else if (name.startsWith('xmlns:')) namespaces.set(name.slice(6), value);
+    }
+    if (namespaces.size > 64) return null;
+    const expanded = (name: string, attr = false) => {
+      const colon = name.indexOf(':'), prefix = colon < 0 ? '' : name.slice(0, colon);
+      const namespace = attr && colon < 0 ? '' : namespaces.get(prefix) ?? '';
+      return xmpKey(namespace, colon < 0 ? name : name.slice(colon + 1));
+    };
+    const node: XmpNode = {name:match[1],key:expanded(match[1]),namespaces,attributes:new Map(),children:[],content:''};
+    for (const [name, value] of attributes) if (name !== 'xmlns' && !name.startsWith('xmlns:')) {
+      const key = expanded(name, true);
+      if (node.attributes.has(key)) return null;
+      node.attributes.set(key, value);
+    }
+    stack.at(-1)!.children.push(node); nodes.push(node);
+    if (!tag.endsWith('/')) stack.push(node);
+  }
+  return stack.length === 1 && root.children.length === 1 && !root.content.trim() ? nodes : null;
+}
+
+function xmpValues(nodes: XmpNode[], namespace: string, name: string): string[] | null {
+  const key = xmpKey(namespace, name), candidates: (string[] | null)[] = [];
+  for (const node of nodes) {
+    if (node.attributes.has(key)) candidates.push([node.attributes.get(key)!]);
+    if (node.key !== key) continue;
+    if (!node.children.length) candidates.push([node.content.trim()]);
+    else {
+      const sequence = node.children[0];
+      candidates.push(!node.content.trim() && node.children.length === 1 && sequence.key === xmpKey(RDF_NS, 'Seq') && !sequence.content.trim() && [1,3].includes(sequence.children.length) && sequence.children.every(child => child.key === xmpKey(RDF_NS, 'li') && !child.children.length)
+        ? sequence.children.map(child => child.content.trim()) : null);
+    }
+  }
+  return candidates.length === 1 ? candidates[0] : null;
+}
+function xmpNumber(value: string): number | null {
+  if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/u.test(value.trim())) return null;
+  const number = Number(value); return Number.isFinite(number) ? number : null;
+}
+function xmpHdrInfo(xmp: string): PhotoHdrDetails[] {
+  const nodes = xmpNodes(xmp);
+  if (!nodes) return [];
+  const records: PhotoHdrDetails[] = [];
+  const scalar = (namespace: string, name: string) => { const values = xmpValues(nodes, namespace, name); return values?.length === 1 ? values[0].trim() : null; };
+  const numbers = (name: string) => {
+    const values = xmpValues(nodes, ADOBE_HDR_NS, name);
+    if (!values || ![1,3].includes(values.length)) return undefined;
+    const parsed = values.map(xmpNumber); return parsed.every(value => value !== null) ? parsed as number[] : undefined;
+  };
+  if (nodes.some(node => [...node.namespaces.values()].includes(ADOBE_HDR_NS))) {
+    const record: PhotoHdrDetails = {formats:['Adobe HDR 게인맵']};
+    const version = scalar(ADOBE_HDR_NS, 'Version');
+    if (version && /^\d+(?:\.\d+){0,3}$/u.test(version) && version.length < 32) record.versions = ['Adobe ' + version];
+    if (version === '1.0') {
+      let min = numbers('GainMapMin'), max = numbers('GainMapMax');
+      if (min && max && Array.from({length:Math.max(min.length,max.length)}, (_,index) => min![index % min!.length] <= max![index % max!.length]).some(valid => !valid)) min = max = undefined;
+      if (min) record.gainMapMin = min;
+      if (max) record.gainMapMax = max;
+      const minimum = xmpNumber(scalar(ADOBE_HDR_NS, 'HDRCapacityMin') ?? ''), maximum = xmpNumber(scalar(ADOBE_HDR_NS, 'HDRCapacityMax') ?? '');
+      if (!(minimum !== null && maximum !== null && minimum >= maximum)) {
+        if (minimum !== null && minimum >= 0) record.hdrCapacityMin = minimum;
+        if (maximum !== null && maximum > 0) record.hdrCapacityMax = maximum;
+      }
+      const base = scalar(ADOBE_HDR_NS, 'BaseRenditionIsHDR');
+      if (base === 'True' || base === 'False') record.baseRenditionIsHDR = base === 'True';
+      if (Object.keys(record).some(key => !['formats','versions'].includes(key))) record.parameterSource = 'adobe';
+    }
+    records.push(record);
+  }
+  const appleVersion = scalar(APPLE_HDR_NS, 'HDRGainMapVersion');
+  const appleType = scalar(APPLE_PIXEL_NS, 'AuxiliaryImageType');
+  if (appleType === APPLE_HDR_TYPE || appleVersion !== null) {
+    const record: PhotoHdrDetails = {formats:['Apple HDR 게인맵']};
+    if (appleVersion && /^\d{1,10}$/u.test(appleVersion) && Number(appleVersion) <= 0x7fffffff) {
+      record.versions = ['Apple ' + appleVersion];
+      const headroom = xmpNumber(scalar(APPLE_HDR_NS, 'HDRGainMapHeadroom') ?? '');
+      if (appleType === APPLE_HDR_TYPE && headroom !== null && headroom >= 1) { record.appleHeadroom = headroom; record.parameterSource = 'apple'; }
+    }
+    records.push(record);
+  }
+  return records;
+}
+
+function isoHdrInfo(bytes: Uint8Array): PhotoHdrDetails {
+  const record: PhotoHdrDetails = {formats:['ISO 21496-1 게인맵']};
+  if (bytes.length < 4) return record;
+  const minimumVersion = u16(bytes, 0), writerVersion = u16(bytes, 2);
+  record.versions = [`ISO 작성 ${writerVersion} · 최소 ${minimumVersion}`];
+  // Version 0 uses independent rational pairs; the low flag bits are reserved.
+  // Unknown versions/layouts retain their declaration, not guessed numbers.
+  if (minimumVersion !== 0 || writerVersion !== 0 || bytes.length < 5 || (bytes[4] & 0x3f)) return record;
+  const channels = bytes[4] & 0x80 ? 3 : 1;
+  if (bytes.length !== 21 + channels * 40) return record;
+  let at = 5;
+  const fraction = (signed = false) => {
+    const numerator = signed ? new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength).getInt32(at) : u32(bytes,at), denominator = u32(bytes,at+4);
+    at += 8; return denominator ? numerator / denominator : NaN;
+  };
+  const minimum = fraction(), maximum = fraction(), min: number[] = [], max: number[] = [];
+  let valid = Number.isFinite(minimum) && Number.isFinite(maximum) && minimum >= 0 && maximum > minimum;
+  for (let channel = 0; channel < channels; channel++) {
+    const low = fraction(true), high = fraction(true), gamma = fraction(), baseOffset = fraction(true), alternateOffset = fraction(true);
+    valid &&= [low,high,gamma,baseOffset,alternateOffset].every(Number.isFinite) && low <= high && gamma > 0 && baseOffset >= 0 && alternateOffset >= 0;
+    min.push(low); max.push(high);
+  }
+  if (valid) Object.assign(record, {parameterSource:'iso',gainMapMin:min,gainMapMax:max,hdrCapacityMin:minimum,hdrCapacityMax:maximum});
+  return record;
+}
+
+function combineHdrInfo(records: PhotoHdrDetails[]): PhotoHdrDetails | undefined {
+  if (!records.length) return undefined;
+  const details: PhotoHdrDetails = {formats:[...new Set(records.flatMap(record => record.formats))]};
+  const versions = [...new Set(records.flatMap(record => record.versions ?? []))];
+  if (versions.length) details.versions = versions;
+  // Keep one parameter scheme; conflicting repeated records are ambiguous.
+  for (const source of ['iso','adobe','apple'] as const) {
+    const parameters = records.filter(record => record.parameterSource === source).map(({formats,versions,...values}) => values);
+    if (!parameters.length) continue;
+    if (parameters.every(values => JSON.stringify(values) === JSON.stringify(parameters[0]))) Object.assign(details, parameters[0]);
+    break;
+  }
+  return details;
+}
 
 function exif(bytes: Uint8Array) {
   const result = {orientation: 1, srgb: false};
@@ -124,6 +338,7 @@ function jpegInfo(bytes: Uint8Array, result: PhotoFileInfo) {
   result.format = 'JPEG';
   let at = 2, orientation = 1, exifSrgb = false, iccCount = 0, iccInvalid = false, extendedXmp = false;
   const chunks = new Map<number, Uint8Array>();
+  const hdrRecords: PhotoHdrDetails[] = [];
   while (at + 2 <= bytes.length) {
     if (bytes[at++] !== 255) break;
     while (at < bytes.length && bytes[at] === 255) at++;
@@ -142,11 +357,12 @@ function jpegInfo(bytes: Uint8Array, result: PhotoFileInfo) {
       if (starts(body, XMP_HEADER)) {
         const xmp = text(body, XMP_HEADER.length, body.length - XMP_HEADER.length);
         if (/http:\/\/ns\.adobe\.com\/hdr-gain-map\/1\.0\/|HDRGainMap|urn:com:apple:photo:2020:aux:hdrgainmap/u.test(xmp)) result.hdr = 'metadata-present';
+        hdrRecords.push(...xmpHdrInfo(xmp));
       }
       if (starts(body, EXTENDED_XMP_HEADER)) extendedXmp = true;
     }
     if (marker === 0xe2) {
-      if (starts(body, ISO_GAIN_MAP_HEADER)) result.hdr = 'metadata-present';
+      if (starts(body, ISO_GAIN_MAP_HEADER)) { result.hdr = 'metadata-present'; hdrRecords.push(isoHdrInfo(body.subarray(ISO_GAIN_MAP_HEADER.length))); }
       if (text(body, 0, 12) === 'ICC_PROFILE\0') {
         const index = body[12], count = body[13];
         if (body.length < 14 || !index || !count || index > count || iccCount && count !== iccCount || chunks.has(index)) iccInvalid = true;
@@ -164,6 +380,8 @@ function jpegInfo(bytes: Uint8Array, result: PhotoFileInfo) {
     Object.assign(result, iccInfo(joined));
   } else if (!iccCount && !iccInvalid && exifSrgb) result.colorSpace = 'sRGB';
   if (iccInvalid || chunks.size !== iccCount || extendedXmp) result.metadataComplete = false;
+  const details = combineHdrInfo(hdrRecords);
+  if (details) { result.hdrDetails = details; result.hdr = 'metadata-present'; }
   if (result.hdr === 'unknown' && result.metadataComplete) result.hdr = 'not-indicated';
 }
 

@@ -1,8 +1,9 @@
 import { canonicalPhotoSource, formatPhotoBytes } from './photo-media-summary.ts';
+import { photoHdrRows } from './photo-info-presentation.ts';
 
 // Detached controls preserve the article's groups, links and captions. Desktop
 // details open on interaction; mobile reads only the currently visible photo.
-export const PUBLIC_PHOTO_INFO_BOOTSTRAP = '(function(){\nconst canonicalPhotoSource=' + canonicalPhotoSource.toString() + ';\nconst formatPhotoBytes=' + formatPhotoBytes.toString() + ';\n' + String.raw`
+export const PUBLIC_PHOTO_INFO_BOOTSTRAP = '(function(){\nconst canonicalPhotoSource=' + canonicalPhotoSource.toString() + ';\nconst formatPhotoBytes=' + formatPhotoBytes.toString() + ';\nconst photoHdrRows=' + photoHdrRows.toString() + ';\n' + String.raw`
 const body=document.querySelector('.article-page .prose');
 if(!body||document.getElementById('publicPhotoInfoPopover'))return;
 const photos=Array.from(body.querySelectorAll('img[src]')).filter(image=>!image.closest('[data-ke-type="opengraph"],.se_component.se_oglink,.se-component.se-oglink'));
@@ -10,11 +11,11 @@ if(!photos.length)return;
 const files=new Map();
 try{const seed=JSON.parse(document.getElementById('publicPhotoMetadata')?.textContent||'[]');for(const file of Array.isArray(seed)?seed:[]){if(typeof file?.path==='string')files.set(canonicalPhotoSource(file.path),file)}}catch{}
 const layer=document.createElement('div');layer.className='public-photo-info-controls';
-const popover=document.createElement('section');popover.id='publicPhotoInfoPopover';popover.className='public-photo-info-popover';popover.hidden=true;popover.setAttribute('aria-labelledby','publicPhotoInfoTitle');
-popover.innerHTML='<div class="public-photo-info-popover__header"><h2 id="publicPhotoInfoTitle">사진 정보</h2><button type="button" data-photo-info-close aria-label="사진 정보 닫기">×</button></div><div data-photo-info-content aria-live="polite"></div>';
+const popover=document.createElement('section');popover.id='publicPhotoInfoPopover';popover.className='public-photo-info-popover';popover.hidden=true;popover.setAttribute('aria-label','사진 정보');
+popover.innerHTML='<button class="public-photo-info-close" type="button" data-photo-info-close aria-label="사진 정보 닫기">×</button><div data-photo-info-content aria-live="polite"></div>';
 document.body.append(layer);layer.append(popover);
 const mobileBar=document.createElement('aside');mobileBar.className='public-photo-info-mobile';mobileBar.hidden=true;mobileBar.setAttribute('aria-label','현재 사진 정보');mobileBar.setAttribute('aria-live','polite');layer.append(mobileBar);
-const title=popover.querySelector('h2'),content=popover.querySelector('[data-photo-info-content]');
+const content=popover.querySelector('[data-photo-info-content]');
 let active=null,reason='',requestVersion=0,frame=0,hoverTimer=null,closeTimer=null,mobileActive=null,mobilePreferred=null,mobilePath=null,mobileVersion=0;
 const cache=new Map(),readResults=new Map(),mobileFailures=new Set(),positive=value=>Number.isSafeInteger(value)&&value>0;
 const mobileMode=()=>window.innerWidth<=767;
@@ -37,13 +38,14 @@ function readInfo(path){
 }
 function mobileText(control,info=null){
   const {image,index}=control,path=sourcePath(image),file=path?files.get(path):null,basic=basicInfo(image);
+  mobileBar.setAttribute('aria-label',(index+1)+'번 사진 정보');
   const inferred={jpeg:'JPEG',jpg:'JPEG',png:'PNG',webp:'WebP',gif:'GIF',avif:'AVIF',svg:'SVG','svg+xml':'SVG'};
   const format=info?.format||inferred[(file?.mime||'').split('/')[1]]||'파일 형식 미확인';
   const dimensions=String(format).toUpperCase()==='SVG'?'벡터 이미지':positive(info?.width)&&positive(info?.height)?info.width+' × '+info.height+' px':basic.dimensions;
   const size=positive(info?.bytes)?formatPhotoBytes(info.bytes):basic.size;
-  const values=[(index+1)+'번 사진',dimensions,size,format,info?.colorSpace||'색영역 미확인'];
-  if(info?.profileName&&info.profileName!==info.colorSpace)values.push('색상 프로필: '+info.profileName);
-  values.push(info?.hdr==='metadata-present'?'HDR 메타데이터 있음 (실제 지원 미확인)':info?.hdr==='not-indicated'?'HDR 표시 없음':'HDR 정보 미확인');
+  const values=[format,dimensions,size,info?.colorSpace||'색영역 미확인'];
+  if(info?.profileName&&info.profileName!==info.colorSpace)values.push('프로필: '+info.profileName);
+  for(const [label,value] of photoHdrRows(info||{hdr:'unknown'}))values.push(label+': '+value);
   if(!path)values.push('외부 사진의 상세 정보 미확인');else if(mobileFailures.has(path)&&!info)values.push('상세 정보 확인 실패');
   if(mobileBar.textContent===values.join(' / '))return;
   mobileBar.replaceChildren();for(const [index,value] of values.entries()){const item=document.createElement('span');item.textContent=(index?' / ':'')+value;mobileBar.append(item)}
@@ -69,13 +71,11 @@ function renderInfo(info,image){
   content.replaceChildren();const list=document.createElement('dl');
   function row(label,value){const group=document.createElement('div'),name=document.createElement('dt'),detail=document.createElement('dd');group.className='public-photo-info-row';name.textContent=label;detail.textContent=value;group.append(name,detail);list.append(group)}
   const dimensions=positive(info.width)&&positive(info.height)?[info.width,info.height]:image.complete&&positive(image.naturalWidth)&&positive(image.naturalHeight)?[image.naturalWidth,image.naturalHeight]:null;
-  row('해상도',String(info.format||'').toUpperCase()==='SVG'?'벡터 이미지':dimensions?dimensions[0]+' × '+dimensions[1]+' px':'미확인');
-  row('저장 용량',positive(info.bytes)?formatPhotoBytes(info.bytes)+' ('+info.bytes.toLocaleString('ko-KR')+' 바이트)':'미확인');
-  row('파일 형식',info.format||'미확인');row('색영역',info.colorSpace||'미확인');
-  if(info.profileName&&info.profileName!==info.colorSpace)row('색상 프로필',info.profileName);
-  row('HDR 정보',info.hdr==='metadata-present'?'HDR 메타데이터 있음':info.hdr==='not-indicated'?'HDR 표시 없음':'미확인');
-  content.append(list);
-  if(info.hdr!=='unknown'){const note=document.createElement('p');note.className='public-photo-info-popover__note';note.textContent='파일 정보만으로 실제 HDR 지원 여부를 확정할 수 없습니다.';content.append(note)}
+  const basic=document.createElement('p');basic.className='public-photo-info-popover__basic';basic.textContent=[info.format||'형식 미확인',String(info.format||'').toUpperCase()==='SVG'?'벡터 이미지':dimensions?dimensions[0]+' × '+dimensions[1]+' px':'해상도 미확인',positive(info.bytes)?formatPhotoBytes(info.bytes):'용량 미확인'].join(' · ');
+  row('색영역',info.colorSpace||'미확인');
+  if(info.profileName&&info.profileName!==info.colorSpace)row('프로필',info.profileName);
+  for(const [label,value] of photoHdrRows(info))row(label,value);
+  content.append(basic,list);
   positionPopover();
 }
 function closeInfo(restoreFocus=false){
@@ -135,7 +135,7 @@ async function openInfo(control,trigger){
   if(active===control&&!popover.hidden){if(trigger!=='hover')reason=trigger;return}
   if(active){active.button.setAttribute('aria-expanded','false');active.card.setAttribute('data-expanded','false')}
   active=control;reason=trigger;const {image,index,button}=control,version=++requestVersion;
-  control.card.setAttribute('data-expanded','true');control.card.append(popover);title.textContent=(index+1)+'번 사진 정보';button.setAttribute('aria-expanded','true');popover.hidden=false;position();if(active!==control||popover.hidden)return;message('사진 정보를 확인하고 있습니다.');
+  control.card.setAttribute('data-expanded','true');control.card.append(popover);popover.setAttribute('aria-label',(index+1)+'번 사진 정보');button.setAttribute('aria-expanded','true');popover.hidden=false;position();if(active!==control||popover.hidden)return;message('사진 정보를 확인하고 있습니다.');
   const path=sourcePath(image);if(!path){message('외부 사진의 파일 정보는 확인할 수 없습니다.');return}
   try{
     const info=await readInfo(path);if(!popover.hidden&&active===control&&version===requestVersion)renderInfo(info,image);
