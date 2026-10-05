@@ -38,7 +38,7 @@
   .public-photo-info-summary span { display: block; }
   .public-photo-info-summary span[hidden] { display: none; }
   .public-photo-info-button:focus-visible { outline: 1px solid #fff; outline-offset: -3px; }
-  .public-photo-info-popover { position: relative; box-sizing: border-box; flex: 0 1 auto; min-height: 0; padding: 8px 52px 8px 8px; overflow: auto; overscroll-behavior: contain; color: inherit; text-shadow: inherit; background: transparent; border: 0; }
+  .public-photo-info-popover { position: relative; box-sizing: border-box; flex: 0 1 auto; min-height: 46px; padding: 8px 52px 8px 8px; overflow: auto; overscroll-behavior: contain; color: inherit; text-shadow: inherit; background: transparent; border: 0; }
   .public-photo-info-close { position: absolute; top: 2px; right: 2px; min-width: 44px; min-height: 44px; margin: 0; padding: 8px; border: 0; background: transparent; color: inherit; text-shadow: inherit; font-size: 22px; line-height: 1; cursor: pointer; }
   .public-photo-info-popover dl { display: flex; flex-direction: column; gap: 4px; margin: 4px 0 0; font-size: 14px; line-height: 1.45; }
   .public-photo-info-row { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: start; gap: 8px; min-width: 0; }
