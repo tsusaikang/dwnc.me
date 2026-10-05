@@ -155,6 +155,13 @@ document.addEventListener('click',event=>{if(active&&!inInfo(event.target))close
 window.addEventListener('resize',schedule,{passive:true});window.addEventListener('scroll',schedule,{passive:true});window.addEventListener('load',schedule,{once:true});
 body.addEventListener('load',schedule,true);
 if(typeof ResizeObserver==='function'){const observer=new ResizeObserver(schedule);observer.observe(body);for(const image of photos)observer.observe(image)}
+// A late edit link can move every photo without resizing the prose or images.
+// Observe the article/header, leaving detached controls outside this observer.
+if(typeof MutationObserver==='function'){
+  const observer=new MutationObserver(schedule),options={childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['hidden','class','style','src','srcset','sizes','width','height']};
+  observer.observe(body.closest('.article-page')||body,options);
+  const header=document.querySelector('.site-header');if(header)observer.observe(header,options);
+}
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(schedule);
 position();
 })();`;
