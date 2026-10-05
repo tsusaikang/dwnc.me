@@ -49,9 +49,10 @@ function mobileText(control,info=null){
   mobileBar.replaceChildren();for(const [index,value] of values.entries()){const item=document.createElement('span');item.textContent=(index?' / ':'')+value;mobileBar.append(item)}
 }
 function positionMobile(){
-  const header=document.querySelector('.site-header'),headerBottom=header?.getBoundingClientRect().bottom||0,top=Math.max(8,headerBottom+4);
-  mobileBar.style.top=top+'px';mobileBar.style.left='8px';mobileBar.style.right='8px';
-  const target=top+(mobileBar.offsetHeight||44)+8,visible=controls.map(control=>({control,rect:control.image.getBoundingClientRect()})).filter(({control,rect})=>control.image.isConnected&&rect.width>0&&rect.height>0&&rect.bottom>top&&rect.top<window.innerHeight);
+  const header=document.querySelector('.site-header');
+  if(header&&mobileBar.closest('.site-header')!==header)header.append(mobileBar);
+  const headerBottom=header?.getBoundingClientRect().bottom||0,baseBottom=header?.querySelector('.site-header__inner')?.getBoundingClientRect().bottom??headerBottom;
+  const top=Math.max(0,baseBottom),target=top+8,visible=controls.map(control=>({control,rect:control.image.getBoundingClientRect()})).filter(({control,rect})=>control.image.isConnected&&rect.width>0&&rect.height>0&&rect.bottom>top&&rect.top<window.innerHeight);
   visible.sort((a,b)=>Math.max(a.rect.top-target,target-a.rect.bottom,0)-Math.max(b.rect.top-target,target-b.rect.bottom,0));
   if(mobilePreferred&&!visible.some(({control})=>control===mobilePreferred))mobilePreferred=null;
   const control=mobilePreferred||visible[0]?.control||null,path=control?sourcePath(control.image):null;
@@ -161,7 +162,7 @@ function position(){
   frame=0;
   const mobile=mobileMode();layer.setAttribute('data-mobile',String(mobile));
   if(mobile&&active){closeInfo();return}
-  if(!mobile){mobileBar.hidden=true;mobilePreferred=null;if(mobileActive){mobileActive=null;mobilePath=null;mobileVersion++}}
+  if(!mobile){mobileBar.hidden=true;if(mobileBar.closest('.site-header'))layer.append(mobileBar);mobilePreferred=null;if(mobileActive){mobileActive=null;mobilePath=null;mobileVersion++}}
   for(const control of controls){
     const {image,index,button,card,dimensions,size}=control,rect=image.getBoundingClientRect();card.hidden=mobile||!image.isConnected||rect.width<=0||rect.height<=0;button.hidden=card.hidden;if(card.hidden)continue;
     const basic=basicInfo(image),compact=rect.width<230;dimensions.textContent=compact?'ⓘ 정보':basic.dimensions;size.textContent=basic.size;size.hidden=compact;

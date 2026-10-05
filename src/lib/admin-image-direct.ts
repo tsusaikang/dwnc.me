@@ -20,11 +20,11 @@ body[data-photo-info="open"] #imageTools,body[data-photo-info="open"] #photoOrde
 @media(max-width:959px){.photo-order-panel{left:12px;right:12px;width:auto}.photo-order-header{padding:7px 10px}.photo-order-header h2{display:inline;margin-right:8px}.photo-order-header #photoOrderSelection{display:inline}.photo-order-header p{font-size:10px}.photo-order-list{padding:4px 8px}.photo-order-choice img{height:58px}.photo-order-row[data-count="3"] .photo-order-choice img{height:48px}.photo-order-slot{min-height:32px}.photo-order-slot--between{flex-basis:44px;width:44px}body[data-photo-order="open"] main{padding-bottom:calc(var(--editor-footer-height) + var(--photo-order-height,240px) + 40px)}body[data-photo-order="open"] .status{bottom:calc(var(--editor-footer-height) + var(--photo-order-height,240px) + 12px)}}
 .photo-drop-indicator{position:fixed;z-index:70;pointer-events:none;background:#1769d2;border-radius:2px;box-shadow:0 0 0 2px #ffffffd9}.photo-drop-indicator span{position:absolute;left:6px;top:7px;white-space:nowrap;border-radius:4px;background:#1769d2;color:#fff;font:12px/1.4 system-ui;padding:4px 7px;box-shadow:0 2px 8px #0002}.photo-drop-indicator[data-mode="group"] span{top:-28px;left:0}.photo-drop-indicator[data-mode="blocked"]{background:#a43434}.photo-drop-indicator[data-mode="blocked"] span{background:#a43434}
 .photo-text-hint{position:fixed;z-index:65;pointer-events:none;transform:translateY(-50%);border:1px solid #bfd2ec;border-radius:4px;background:#f5f9ff;color:#285c9a;padding:2px 7px;font:12px/1.4 system-ui;white-space:nowrap}
-.photo-mobile-info{position:fixed;left:8px;right:8px;z-index:29;pointer-events:none;background:transparent;color:#fff;font:13px/1.5 system-ui;text-shadow:1px 0 1px rgb(0 0 0 / 95%),-1px 0 1px rgb(0 0 0 / 95%),0 1px 1px rgb(0 0 0 / 95%),0 -1px 1px rgb(0 0 0 / 95%),0 2px 3px rgb(0 0 0 / 90%);overflow-wrap:anywhere}
+.photo-mobile-info{position:static;flex:0 0 100%;width:100%;box-sizing:border-box;padding:4px 8px 8px;pointer-events:none;background:transparent;color:#fff;font:13px/1.5 system-ui;text-shadow:1px 0 1px rgb(0 0 0 / 95%),-1px 0 1px rgb(0 0 0 / 95%),0 1px 1px rgb(0 0 0 / 95%),0 -1px 1px rgb(0 0 0 / 95%),0 2px 3px rgb(0 0 0 / 90%);overflow-wrap:anywhere}
 .photo-number-marker[data-compact="true"] .photo-file-info{padding:1px 4px;display:flex;align-items:center;justify-content:flex-end}
 .photo-info-panel[data-expanded="true"][data-presentation="bubble"]{overflow:visible;text-shadow:none}.photo-info-panel[data-presentation="bubble"] .photo-info-dialog{background:rgb(20 27 38 / 94%);border-radius:8px;box-shadow:0 3px 16px rgb(0 0 0 / 28%);margin-top:8px}.photo-info-panel[data-presentation="bubble"][data-direction="up"] .photo-info-dialog{margin-top:0;margin-bottom:8px}.photo-info-panel[data-expanded="true"][data-presentation="bubble"]::after{content:"";position:absolute;left:var(--photo-tail-left,50%);top:0;width:16px;height:8px;transform:translateX(-50%);clip-path:polygon(50% 0,0 100%,100% 100%);background:rgb(20 27 38 / 94%);pointer-events:none}.photo-info-panel[data-presentation="bubble"][data-direction="up"]::after{top:auto;bottom:0;clip-path:polygon(0 0,100% 0,50% 100%)}.photo-info-panel[data-presentation="bubble"] .photo-info-heading{justify-content:space-between}.photo-info-panel[data-presentation="bubble"] .photo-info-row{display:grid;grid-template-columns:80px minmax(0,1fr);align-items:baseline;gap:12px}.photo-info-panel[data-presentation="bubble"] .photo-info-dialog dd,.photo-info-panel[data-presentation="bubble"] .photo-info-dialog p{text-align:left}
 .photo-info-panel[data-expanded="true"][data-presentation="bubble"]::before{content:"";position:absolute;left:var(--photo-bridge-left,0);top:var(--photo-bridge-top,0);width:var(--photo-bridge-width,0);height:var(--photo-bridge-height,0);background:transparent;pointer-events:auto}
-@media(max-width:767px){.photo-info-panel{display:none}}
+@media(max-width:767px){.editor-header{flex-wrap:wrap}.photo-info-panel{display:none}}
 @media(min-width:768px){.photo-mobile-info{display:none}}
 @media(max-width:480px){.image-tools{padding:6px;gap:4px}.image-tools button{padding:7px;font-size:11px}.direct-image-tools select{max-width:118px}.direct-photo-hint{font-size:10px}}
 `;
@@ -86,11 +86,12 @@ function requestDirectPhotoDetails(postId,path){
   pending.set(path,request);return request;
 }
 function refreshDirectMobilePhotoInfo(images){
-  const bar=$('photoMobileInfo'),postId=current?.id;
+  const bar=$('photoMobileInfo'),header=$('editorHeader'),postId=current?.id;if(bar.parentElement!==header)header.append(bar);
   if(photoMobileOwner!==postId){photoMobileOwner=postId;photoMobileFailedByPath=new Set()}
   if(!directPhotoInfoIsMobile()||!postId||busy||photoDrag){bar.hidden=true;bar.textContent='';return}
   if($('photoInfoDialog').open)closeDirectPhotoInfo();
-  const body=$('bodyHtml').getBoundingClientRect(),top=Math.max(0,$('editorHeader').getBoundingClientRect().bottom,body.top),bottom=Math.min(window.innerHeight,$('editorFooter').hidden?window.innerHeight:$('editorFooter').getBoundingClientRect().top,body.bottom);
+  const headerBottom=!bar.hidden?bar.getBoundingClientRect().top:header.getBoundingClientRect().bottom;
+  const body=$('bodyHtml').getBoundingClientRect(),top=Math.max(0,headerBottom,body.top),bottom=Math.min(window.innerHeight,$('editorFooter').hidden?window.innerHeight:$('editorFooter').getBoundingClientRect().top,body.bottom);
   const visible=images.map(image=>({image,box:image.getBoundingClientRect()})).filter(({box})=>box.width>0&&box.height>0&&box.bottom>top&&box.top<bottom&&box.right>0&&box.left<window.innerWidth);
   const chosen=visible.find(({image})=>image===selectedMedia?.image)||visible.sort((a,b)=>Math.max(a.box.top,top)-Math.max(b.box.top,top))[0];
   if(!chosen){bar.hidden=true;bar.textContent='';return}
@@ -99,7 +100,7 @@ function refreshDirectMobilePhotoInfo(images){
   const hdr=details?.hdr==='metadata-present'?'HDR 메타데이터 있음 (실제 지원 미확인)':details?.hdr==='not-indicated'?'HDR 표시 없음 (SDR 여부 미확인)':'HDR 정보 확인 불가';
   const format=directPhotoFormat(details,metadata),parts=['사진 '+(images.indexOf(image)+1),pixels,bytes?formatDirectPhotoBytes(bytes):basic.size,format==='미확인'?'파일 형식 미확인':format,details?.colorSpace||'색영역 미확인','색상 프로필: '+(details?.profileName||'미확인'),hdr];
   if(!path)parts.push('외부 사진의 파일 정보는 확인하지 않습니다.');else if(photoMobileFailedByPath.has(path))parts.push('추가 파일 정보 불러오기 실패');else if(!details)parts.push('파일 정보 확인 중');else if(!details.metadataComplete)parts.push('일부 파일 정보 미확인');
-  bar.style.top=Math.max(0,$('editorHeader').getBoundingClientRect().bottom)+4+'px';bar.textContent=parts.join(' / ');bar.hidden=false;
+  const text=parts.join(' / ');if(bar.textContent!==text)bar.textContent=text;bar.hidden=false;
   if(path&&!details&&!photoFilePendingByPath.has(path)&&!photoMobileFailedByPath.has(path))requestDirectPhotoDetails(postId,path).catch(()=>{});
 }
 let photoOrderOwner=null,photoOrderSource=null,photoOrderSnapshot=[],photoOrderPreservePosition=false;
@@ -533,6 +534,7 @@ $('photoOrderPanel').addEventListener('keydown',event=>{if(editorComposing||even
 $('bodyHtml').addEventListener('scroll',scheduleDirectPhotoNumbers);
 document.addEventListener('input',scheduleDirectPhotoNumbers);
 window.addEventListener('scroll',scheduleDirectPhotoNumbers,true);window.addEventListener('resize',scheduleDirectPhotoNumbers);
+if(typeof ResizeObserver!=='undefined'){const photoHeaderObserver=new ResizeObserver(scheduleDirectPhotoNumbers);photoHeaderObserver.observe($('editorHeader'))}
 if(typeof MutationObserver!=='undefined'){
   const photoNumberObserver=new MutationObserver(scheduleDirectPhotoNumbers);photoNumberObserver.observe($('bodyHtml'),{childList:true,subtree:true,attributes:true,attributeFilter:['src','srcset','alt','class']});
   const viewObserver=new MutationObserver(scheduleDirectPhotoNumbers);viewObserver.observe(document.body,{attributes:true,attributeFilter:['data-view']});

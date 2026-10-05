@@ -60,6 +60,6 @@
   .public-photo-info-card[data-expanded="true"][data-presentation="callout"] .public-photo-info-row { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 12px; align-items: start; }
   .public-photo-info-card[data-expanded="true"][data-presentation="callout"] .public-photo-info-popover dd,
   .public-photo-info-card[data-expanded="true"][data-presentation="callout"] .public-photo-info-popover p { text-align: left; }
-  .public-photo-info-mobile { position: fixed; margin: 0; padding: 0; border: 0; background: transparent; color: #fff; text-shadow: 1px 0 1px rgb(0 0 0 / 95%), -1px 0 1px rgb(0 0 0 / 95%), 0 1px 1px rgb(0 0 0 / 95%), 0 -1px 1px rgb(0 0 0 / 95%), 0 2px 3px rgb(0 0 0 / 90%); font: 400 13px/1.5 var(--sans); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; pointer-events: none; }
+  .public-photo-info-mobile { position: static; display: block; box-sizing: border-box; max-width: 100%; margin: 0; padding: 4px 8px 8px; border: 0; background: transparent; color: #fff; text-shadow: 1px 0 1px rgb(0 0 0 / 95%), -1px 0 1px rgb(0 0 0 / 95%), 0 1px 1px rgb(0 0 0 / 95%), 0 -1px 1px rgb(0 0 0 / 95%), 0 2px 3px rgb(0 0 0 / 90%); font: 400 13px/1.5 var(--sans); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; pointer-events: none; }
   .public-photo-info-mobile span { display: inline; }
 }
