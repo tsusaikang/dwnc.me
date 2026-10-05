@@ -1,29 +1,23 @@
 import { canonicalPhotoSource, formatPhotoBytes } from './photo-media-summary.ts';
-import { photoHdrRows, photoColorLines } from './photo-info-presentation.ts';
 
 // Editing controls and drop indicators live outside bodyHtml. Only the existing
 // saved layout vocabulary is moved into the post, so saving and history remain
 // shared with normal text editing.
 export const imageDirectToolsHtml = `<div id="directImageTools" class="direct-image-tools" hidden><button id="dragSelectedPhoto" type="button" title="끌어서 이동 · 방향키로 위치 이동" aria-label="선택 사진 이동">↕ 이동</button><span id="directPhotoNumber" class="direct-photo-number" aria-live="polite"></span><div class="photo-align-tools" role="group" aria-label="사진 정렬"><button type="button" data-photo-align="left" aria-label="사진 왼쪽 정렬">왼쪽</button><button type="button" data-photo-align="center" aria-label="사진 가운데 정렬">가운데</button><button type="button" data-photo-align="right" aria-label="사진 오른쪽 정렬">오른쪽</button></div><label class="sr-only" for="directPhotoSize">사진 크기</label><select id="directPhotoSize" aria-describedby="directPhotoHint"><option value="original">100% 원본</option><option value="paragraph">문단 폭</option><option value="full">전체 폭</option></select><button id="splitSelectedPhoto" type="button" hidden>한 장 빼내기</button><span id="directPhotoHint" class="direct-photo-hint"></span></div>`;
 
-export const imageDirectOverlayHtml = `<div id="photoNumberOverlay" class="photo-number-overlay" aria-label="본문 사진 번호와 파일 정보"></div><div id="photoInfoHost" hidden><dialog id="photoInfoDialog" class="photo-info-dialog" aria-modal="false" aria-labelledby="photoInfoHeading"><h2 id="photoInfoHeading" class="sr-only">사진 정보</h2><div class="photo-info-heading"><button id="closePhotoInfo" type="button" aria-label="사진 정보 닫기">✕</button></div><div id="photoInfoDetails" role="list"></div><p id="photoInfoStatus" aria-live="polite"></p></dialog></div><div id="photoDropIndicator" class="photo-drop-indicator" hidden><span id="photoDropLabel"></span></div><div id="photoTextHint" class="photo-text-hint" aria-hidden="true" hidden>＋ 글 쓰기</div><aside id="photoOrderPanel" class="photo-order-panel" aria-labelledby="photoOrderHeading" aria-describedby="photoOrderHint" hidden><div class="photo-order-header"><h2 id="photoOrderHeading">사진 위치 옮기기</h2><p id="photoOrderSelection" aria-live="polite"></p><p id="photoOrderHint">사진을 눌러 옮길 사진을 고른 뒤, 원하는 곳의 ‘여기로 이동’을 누르세요. 즉시 이동하며 ⌘Z·Ctrl+Z로 실행 취소할 수 있습니다. 다른 그룹 안으로 옮기면 그 줄이 나뉩니다.</p></div><div id="photoOrderList" class="photo-order-list"></div></aside>`;
+export const imageDirectOverlayHtml = `<div id="photoNumberOverlay" class="photo-number-overlay" aria-label="본문 사진 번호와 파일 정보"></div><div id="photoDropIndicator" class="photo-drop-indicator" hidden><span id="photoDropLabel"></span></div><div id="photoTextHint" class="photo-text-hint" aria-hidden="true" hidden>＋ 글 쓰기</div><aside id="photoOrderPanel" class="photo-order-panel" aria-labelledby="photoOrderHeading" aria-describedby="photoOrderHint" hidden><div class="photo-order-header"><h2 id="photoOrderHeading">사진 위치 옮기기</h2><p id="photoOrderSelection" aria-live="polite"></p><p id="photoOrderHint">사진을 눌러 옮길 사진을 고른 뒤, 원하는 곳의 ‘여기로 이동’을 누르세요. 즉시 이동하며 ⌘Z·Ctrl+Z로 실행 취소할 수 있습니다. 다른 그룹 안으로 옮기면 그 줄이 나뉩니다.</p></div><div id="photoOrderList" class="photo-order-list"></div></aside>`;
 
 export const imageDirectCss = `
 .html-editor{display:flow-root;padding-block:18px}
-body:has(#photoInfoDialog[open]):not(:has(dialog[open]:not(#photoInfoDialog))){overflow:visible}
-body[data-photo-info="open"] #imageTools,body[data-photo-info="open"] #photoOrderPanel{visibility:hidden;pointer-events:none}
 .image-tools{width:min(660px,calc(100vw - 24px));max-width:calc(100vw - 24px);gap:6px;background:#fff;border-color:#cbd4df;padding:8px}
 .image-tools button{background:#fff;color:#364357;padding:7px 9px;font-size:12px}.image-tools button:hover{background:#edf3fa}.image-tools #deleteImage{color:#a42929;background:#fff}.image-tools #setSelectedCover{background:#fff;color:#1769d2}.image-tools__label{display:none}
 .direct-image-tools{display:flex;align-items:center;flex-wrap:wrap;gap:5px;width:100%;border-bottom:1px solid #e8edf3;padding-bottom:6px}.photo-align-tools{display:flex;gap:1px}.image-tools [data-photo-align][aria-pressed="true"]{background:#e8f1ff;color:#145bac;border-color:#8bb5ee}.direct-image-tools select{width:auto;max-width:145px;padding:6px;font-size:12px}.direct-photo-hint{flex-basis:100%;font-size:11px;line-height:1.5;color:#647184}.image-tools #dragSelectedPhoto{touch-action:none;cursor:grab;color:#175fae}.html-editor img{cursor:grab}.html-editor figcaption{cursor:text}
-.direct-photo-number{font-size:12px;font-weight:600;color:#175fae}.photo-number-overlay{position:fixed;inset:0;z-index:29;pointer-events:none}.photo-number-marker{position:absolute;pointer-events:none}.photo-number-marker[data-info-open="true"]{z-index:2}.photo-info-panel{position:fixed;display:flex;flex-direction:column;align-items:stretch;pointer-events:auto;box-sizing:border-box;border-radius:5px;overflow:hidden;background:transparent;color:#fff;text-shadow:1px 0 1px rgb(0 0 0 / 95%),-1px 0 1px rgb(0 0 0 / 95%),0 1px 1px rgb(0 0 0 / 95%),0 -1px 1px rgb(0 0 0 / 95%),0 2px 3px rgb(0 0 0 / 90%)}.photo-info-panel[data-expanded="true"]{border-radius:7px;overflow:visible}.photo-info-panel .photo-file-info{position:fixed;box-sizing:border-box;min-width:44px;min-height:44px;height:auto;padding:4px 12px;border:0;border-radius:0;background:transparent;color:inherit;text-shadow:inherit;font:14px/1.45 system-ui;text-align:right;cursor:help;touch-action:manipulation;overflow:visible;white-space:normal;overflow-wrap:anywhere}.photo-file-info-text{display:block}.photo-basic-item{display:inline-block;max-width:100%;vertical-align:top;overflow-wrap:anywhere}.photo-file-info:focus-visible{outline:2px solid #fff;outline-offset:-2px}.photo-info-dialog{position:relative;inset:auto;margin:0;box-sizing:border-box;min-height:46px;flex:0 0 auto;width:100%;min-width:0;max-width:none;max-height:none;padding:8px 52px 8px 10px;border:0;border-radius:0;color:inherit;background:transparent;text-shadow:inherit;overflow:visible;overscroll-behavior:contain}.photo-info-dialog[open]{display:block}.photo-info-heading{display:block}.photo-info-heading button{position:absolute;top:2px;right:2px;width:44px;min-height:44px;padding:0;font-size:14px;background:transparent;color:#fff;text-shadow:inherit;border:0}.photo-info-dialog #photoInfoDetails{display:flex;flex-direction:column;gap:4px;margin:0;font-size:14px;line-height:1.45}.photo-info-row{min-width:0;margin:0;text-align:right;overflow-wrap:anywhere}.photo-info-dialog p{font-size:12px;line-height:1.45;text-align:left;margin:4px 0 0}.photo-info-dialog p:empty{display:none}.photo-number-badge{position:static;pointer-events:auto;border:1px solid #fff;border-radius:5px;background:#175fae;color:#fff;padding:6px 9px;font:600 12px/1.4 system-ui;box-shadow:0 1px 5px #0005;min-height:44px;min-width:44px}.photo-number-badge[aria-pressed="true"]{background:#093f80;outline:2px solid #a5c8ff}.photo-number-badge:focus-visible{outline:3px solid #ffbd48}
+.direct-photo-number{font-size:12px;font-weight:600;color:#175fae}.photo-number-overlay{position:fixed;inset:0;z-index:29;pointer-events:none}.photo-number-marker{position:absolute;pointer-events:none}.photo-info-panel{position:fixed;pointer-events:none;box-sizing:border-box;background:transparent;color:#fff;text-shadow:1px 0 1px rgb(0 0 0 / 95%),-1px 0 1px rgb(0 0 0 / 95%),0 1px 1px rgb(0 0 0 / 95%),0 -1px 1px rgb(0 0 0 / 95%),0 2px 3px rgb(0 0 0 / 90%)}.photo-info-panel .photo-file-info{position:fixed;box-sizing:border-box;min-width:0;min-height:44px;height:auto;padding:4px 12px;background:transparent;color:inherit;text-shadow:inherit;font:14px/1.45 system-ui;text-align:right;pointer-events:none;overflow:visible;white-space:normal;overflow-wrap:anywhere}.photo-file-info-text{display:block}.photo-basic-item{display:inline-block;max-width:100%;vertical-align:top;overflow-wrap:anywhere}.photo-number-badge{position:static;pointer-events:auto;border:1px solid #fff;border-radius:5px;background:#175fae;color:#fff;padding:6px 9px;font:600 12px/1.4 system-ui;box-shadow:0 1px 5px #0005;min-height:44px;min-width:44px}.photo-number-badge[aria-pressed="true"]{background:#093f80;outline:2px solid #a5c8ff}.photo-number-badge:focus-visible{outline:3px solid #ffbd48}
 .photo-order-panel{position:fixed;z-index:39;right:12px;width:320px;max-width:calc(100vw - 24px);display:flex;flex-direction:column;border:1px solid #cbd4df;border-radius:8px;background:#fff;color:#364357;box-shadow:0 4px 18px #0002;overflow:hidden}.photo-order-header{padding:10px 12px;border-bottom:1px solid #e8edf3;flex-shrink:0}.photo-order-header h2{font-size:14px;margin:0 0 4px}.photo-order-header p{font-size:11px;line-height:1.45;margin:3px 0 0;overflow-wrap:anywhere}.photo-order-header #photoOrderSelection{font-weight:600;color:#175fae;font-size:12px}.photo-order-list{min-height:0;overflow:auto;padding:6px 8px;overscroll-behavior:contain;scrollbar-gutter:stable}.photo-order-row{display:flex;align-items:stretch;justify-content:center;gap:3px;padding:4px;border:1px solid #dbe3ed;border-radius:6px;background:#f5f7fa}.photo-order-choice{flex:1;min-width:0;max-width:180px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:3px;border:2px solid transparent;border-radius:4px;background:#fff;color:#364357;font-size:11px;cursor:pointer}.photo-order-choice:hover{border-color:#8bb5ee}.photo-order-choice:focus-visible,.photo-order-slot:focus-visible{outline:3px solid #ffbd48;outline-offset:1px}.photo-order-choice[data-selected="true"]{border-color:#175fae;background:#e8f1ff}.photo-order-choice img{display:block;width:100%;height:72px;object-fit:contain;background:#edf0f4;pointer-events:none}.photo-order-choice span{display:block;text-align:center;line-height:1.4}.photo-order-row[data-count="3"] .photo-order-choice img{height:56px}.photo-order-slot{display:flex;align-items:center;justify-content:center;gap:4px;width:100%;min-height:32px;margin:2px 0;padding:3px 5px;border:1px dashed #adc5e4;background:#f5f9ff;color:#175fae;font-size:10px;line-height:1.25}.photo-order-slot:hover{background:#dceaff;border-color:#175fae}.photo-order-slot::before,.photo-order-slot::after{content:"";height:1px;flex:1;background:#b4cae6}.photo-order-slot--between{flex:0 0 30px;width:30px;margin:0;padding:3px;writing-mode:vertical-rl}.photo-order-slot--between::before,.photo-order-slot--between::after{width:1px;height:auto}.photo-order-gap{margin:5px 0;text-align:center;font-size:10px;color:#7a8796}.photo-order-panel button:disabled{opacity:.5}.photo-order-panel button{touch-action:manipulation}
 @media(min-width:960px){body[data-photo-order="open"] main{padding-right:356px}body[data-photo-order="open"] .status{right:356px;max-width:calc(100vw - 380px)}}
 @media(max-width:959px){.photo-order-panel{left:12px;right:12px;width:auto}.photo-order-header{padding:7px 10px}.photo-order-header h2{display:inline;margin-right:8px}.photo-order-header #photoOrderSelection{display:inline}.photo-order-header p{font-size:10px}.photo-order-list{padding:4px 8px}.photo-order-choice img{height:58px}.photo-order-row[data-count="3"] .photo-order-choice img{height:48px}.photo-order-slot{min-height:32px}.photo-order-slot--between{flex-basis:44px;width:44px}body[data-photo-order="open"] main{padding-bottom:calc(var(--editor-footer-height) + var(--photo-order-height,240px) + 40px)}body[data-photo-order="open"] .status{bottom:calc(var(--editor-footer-height) + var(--photo-order-height,240px) + 12px)}}
 .photo-drop-indicator{position:fixed;z-index:70;pointer-events:none;background:#1769d2;border-radius:2px;box-shadow:0 0 0 2px #ffffffd9}.photo-drop-indicator span{position:absolute;left:6px;top:7px;white-space:nowrap;border-radius:4px;background:#1769d2;color:#fff;font:12px/1.4 system-ui;padding:4px 7px;box-shadow:0 2px 8px #0002}.photo-drop-indicator[data-mode="group"] span{top:-28px;left:0}.photo-drop-indicator[data-mode="blocked"]{background:#a43434}.photo-drop-indicator[data-mode="blocked"] span{background:#a43434}
 .photo-text-hint{position:fixed;z-index:65;pointer-events:none;transform:translateY(-50%);border:1px solid #bfd2ec;border-radius:4px;background:#f5f9ff;color:#285c9a;padding:2px 7px;font:12px/1.4 system-ui;white-space:nowrap}
-.photo-info-panel[data-presentation="overlay"] .photo-info-dialog{width:fit-content;max-width:100%;align-self:flex-end;padding:8px 12px 8px 52px}.photo-info-panel[data-presentation="overlay"] .photo-info-dialog #photoInfoDetails{width:max-content;max-width:100%;margin-left:auto}.photo-info-panel[data-presentation="overlay"] .photo-info-dialog :is(p,.photo-info-row){text-align:right}.photo-info-panel[data-presentation="overlay"] .photo-info-heading button{left:2px;right:auto}
-.photo-info-panel[data-expanded="true"][data-presentation="bubble"]{overflow:visible;text-shadow:none}.photo-info-panel[data-presentation="bubble"] .photo-info-dialog{background:rgb(20 27 38 / 94%);border-radius:8px;box-shadow:0 3px 16px rgb(0 0 0 / 28%);margin-top:8px}.photo-info-panel[data-presentation="bubble"][data-direction="up"] .photo-info-dialog{margin-top:0;margin-bottom:8px}.photo-info-panel[data-expanded="true"][data-presentation="bubble"]::after{content:"";position:absolute;left:var(--photo-tail-left,50%);top:0;width:16px;height:8px;transform:translateX(-50%);clip-path:polygon(50% 0,0 100%,100% 100%);background:rgb(20 27 38 / 94%);pointer-events:none}.photo-info-panel[data-presentation="bubble"][data-direction="up"]::after{top:auto;bottom:0;clip-path:polygon(0 0,100% 0,50% 100%)}.photo-info-panel[data-presentation="bubble"] .photo-info-heading{justify-content:space-between}.photo-info-panel[data-presentation="bubble"] .photo-info-dialog .photo-info-row,.photo-info-panel[data-presentation="bubble"] .photo-info-dialog p{text-align:right}.photo-info-panel[data-presentation="bubble"] .photo-file-info{text-shadow:1px 0 1px rgb(0 0 0 / 95%),-1px 0 1px rgb(0 0 0 / 95%),0 1px 1px rgb(0 0 0 / 95%),0 -1px 1px rgb(0 0 0 / 95%),0 2px 3px rgb(0 0 0 / 90%)}
-.photo-info-panel[data-expanded="true"][data-presentation="bubble"]::before{content:"";position:absolute;left:var(--photo-bridge-left,0);top:var(--photo-bridge-top,0);width:var(--photo-bridge-width,0);height:var(--photo-bridge-height,0);background:transparent;pointer-events:auto}
 @media(max-width:767px){.photo-info-panel,.photo-info-panel .photo-file-info{pointer-events:none}.photo-info-panel .photo-file-info{min-height:0;min-width:0;padding:3px 6px;font-size:13px;line-height:1.5;text-align:left;cursor:default}}
 @media(max-width:480px){.image-tools{padding:6px;gap:4px}.image-tools button{padding:7px;font-size:11px}.direct-image-tools select{max-width:118px}.direct-photo-hint{font-size:10px}}
 `;
@@ -32,11 +26,8 @@ export const imageDirectScript = String.raw`
 let photoDrag=null,photoScrollFrame=null,photoPointer=null,photoCapture=null;
 let photoTextPointer=null;
 let photoNumberFrame=null;
-let photoInfoOwner=null,photoInfoImage=null,photoInfoFocus=null,photoInfoMessage='',photoInfoSerial=0,photoInfoPinned=false,photoInfoCloseTimer=null,photoFileDetailsByPath=new Map(),photoFilePendingByPath=new Map();
 let photoMetadataOwner=null,photoMetadataSerial=0,photoMetadataState='idle',photoMetadataByPath=new Map();
 const formatDirectPhotoBytes=${formatPhotoBytes.toString()};
-const directPhotoHdrRows=${photoHdrRows.toString()};
-const directPhotoColorLines=${photoColorLines.toString()};
 const canonicalDirectPhotoSource=${canonicalPhotoSource.toString()};
 function directPhotoMediaPath(value){
   try{
@@ -53,7 +44,7 @@ function rememberDirectPhotoMetadata(postId,media){
 }
 async function loadDirectPhotoMetadata(postId){
   if(current?.id!==postId)return;
-  closeDirectPhotoInfo();const serial=++photoMetadataSerial;photoMetadataOwner=postId;photoMetadataByPath=new Map();photoFileDetailsByPath=new Map();photoFilePendingByPath=new Map();photoMetadataState='loading';scheduleDirectPhotoNumbers();
+  const serial=++photoMetadataSerial;photoMetadataOwner=postId;photoMetadataByPath=new Map();photoMetadataState='loading';scheduleDirectPhotoNumbers();
   try{
     const result=await api('/posts/'+encodeURIComponent(postId)+'/media');
     if(serial!==photoMetadataSerial||current?.id!==postId||photoMetadataOwner!==postId)return;
@@ -85,18 +76,7 @@ function directPhotoBasicHeight(info,mobile){
   const content=info.querySelector('.photo-file-info-text'),box=content?.getBoundingClientRect();
   return box&&box.width>0&&box.height>0?box.height:mobile?19.5:20.3;
 }
-function requestDirectPhotoDetails(postId,path){
-  const pending=photoFilePendingByPath;let request=pending.get(path);if(request)return request;
-  request=api('/posts/'+encodeURIComponent(postId)+'/media-info',{method:'POST',body:JSON.stringify({path})}).then(result=>{
-    if(!result.info||typeof result.info!=='object')throw new Error('사진 정보 응답 없음');
-    if(photoFilePendingByPath===pending&&current?.id===postId){photoFileDetailsByPath.set(path,result.info);scheduleDirectPhotoNumbers()}
-    return result;
-  }).finally(()=>{if(pending.get(path)===request)pending.delete(path)});
-  pending.set(path,request);return request;
-}
 let photoOrderOwner=null,photoOrderSource=null,photoOrderSnapshot=[],photoOrderPreservePosition=false;
-function cancelDirectPhotoInfoClose(){if(photoInfoCloseTimer!==null){clearTimeout(photoInfoCloseTimer);photoInfoCloseTimer=null}}
-function directPhotoInfoArea(){return photoInfoFocus?.parentElement}
 function directPhotoInfoObstacles(){return ['imageTools','photoOrderPanel'].map(id=>$(id)).filter(node=>node&&!node.hidden).map(node=>node.getBoundingClientRect()).filter(box=>box.width>0&&box.height>0)}
 function directPhotoInfoIntersects(a,b){return a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top}
 function avoidDirectPhotoInfoTools(base){
@@ -106,75 +86,6 @@ function avoidDirectPhotoInfoTools(base){
     const top=Math.min(...conflicts.map(box=>box.top))-next.height-6;next={...next,top,bottom:top+next.height,above:true};
   }
   return next;
-}
-function resetDirectPhotoInfoPanel(panel){
-  if(!panel?.photoBaseRect)return;const box=panel.photoBaseRect;panel.hidden=!!panel.photoBaseHidden;panel.dataset.expanded='false';panel.dataset.presentation='overlay';panel.dataset.direction='down';panel.style.left=box.left+'px';panel.style.top=box.top+'px';panel.style.width=box.width+'px';panel.style.height=box.height+'px';
-  const trigger=panel.querySelector('.photo-file-info');trigger.style.left=box.left+'px';trigger.style.top=box.top+'px';trigger.style.width=box.width+'px';trigger.style.marginRight='0';panel.parentElement.dataset.infoOpen='false';
-}
-function closeDirectPhotoInfo(){
-  cancelDirectPhotoInfoClose();const dialog=$('photoInfoDialog'),trigger=photoInfoFocus,panel=directPhotoInfoArea();photoInfoSerial++;photoInfoOwner=null;photoInfoImage=null;photoInfoFocus=null;photoInfoPinned=false;photoInfoMessage='';
-  if(trigger)trigger.setAttribute('aria-expanded','false');if(dialog.open)dialog.close();
-  $('photoInfoHost').append(dialog);resetDirectPhotoInfoPanel(panel);$('photoNumberOverlay').style.zIndex='';delete document.body.dataset.photoInfo;
-}
-function leaveDirectPhotoInfo(event){
-  if(event?.relatedTarget&&directPhotoInfoArea()?.contains(event.relatedTarget))return;
-  cancelDirectPhotoInfoClose();photoInfoCloseTimer=setTimeout(()=>{photoInfoCloseTimer=null;if(!photoInfoPinned&&!directPhotoInfoArea()?.contains(document.activeElement))closeDirectPhotoInfo()},180);
-}
-function positionDirectPhotoInfo(){
-  if(directPhotoInfoIsMobile()){closeDirectPhotoInfo();return}
-  const dialog=$('photoInfoDialog'),panel=directPhotoInfoArea();if(!dialog.open||!photoInfoImage||!panel?.photoBaseRect)return;
-  const image=photoInfoImage.getBoundingClientRect(),base=panel.photoBaseRect;
-  const left=8,right=window.innerWidth-8,top=Math.max(8,$('editorHeader').getBoundingClientRect().bottom+6),bottom=Math.min(window.innerHeight-8,$('editorFooter').hidden?window.innerHeight-8:$('editorFooter').getBoundingClientRect().top-6);
-  if(busy||photoDrag||image.bottom<=Math.max(top,$('editorHeader').getBoundingClientRect().bottom)||image.top>=bottom||image.right<=left||image.left>=right||right<=left){closeDirectPhotoInfo();return}
-  const clamp=(value,min,max)=>Math.min(Math.max(value,min),max),width=Math.min(440,right-left);
-  let panelLeft=clamp(base.right-width,left,right-width);
-  panel.style.width=width+'px';panel.style.left=panelLeft+'px';panel.style.height='auto';dialog.style.maxHeight='none';dialog.style.overflow='visible';panel.dataset.expanded='true';panel.dataset.presentation='overlay';
-  const naturalHeight=()=>Math.ceil(Math.max(dialog.getBoundingClientRect().height,dialog.scrollHeight||0)),overlayHeight=naturalHeight(),basicHeight=directPhotoBasicHeight(photoInfoFocus,false),detailTop=base.top+basicHeight,bubble=image.width<440||basicHeight+overlayHeight+12>image.height||bottom-Math.max(top,detailTop)<46;
-  panel.dataset.presentation=bubble?'bubble':'overlay';
-  if(!bubble&&(panel.photoBaseHidden||base.top>=bottom)){closeDirectPhotoInfo();return}
-  // A separate bubble points to its photo. The retained basic line may have
-  // moved above editing controls, so it is never used as that photo anchor.
-  const anchorY=bubble?clamp(image.top+6,top,Math.max(top,Math.min(bottom,image.bottom-6))):null;
-  if(bubble){panel.hidden=false;panelLeft=clamp(image.right-6-width,left,right-width);panel.style.left=panelLeft+'px'}
-  const anchorX=bubble?clamp(image.left+image.width/2,left+16,right-16):base.left+base.width/2;panel.style.setProperty('--photo-tail-left',clamp(anchorX-panelLeft,16,width-16)+'px');
-  const tail=bubble?8:0,desiredHeight=naturalHeight()+tail,downSpace=Math.max(0,bottom-(bubble?anchorY:Math.max(top,detailTop))),aboveSpace=bubble?anchorY-top:0;
-  let down=true;if(bubble&&downSpace<desiredHeight&&aboveSpace>downSpace)down=false;
-  const available=bottom-top;if(available<60||Math.max(downSpace,aboveSpace)<46+tail){closeDirectPhotoInfo();return}
-  panel.dataset.direction=down?'down':'up';panel.parentElement.dataset.infoOpen='true';$('photoNumberOverlay').style.zIndex='85';document.body.dataset.photoInfo='open';
-  const height=Math.min(desiredHeight,bubble?(down?downSpace:aboveSpace):downSpace),panelTop=bubble?(down?anchorY:anchorY-height):clamp(detailTop,top,bottom-height);panel.style.height=height+'px';panel.style.top=panelTop+'px';const limited=height<desiredHeight;dialog.style.maxHeight=limited?Math.max(0,height-tail)+'px':'none';dialog.style.overflow=limited?'auto':'visible';dialog.dataset.side=down?'top-band':'above';
-  const bridgeTop=base.top<panelTop?base.top-panelTop:height-1,bridgeHeight=base.top<panelTop?panelTop-base.top+1:base.bottom>panelTop+height?base.bottom-panelTop-height+1:0;
-  panel.style.setProperty('--photo-bridge-left',base.left-panelLeft+'px');panel.style.setProperty('--photo-bridge-top',bridgeTop+'px');panel.style.setProperty('--photo-bridge-width',base.width+'px');panel.style.setProperty('--photo-bridge-height',Math.max(0,bridgeHeight)+'px');
-}
-function renderDirectPhotoInfo(message){
-  const dialog=$('photoInfoDialog');if(!dialog.open)return;
-  if(current?.id!==photoInfoOwner||!photoInfoImage||!$('bodyHtml').contains(photoInfoImage)){closeDirectPhotoInfo();return}
-  if(typeof message==='string')photoInfoMessage=message;
-  const image=photoInfoImage,path=directPhotoMediaPath(image.currentSrc||image.getAttribute('src')||''),details=path?photoFileDetailsByPath.get(path):null;
-  $('photoInfoHeading').textContent='사진 '+(directBodyPhotos().indexOf(image)+1)+' 정보';
-  const list=$('photoInfoDetails');list.replaceChildren();
-  const hdrRows=directPhotoHdrRows(details),lines=[...directPhotoColorLines(details).map(value=>[value]),...hdrRows.map(([label,value,note],index)=>[index===0?value:label+' '+value,note])];
-  for(const [value,note] of lines){const row=document.createElement('div');row.className='photo-info-row';row.setAttribute('role','listitem');row.textContent=value;if(note)row.setAttribute('title',note);list.append(row)}
-  $('photoInfoStatus').textContent=photoInfoMessage;positionDirectPhotoInfo();
-}
-async function openDirectPhotoInfo(image,focus,pinned=false){
-  if(directPhotoInfoIsMobile())return;
-  if(busy||!current||!directBodyPhotos().includes(image))return;
-  cancelDirectPhotoInfoClose();const dialog=$('photoInfoDialog');
-  if(!focus){refreshDirectPhotoNumbers();focus=Array.from($('photoNumberOverlay').querySelectorAll('.photo-file-info')).find(node=>node.photoInfoImage===image)}if(!focus)return;
-  if(dialog.open&&photoInfoImage===image&&photoInfoOwner===current.id){photoInfoPinned||=pinned;if(focus)photoInfoFocus=focus;positionDirectPhotoInfo();return}
-  if(photoInfoFocus)closeDirectPhotoInfo();
-  const postId=current.id,serial=++photoInfoSerial,path=directPhotoMediaPath(image.currentSrc||image.getAttribute('src')||'');photoInfoOwner=postId;photoInfoImage=image;photoInfoFocus=focus;photoInfoPinned=pinned;
-  focus.setAttribute('aria-expanded','true');focus.parentElement.append(dialog);dialog.open=true;renderDirectPhotoInfo(path?'파일에 기록된 정보를 확인하는 중…':'외부 사진의 파일 정보는 확인하지 않습니다.');
-  if(!path||!dialog.open)return;
-  if(photoFileDetailsByPath.has(path)){renderDirectPhotoInfo('');return}
-  try{
-    const result=await requestDirectPhotoDetails(postId,path);
-    if(serial!==photoInfoSerial||current?.id!==postId||photoInfoOwner!==postId||photoInfoImage!==image||!dialog.open||!$('bodyHtml').contains(image))return;
-    renderDirectPhotoInfo('');
-  }catch{
-    if(serial!==photoInfoSerial||current?.id!==postId||photoInfoOwner!==postId||photoInfoImage!==image||!dialog.open)return;
-    renderDirectPhotoInfo('추가 파일 정보를 불러오지 못했습니다. 확인된 해상도와 용량은 그대로 표시합니다.');
-  }
 }
 function directBodyPhotos(){return Array.from($('bodyHtml').querySelectorAll('img')).filter(image=>!image.closest('[data-ke-type="opengraph"],.se_component.se_oglink,.se-component.se-oglink'))}
 function updateDirectPhotoNumberControls(){
@@ -189,29 +100,23 @@ function refreshDirectPhotoNumbers(){
     const metadata=directPhotoFileInfo(image);let marker=existing.get(image);existing.delete(image);
     if(!marker){
       marker=document.createElement('div');marker.className='photo-number-marker';marker.photoImage=image;
-      const badge=document.createElement('button'),panel=document.createElement('div'),info=document.createElement('button');badge.type='button';badge.className='photo-number-badge';panel.className='photo-info-panel';info.type='button';info.className='photo-file-info';info.photoInfoImage=image;info.setAttribute('aria-haspopup','dialog');info.setAttribute('aria-controls','photoInfoDialog');
-      badge.addEventListener('mousedown',event=>event.preventDefault());badge.addEventListener('click',event=>{event.stopPropagation();closeDirectPhotoInfo();if(!busy&&body.contains(image))selectMedia(image)});
-      info.addEventListener('pointerenter',event=>{if(event.pointerType==='touch')return;info.photoInfoSuppressed=false;openDirectPhotoInfo(image,info)});
-      panel.addEventListener('pointerenter',cancelDirectPhotoInfoClose);panel.addEventListener('pointerleave',leaveDirectPhotoInfo);panel.addEventListener('click',event=>event.stopPropagation());
-      info.addEventListener('focus',()=>{if(!info.photoInfoSuppressed)openDirectPhotoInfo(image,info)});
-      info.addEventListener('blur',event=>{info.photoInfoSuppressed=false;if(!event.relatedTarget||!panel.contains(event.relatedTarget))closeDirectPhotoInfo()});
-      info.addEventListener('click',event=>{event.stopPropagation();if($('photoInfoDialog').open&&photoInfoImage===image&&photoInfoPinned){info.photoInfoSuppressed=true;closeDirectPhotoInfo()}else openDirectPhotoInfo(image,info,true)});
+      const badge=document.createElement('button'),panel=document.createElement('div'),info=document.createElement('div');badge.type='button';badge.className='photo-number-badge';panel.className='photo-info-panel';info.className='photo-file-info';info.photoImage=image;
+      badge.addEventListener('mousedown',event=>event.preventDefault());badge.addEventListener('click',event=>{event.stopPropagation();if(!busy&&body.contains(image))selectMedia(image)});
       panel.append(info);marker.append(badge,panel);overlay.append(marker);
     }
     const badge=marker.querySelector('.photo-number-badge'),panel=marker.querySelector('.photo-info-panel'),info=marker.querySelector('.photo-file-info'),mobile=directPhotoInfoIsMobile(),compact=box.width<230;
     marker.dataset.compact=String(compact);marker.dataset.photoIndex=String(index+1);
-    if(photoInfoImage!==image||!$('photoInfoDialog').open)updateDirectPhotoBasic(info,directPhotoBasicText(image));
-    info.disabled=busy;info.tabIndex=mobile?-1:0;if(mobile){info.removeAttribute('aria-haspopup');info.removeAttribute('aria-controls')}else{info.setAttribute('aria-haspopup','dialog');info.setAttribute('aria-controls','photoInfoDialog')}
-    info.setAttribute('aria-label','사진 '+(index+1)+' · '+metadata.description+(mobile?'':' · 상세 정보'));info.setAttribute('aria-expanded',String(!mobile&&$('photoInfoDialog').open&&photoInfoImage===image));badge.textContent=String(index+1);badge.setAttribute('aria-label','사진 '+(index+1)+' 선택 · '+metadata.description);badge.setAttribute('aria-pressed',String(selectedMedia?.image===image));badge.disabled=busy;
+    updateDirectPhotoBasic(info,directPhotoBasicText(image));
+    badge.textContent=String(index+1);badge.setAttribute('aria-label','사진 '+(index+1)+' 선택 · '+metadata.description);badge.setAttribute('aria-pressed',String(selectedMedia?.image===image));badge.disabled=busy;
     const reserve=mobile&&!compact?56:0,width=Math.max(1,Math.min(mobile?window.innerWidth-16:440,box.width-12-reserve)),left=mobile?Math.max(8,box.left+6):Math.max(8,Math.min(window.innerWidth-8,box.right-6)-width),infoTop=box.top+6;
     info.style.width=width+'px';const contentHeight=directPhotoBasicHeight(info,mobile),height=Math.max(mobile?0:44,contentHeight+(mobile?6:8)),rawBase={left,right:left+width,top:infoTop,bottom:infoTop+height,width,height,contentHeight,above:false};panel.photoBaseRect=mobile?rawBase:avoidDirectPhotoInfoTools(rawBase);panel.photoBaseHidden=panel.photoBaseRect.top<Math.max(8,top)||panel.photoBaseRect.top>=bottom;panel.hidden=panel.photoBaseHidden;
     info.style.left=panel.photoBaseRect.left+'px';info.style.top=panel.photoBaseRect.top+'px';info.style.width=panel.photoBaseRect.width+'px';
     const lowerCorner=mobile&&compact||!mobile&&box.width<500,numberTop=lowerCorner?Math.max(top+4,box.bottom-50,infoTop+contentHeight+(mobile?6:8)+4):Math.max(top+4,box.top+6);
     marker.style.left=Math.max(4,mobile?box.right-50:box.left+6)+'px';marker.style.top=numberTop+'px';marker.style.width='44px';
-    if(photoInfoImage!==image)resetDirectPhotoInfoPanel(panel);
+    const base=panel.photoBaseRect;panel.style.left=base.left+'px';panel.style.top=base.top+'px';panel.style.width=base.width+'px';panel.style.height=base.height+'px';
   });
-  for(const marker of existing.values()){if(marker.photoImage===photoInfoImage)closeDirectPhotoInfo();marker.remove()}
-  updateDirectPhotoNumberControls();refreshDirectPhotoOrder();if(directPhotoInfoIsMobile()&&$('photoInfoDialog').open)closeDirectPhotoInfo();renderDirectPhotoInfo();
+  for(const marker of existing.values())marker.remove();
+  updateDirectPhotoNumberControls();refreshDirectPhotoOrder();
 }
 function scheduleDirectPhotoNumbers(){if(photoNumberFrame===null&&typeof window.requestAnimationFrame==='function')photoNumberFrame=window.requestAnimationFrame(refreshDirectPhotoNumbers)}
 function closeDirectPhotoOrder(){
@@ -507,14 +412,6 @@ $('dragSelectedPhoto').addEventListener('keydown',event=>{if(!['ArrowUp','ArrowD
 for(const button of $('directImageTools').querySelectorAll('[data-photo-align]'))button.addEventListener('click',()=>setDirectPhotoLayout('align',button.dataset.photoAlign));
 $('directPhotoSize').addEventListener('change',()=>setDirectPhotoLayout('size',$('directPhotoSize').value));
 $('splitSelectedPhoto').addEventListener('click',()=>{const unit=directPhotoUnit(selectedMedia?.image);if(unit?.group)moveDirectPhoto(unit.image,{type:'move',parent:unit.group.parentNode,before:unit.group.nextSibling})});
-$('closePhotoInfo').addEventListener('click',event=>{event.stopPropagation();const trigger=photoInfoFocus;closeDirectPhotoInfo();if(trigger){trigger.photoInfoSuppressed=true;trigger.focus({preventScroll:true})}});
-$('photoInfoDialog').addEventListener('close',()=>{if(!$('photoInfoDialog').open)closeDirectPhotoInfo()});
-$('photoInfoDialog').addEventListener('pointerenter',cancelDirectPhotoInfoClose);
-$('photoInfoDialog').addEventListener('pointerleave',leaveDirectPhotoInfo);
-$('photoInfoDialog').addEventListener('click',event=>event.stopPropagation());
-$('photoInfoDialog').addEventListener('focusout',event=>{if(!event.relatedTarget||!directPhotoInfoArea()?.contains(event.relatedTarget))closeDirectPhotoInfo()});
-document.addEventListener('pointerdown',event=>{if($('photoInfoDialog').open&&!directPhotoInfoArea()?.contains(event.target))closeDirectPhotoInfo()},true);
-document.addEventListener('keydown',event=>{if(event.key!=='Escape'||event.isComposing||editorComposing||event.keyCode===229||!$('photoInfoDialog').open)return;event.preventDefault();event.stopImmediatePropagation();const trigger=photoInfoFocus,inside=$('photoInfoDialog').contains(document.activeElement);if(trigger)trigger.photoInfoSuppressed=true;closeDirectPhotoInfo();if(inside&&trigger)trigger.focus({preventScroll:true})},true);
 $('photoOrderPanel').addEventListener('click',event=>event.stopPropagation());
 $('photoOrderPanel').addEventListener('keydown',event=>{if(editorComposing||event.isComposing)return;if(event.key==='Escape'){event.preventDefault();event.stopImmediatePropagation();clearMediaSelection();$('bodyHtml').focus({preventScroll:true});return}if((event.ctrlKey||event.metaKey)&&!event.altKey){const key=event.key.toLowerCase();if(key==='z'||key==='y'){event.preventDefault();event.stopImmediatePropagation();editorHistoryCommand(key==='y'||event.shiftKey?'redo':'undo')}}});
 $('bodyHtml').addEventListener('scroll',scheduleDirectPhotoNumbers);

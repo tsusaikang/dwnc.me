@@ -1,7 +1,6 @@
 @layer components {
   .public-photo-info-controls { position: absolute; inset: 0 0 auto; height: 0; z-index: 15; pointer-events: none; }
-  .public-photo-info-card,
-  .public-photo-info-panel {
+  .public-photo-info-card {
     position: absolute;
     display: flex;
     flex-direction: column;
@@ -14,45 +13,22 @@
     color: #fff;
     text-shadow: 1px 0 1px rgb(0 0 0 / 95%), -1px 0 1px rgb(0 0 0 / 95%), 0 1px 1px rgb(0 0 0 / 95%), 0 -1px 1px rgb(0 0 0 / 95%), 0 2px 3px rgb(0 0 0 / 90%);
     font-family: var(--sans);
-    pointer-events: auto;
+    pointer-events: none;
   }
-  .public-photo-info-card[data-expanded="true"] { z-index: 2; }
-  .public-photo-info-card[hidden], .public-photo-info-button[hidden], .public-photo-info-popover[hidden], .public-photo-info-panel[hidden] { display: none; }
-  .public-photo-info-button {
+  .public-photo-info-card[hidden] { display: none; }
+  .public-photo-info-basic {
     display: flex;
     align-items: flex-start;
-    flex: 0 0 auto;
     align-self: flex-end;
+    box-sizing: border-box;
     width: max-content;
-    min-width: 44px;
     min-height: 44px;
     padding: 4px 5px;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
     color: inherit;
     text-shadow: inherit;
-    box-shadow: none;
-    cursor: pointer;
+    pointer-events: none;
   }
   .public-photo-info-summary { display: block; max-width: 100%; font: 400 14px/1.45 var(--sans); font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
-  .public-photo-info-button:focus-visible { outline: 1px solid #fff; outline-offset: -3px; }
-  .public-photo-info-panel { position: fixed; z-index: 2; display: block; overflow: visible; }
-  .public-photo-info-popover { position: relative; display: block; width: max-content; max-width: 100%; color: inherit; text-shadow: inherit; box-sizing: border-box; min-height: 46px; padding: 0 5px 4px 52px; overflow: visible; overscroll-behavior: contain; }
-  .public-photo-info-close { position: absolute; top: 2px; right: 2px; min-width: 44px; min-height: 44px; margin: 0; padding: 8px; border: 0; background: transparent; color: inherit; text-shadow: inherit; font-size: 22px; line-height: 1; cursor: pointer; }
-  .public-photo-info-popover p { margin: 0; font-size: 14px; line-height: 1.45; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
-  .public-photo-info-row + .public-photo-info-row { margin-top: 4px; }
-  .public-photo-info-panel[data-presentation="plain"] .public-photo-info-close { left: 2px; right: auto; }
-  .public-photo-info-panel[data-presentation="callout"] { overflow: visible; border-radius: 8px; background: rgb(20 27 38 / 94%); text-shadow: none; box-shadow: 0 8px 26px rgb(0 0 0 / 30%), inset 0 0 0 1px rgb(255 255 255 / 16%); }
-  .public-photo-info-panel[data-presentation="callout"] .public-photo-info-popover { width: 100%; padding: 8px 52px 10px 12px; }
-  .public-photo-info-panel[data-presentation="callout"] p { text-align: left; }
-  .public-photo-info-panel[data-presentation="callout"]::before { content: ""; position: absolute; left: var(--photo-info-bridge-left); top: var(--photo-info-bridge-top); width: var(--photo-info-bridge-width); height: var(--photo-info-bridge-height); background: transparent; }
-  .public-photo-info-panel[data-presentation="callout"]::after { content: ""; position: absolute; width: 0; height: 0; border: 10px solid transparent; pointer-events: none; }
-  .public-photo-info-panel[data-presentation="callout"][data-tail="left"]::after { left: -20px; top: calc(var(--photo-info-tail-y) - 10px); border-right-color: rgb(20 27 38 / 94%); }
-  .public-photo-info-panel[data-presentation="callout"][data-tail="right"]::after { right: -20px; top: calc(var(--photo-info-tail-y) - 10px); border-left-color: rgb(20 27 38 / 94%); }
-  .public-photo-info-panel[data-presentation="callout"][data-tail="top"]::after { top: -20px; left: calc(var(--photo-info-tail-x) - 10px); border-bottom-color: rgb(20 27 38 / 94%); }
-  .public-photo-info-controls[data-mobile="true"] .public-photo-info-card,
-  .public-photo-info-controls[data-mobile="true"] .public-photo-info-button { pointer-events: none; }
-  .public-photo-info-controls[data-mobile="true"] .public-photo-info-button { min-width: 0; min-height: 0; }
+  .public-photo-info-controls[data-mobile="true"] .public-photo-info-basic { min-height: 0; }
   .public-photo-info-controls[data-mobile="true"] .public-photo-info-summary { font-size: 13px; text-align: left; }
 }
