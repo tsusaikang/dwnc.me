@@ -47,6 +47,7 @@ const buttons=$('.public-photo-info-button').toArray().map(wrap);
 const cards=$('.public-photo-info-card').toArray().map(wrap);
 const popover=document.getElementById('publicPhotoInfoPopover'),content=popover.querySelector('[data-photo-info-content]');
 popover.scrollHeight=320;
+popover.rect.height=0;
 const close=()=>popover.querySelector('[data-photo-info-close]').click(),tick=()=>new Promise(resolve=>setImmediate(resolve));
 const info={format:'JPEG',bytes:1234567,width:2560,height:1928,colorSpace:'Display P3',profileName:'<script>private()</script>',hdr:'metadata-present',metadataComplete:true};
 assert.equal(buttons.length,4,'Only body photos receive buttons, excluding cover and URL cards');
@@ -64,7 +65,8 @@ assert.equal(content.querySelectorAll('dl > .public-photo-info-row').length,3,'O
 assert.ok(!content.textContent.includes('스톱')&&!content.textContent.includes('배'),'Unread HDR parameters are not inferred from a metadata-present flag');
 assert.equal(cards[0].style.width,'440px','A desktop card has enough width for larger metadata values');
 assert.equal(Number.parseFloat(cards[0].style.maxHeight),popover.scrollHeight,'Hiding the duplicate summary also removes its empty space from expanded height');
-assert.equal(Number.parseFloat(popover.style.maxHeight),popover.scrollHeight,'The detail height includes its padding');
+assert.equal(popover.style.maxHeight,'none','Details that fit do not constrain their fractional content height');assert.equal(popover.style.overflow,'visible');
+const previousScrollHeight=popover.scrollHeight;popover.scrollHeight=109;popover.rect.height=109.4;listeners.get('resize')();paint();assert.equal(cards[0].style.maxHeight,'110px','Zoomed fractional height is rounded up instead of being clipped to integer scrollHeight');assert.equal(popover.style.maxHeight,'none');assert.equal(popover.style.overflow,'visible');popover.scrollHeight=previousScrollHeight;popover.rect.height=0;listeners.get('resize')();paint();
 const escape={key:'Escape',preventDefault(){this.defaultPrevented=true}};listeners.get('document:keydown')(escape);assert.equal(escape.defaultPrevented,true);assert.equal(popover.hidden,true);assert.equal(document.activeElement,buttons[1],'Escape preserves current reading focus');
 buttons[2].click();await tick();assert.match(content.textContent,/외부 사진/);assert.equal(requests.length,2,'An external URL sharing an internal pathname is never fetched');close();
 body.querySelectorAll('img')[3].naturalWidth=0;body.querySelectorAll('img')[3].naturalHeight=0;
@@ -90,7 +92,7 @@ for(const [vw,vh,left,right,top,bottom] of [[800,360,0,800,0,360],[800,600,10,79
   assert.ok(x>=8&&y>=8&&x+width<=vw-8&&y+height<=vh-8,'The bounded detail fits narrow and short viewports');
   const tailSpace=cards[0].getAttribute('data-presentation')==='callout'&&cards[0].getAttribute('data-tail')==='top'?10:0;
   assert.equal(height,Math.min(popover.scrollHeight,vh-16-tailSpace),'Only screen height and the popup tail may require internal scrolling');
-  assert.equal(Number.parseFloat(popover.style.maxHeight),height,'Details use the full height without duplicate summary space');
+  const limited=height<popover.scrollHeight;assert.equal(popover.style.maxHeight,limited?height+'px':'none','Only insufficient viewport height constrains details');assert.equal(popover.style.overflow,limited?'auto':'visible');
   for(const state of [{isComposing:true},{keyCode:229}]){const event={key:'Escape',...state,preventDefault(){this.prevented=true}};listeners.get('document:keydown')(event);assert.equal(popover.hidden,false);assert.equal(event.prevented,undefined,'IME Escape remains untouched')}
   close();
 }

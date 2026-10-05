@@ -89,9 +89,9 @@ function positionPopover(){
   const anchorHeight=active.summaryHeight||button.offsetHeight||44,small=rect.height<128;
   const anchorTop=small?rect.top-anchorHeight:rect.top+4;
   if(!image.isConnected||anchorTop+anchorHeight<=0||anchorTop>=viewportHeight){closeInfo();return}
-  popover.style.maxHeight='';
+  card.style.maxHeight='';popover.style.maxHeight='none';popover.style.overflow='visible';
   card.setAttribute('data-presentation','plain');
-  const plainHeight=popover.scrollHeight||popover.getBoundingClientRect().height,callout=rect.width<440||plainHeight>rect.height-8;
+  const plainHeight=Math.ceil(Math.max(popover.scrollHeight,popover.getBoundingClientRect().height)),callout=rect.width<440||plainHeight>rect.height-8;
   card.setAttribute('data-presentation',callout?'callout':'plain');
   const headerRect=document.querySelector('.site-header')?.getBoundingClientRect();
   const rail=callout&&headerRect&&headerRect.width<viewportWidth/2;
@@ -105,7 +105,7 @@ function positionPopover(){
   card.style.position='fixed';card.style.width=width+'px';card.style.maxWidth=width+'px';card.style.left=left+'px';
   button.style.marginRight='';
   const top=Math.max(safeTop,Math.min(viewportHeight-anchorHeight-8,anchorTop));
-  const desiredHeight=popover.scrollHeight||popover.getBoundingClientRect().height;
+  const desiredHeight=Math.ceil(Math.max(popover.scrollHeight,popover.getBoundingClientRect().height));
   const down=Math.max(0,viewportHeight-8-top),up=Math.max(0,top+anchorHeight-safeTop);
   let direction=small?'up':'down';
   if((direction==='up'?up:down)<desiredHeight&&(direction==='up'?down:up)>(direction==='up'?up:down))direction=direction==='up'?'down':'up';
@@ -117,7 +117,7 @@ function positionPopover(){
   const height=Math.min(desiredHeight,availableHeight);
   const panelTop=Math.max(panelFloor,Math.min(viewportHeight-height-8,direction==='up'?top+anchorHeight-height:top));
   card.setAttribute('data-direction',direction);card.style.maxHeight=height+'px';card.style.top=panelTop+'px';
-  popover.style.maxHeight=height+'px';
+  const limited=height<desiredHeight;popover.style.maxHeight=limited?height+'px':'none';popover.style.overflow=limited?'auto':'visible';
   if(callout){
     card.setAttribute('data-tail',side);
     card.style.setProperty('--photo-info-tail-x',Math.max(18,Math.min(width-18,rect.left+rect.width/2-left))+'px');
