@@ -152,8 +152,8 @@ function renderDirectPhotoInfo(message){
   const image=photoInfoImage,path=directPhotoMediaPath(image.currentSrc||image.getAttribute('src')||''),details=path?photoFileDetailsByPath.get(path):null;
   $('photoInfoHeading').textContent='사진 '+(directBodyPhotos().indexOf(image)+1)+' 정보';
   const list=$('photoInfoDetails');list.replaceChildren();
-  const hdrRows=directPhotoHdrRows(details),lines=[...directPhotoColorLines(details),...hdrRows.map(([label,value],index)=>index===0?value:label+' '+value)];
-  for(const value of lines){const row=document.createElement('div');row.className='photo-info-row';row.setAttribute('role','listitem');row.textContent=value;list.append(row)}
+  const hdrRows=directPhotoHdrRows(details),lines=[...directPhotoColorLines(details).map(value=>[value]),...hdrRows.map(([label,value,note],index)=>[index===0?value:label+' '+value,note])];
+  for(const [value,note] of lines){const row=document.createElement('div');row.className='photo-info-row';row.setAttribute('role','listitem');row.textContent=value;if(note)row.setAttribute('title',note);list.append(row)}
   $('photoInfoStatus').textContent=photoInfoMessage;positionDirectPhotoInfo();
 }
 async function openDirectPhotoInfo(image,focus,pinned=false){

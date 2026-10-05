@@ -42,9 +42,9 @@ function readInfo(path){
 function message(text){content.replaceChildren();const paragraph=document.createElement('p');paragraph.textContent=text;content.append(paragraph);positionPopover()}
 function renderInfo(info){
   content.replaceChildren();
-  const lines=photoColorLines(info);
-  for(const [index,[label,value]] of photoHdrRows(info).entries())lines.push(index?label+' '+value:value);
-  for(const value of lines){const line=document.createElement('p');line.className='public-photo-info-row';line.textContent=value;content.append(line)}
+  const lines=photoColorLines(info).map(value=>[value]);
+  for(const [index,[label,value,note]] of photoHdrRows(info).entries())lines.push([index?label+' '+value:value,note]);
+  for(const [value,note] of lines){const line=document.createElement('p');line.className='public-photo-info-row';line.textContent=value;if(note)line.setAttribute('title',note);content.append(line)}
   positionPopover();
 }
 function closeInfo(restoreFocus=false){
