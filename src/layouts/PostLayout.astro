@@ -1,4 +1,5 @@
 ---
+import { prepareBodyLinkTargets } from '../lib/body-link-targets';
 import { renderPostCategoryPagination } from '../lib/post-category-pagination';
 import type { PostEntry } from '../lib/posts';
 import { formatCompactDate, formatDate } from '../lib/posts';
@@ -42,9 +43,9 @@ const isPhotoEssay = imageCount >= 8
   || (imageCount >= 4 && textLength / imageCount < 400)
   || isShortVisualPost;
 const showCover = Boolean(data.cover && !sourceBody.includes(data.cover));
-const presentationHtml = prepareImportedPresentation(await Astro.slots.render('default'), data.source === 'native' ? undefined : {
+const presentationHtml = prepareBodyLinkTargets(prepareImportedPresentation(await Astro.slots.render('default'), data.source === 'native' ? undefined : {
   source: data.source, sourceId: data.sourceId,
-});
+}), { baseUrl: new URL(address.canonicalPath, 'https://dwnc.me').href });
 const hasEngineDiagram = presentationHtml.includes('data-engine-diagram');
 const photoData = collectPostPhotoData(presentationHtml);
 const photoSummary = renderPostPhotoSummary(photoData.summary);

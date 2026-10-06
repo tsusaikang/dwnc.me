@@ -82,10 +82,18 @@ projection에는 비공개 identity·날짜·순번 대응, `nextSequence`, 전�
 - 새 `/posts/{globalSequence}`도 positive integer/no-leading-zero/registry-hit 세 조건을 모두 만족해야 내부 글로 인식한다.
 - host는 소문자화하고 URL은 한 번만 decode한 뒤 NFC로 정규화한다. path·query·fragment의 `%`는 완전한 hex pair와 유효한 UTF-8이어야 한다.
 - encoded slash·backslash·dot segment·double encoding, custom port, userinfo, lookalike host, 다른 네이버 사용자, `naver.me`는 내부화하지 않는다.
-- 내부화한 링크의 query와 확인되지 않은 fragment를 버리고 `target`과 외부 링크용 `rel` token을 제거한다.
+- 내부화한 링크의 query와 확인되지 않은 fragment를 버린다. 최종 본문 표시 경로는 기존 `rel`을 보존하고 아래 새 탭 정책을 적용한다. 과거 이관·주소 변환의 기본 재현 경로는 기존 `target`·외부용 `rel` 제거를 유지하며, 최종 표시에서만 보존 옵션을 사용한다.
 - 표시문자 전체가 같은 URL일 때만 표시문자를 새 canonical로 바꾼다. 임의 제목·설명은 바꾸지 않는다.
 - link card의 알려진 탐색용 URL 속성도 registry hit만 새 canonical로 바꾼다. 외부 card metadata와 media는 그대로 둔다.
 - 네이버 편집기의 제목·이미지·지도·영상·프로필·URL 복사·player control은 authored 링크와 DOM 구조로 구분해 제거하거나 unwrap한다. 전역 href 정규식 치환은 금지한다.
+
+### 최종 본문 링크의 새 탭 정책
+
+동적 공개 본문·정적 fallback 본문·관리자 미리보기는 카드 생성·이관 표시 보정·공개 주소 정규화 뒤 공통 `prepareBodyLinkTargets()`를 적용한다. 내부 글·외부 사이트·카드·링크 있는 사진의 HTTP(S) 목적지에 `target="_blank"`와 `noopener`를 적용한다. 기존 `rel` token은 유지하며 `noreferrer`를 새로 강제하지 않는다. 주소·표시문자·본문 서식·주소의 기존 fragment를 이 단계에서 변경하지 않는다.
+
+관리자 미리보기는 다른 origin에서 실행되므로 상대 HTTP(S) 주소만 해당 글의 공개 URL을 기준으로 절대 주소로 표시한다. 편집용 `editorHtml`, 저장 본문·작업본·revision은 변경하지 않는다. 동적·정적 공개 본문의 상대 주소는 그대로 둔다.
+
+빈 주소·`#위치` 단독 이동·메일/전화 등 HTTP(S) 외 scheme·명시적 `download` 링크는 원래 동작을 유지한다. 다른 글이나 외부 주소의 fragment 링크는 새 탭 대상이며 fragment는 그대로 보존한다. 사이트 메뉴·분류·태그·이전/다음 글은 본문 처리에 포함하지 않는다. 링크 없는 사진의 원본 크기 팝업도 유지한다. 새 탭과 별도 창의 최종 선택·다운로드 처리는 브라우저와 대상 서버가 결정한다.
 
 ## 5. 알 수 없거나 공개가 아닌 대상
 

@@ -297,6 +297,13 @@ async function builtAnchorAudit(post, $, root) {
   for (const element of root.find('a[href]').toArray()) {
     const anchor = $(element);
     const href = anchor.attr('href') ?? '';
+    const trimmed = href.trim();
+    let webDestination = false;
+    try { webDestination = ['http:', 'https:'].includes(new URL(trimmed, `https://dwnc.me${post.canonicalPath}`).protocol); } catch {}
+    if (trimmed && !trimmed.startsWith('#') && anchor.attr('download') === undefined && webDestination) {
+      if (anchor.attr('target') !== '_blank') issue('links.body-new-tab', `${post.canonicalPath} has a web body anchor without the new-tab target.`);
+      if (!(anchor.attr('rel') ?? '').split(/[\t\n\f\r ]+/).some(token => token.toLowerCase() === 'noopener')) issue('links.body-noopener', `${post.canonicalPath} has a web body anchor without noopener.`);
+    }
     const reference = parsePublicPostReference(href);
     if (post.source === 'naver') {
       const currentPostAction = reference?.source === 'naver'
@@ -316,8 +323,6 @@ async function builtAnchorAudit(post, $, root) {
         issue('links.old-joinable-residue', `${post.canonicalPath} kept a non-canonical owned href.`);
       }
       if (anchor.attr('target')) counters.internalTargets += 1;
-      const badRel = (anchor.attr('rel') ?? '').split(/\s+/).some((token) => /^(?:external|noopener|noreferrer)$/i.test(token));
-      if (badRel) issue('links.internal-rel', `${post.canonicalPath} kept external rel tokens on ${href}.`);
       if (!(await localTargetExists(target.canonicalPath))) issue('links.internal-target-missing', `${href} has no built target.`);
       const displayedReference = parsePublicPostReference(anchor.text().normalize('NFC').trim());
       if (displayedReference?.legacyExternal && registry.resolve(displayedReference)) {
@@ -520,7 +525,6 @@ if (baselineProjection && sourceSemanticSha !== EXPECTED_TISTORY_SEMANTIC_SHA256
 if (baselineProjection && naverBuiltSemanticSha !== EXPECTED_NAVER_SEMANTIC_SHA256) {
   issue('links.naver-semantic-baseline', `Naver legacy-identity semantic SHA is ${naverBuiltSemanticSha}; expected ${EXPECTED_NAVER_SEMANTIC_SHA256}.`);
 }
-if (counters.internalTargets) issue('links.internal-target', `${counters.internalTargets} internal post anchors still open a target context.`);
 if (counters.brokenLocal) issue('links.local-broken', `${counters.brokenLocal} local authored links are broken.`);
 
 const rssRaw = await readFile(path.join(ROOT, 'dist/rss.xml'), 'utf8');

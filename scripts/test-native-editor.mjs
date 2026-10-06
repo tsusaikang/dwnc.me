@@ -204,6 +204,16 @@ equal(cardResponse.status,200);ok((await cardResponse.json()).html.includes(defa
 equal((await adminWorker.fetch(new Request('https://admin.example.test/api/link-preview',{method:'POST',headers:{...authHeaders,origin:'https://evil.example'},body:JSON.stringify({url:'https://dwnc.me/posts/597'})}),adminEnv)).status,403);
 const cardPreview = await adminWorker.fetch(new Request(`https://admin.example.test/api/posts/${adminDraft.id}/preview`,{method:'POST',headers:authHeaders,body:JSON.stringify({input:{...defaultInput,bodyFormat:'html',bodyMarkdown:'<p>https://dwnc.me/posts/597</p>'}})}),adminEnv);
 equal(cardPreview.status,200);const cardPreviewBody=await cardPreview.json();ok(cardPreviewBody.editorHtml.includes('data-ke-type="opengraph"'));ok(cardPreviewBody.html.includes(defaultInput.title));
+// Final preview gets new-tab attributes and public-origin destinations, while
+// its editing HTML and every stored row remain untouched by preview generation.
+const bodyLinkFixture = '<p><a href="/posts/597#part" target="_self" rel="tag">내부 <strong>글</strong></a> <a href="https://example.test/path#section" rel="nofollow">외부</a> <a href="#part">같은 위치</a> <a href="mailto:x@example.test">메일</a></p><figure data-ke-type="opengraph"><a href="/posts/597">카드</a></figure>';
+const previewNativeBefore=adminDatabase.sqlite.prepare('SELECT * FROM native_posts WHERE id=?').get(adminDraft.id),previewWorkingBefore=adminDatabase.sqlite.prepare('SELECT * FROM editor_working_copies WHERE post_id=?').all(adminDraft.id);
+const bodyLinkPreview=await adminWorker.fetch(new Request(`https://admin.example.test/api/posts/${adminDraft.id}/preview`,{method:'POST',headers:authHeaders,body:JSON.stringify({input:{...defaultInput,bodyFormat:'html',bodyMarkdown:bodyLinkFixture}})}),adminEnv);
+equal(bodyLinkPreview.status,200);const bodyLinkPreviewPayload=await bodyLinkPreview.json(),previewLinks=load(bodyLinkPreviewPayload.html),editingLinks=load(bodyLinkPreviewPayload.editorHtml);
+equal(previewLinks('a').eq(0).attr('href'),'https://dwnc.me/posts/597#part');equal(previewLinks('a').eq(0).attr('target'),'_blank');equal(previewLinks('a').eq(0).attr('rel'),'tag noopener');
+equal(editingLinks('a').eq(0).attr('href'),'/posts/597#part');equal(editingLinks('a').eq(0).attr('target'),'_self');equal(editingLinks('a').eq(0).attr('rel'),'tag');
+equal(previewLinks('a').eq(1).attr('rel'),'nofollow noopener');equal(previewLinks('a').eq(2).attr('href'),editingLinks('a').eq(2).attr('href'));equal(previewLinks('a').eq(2).attr('target'),undefined);equal(previewLinks('a').eq(3).attr('target'),undefined);equal(previewLinks('figure a').attr('href'),'https://dwnc.me/posts/597');
+assert.deepEqual(adminDatabase.sqlite.prepare('SELECT * FROM native_posts WHERE id=?').get(adminDraft.id),previewNativeBefore);assert.deepEqual(adminDatabase.sqlite.prepare('SELECT * FROM editor_working_copies WHERE post_id=?').all(adminDraft.id),previewWorkingBefore);
 // Loading a converted view must not update either saved publication or working copy.
 const originalCardRow=adminDatabase.sqlite.prepare('SELECT * FROM native_posts WHERE id=?').get(adminDraft.id);
 adminDatabase.sqlite.prepare('UPDATE native_posts SET body_html=? WHERE id=?').run('<p>https://dwnc.me/posts/597</p>',adminDraft.id);
@@ -470,6 +480,16 @@ ok(tagsIndex.includes('data-tag-filter')); ok(tagsIndex.includes('data-tag-list'
 const exactTagPage = await (await publicWorker(new Request(`https://dwnc.me/tag/${abDashSlug}`), publicEnv, {})).text();
 ok(exactTagPage.includes('Tag · 8편')); equal((exactTagPage.match(/class="post-card"/gu) ?? []).length, 8); equal(exactTagPage.includes(defaultInput.title), false);
 
+// Final dynamic body attributes apply to only the prose, leaving navigation
+// and the stored public/working snapshots unchanged during a read request.
+const bodyLinkPublicBefore=adminDatabase.sqlite.prepare('SELECT * FROM native_posts WHERE id=?').get(adminDraft.id);
+adminDatabase.sqlite.prepare('UPDATE native_posts SET body_html=? WHERE id=?').run(bodyLinkFixture,adminDraft.id);
+const bodyLinkPublicSeed=adminDatabase.sqlite.prepare('SELECT * FROM native_posts WHERE id=?').get(adminDraft.id),bodyLinkWorkingSeed=adminDatabase.sqlite.prepare('SELECT * FROM editor_working_copies WHERE post_id=?').all(adminDraft.id);
+const bodyLinkPublicResponse=await publicWorker(new Request('https://dwnc.me/posts/597'),publicEnv,{});equal(bodyLinkPublicResponse.status,200);const bodyLinkPublicDom=load(await bodyLinkPublicResponse.text());
+equal(bodyLinkPublicDom('.prose a').eq(0).attr('href'),'/posts/597#part');equal(bodyLinkPublicDom('.prose a').eq(0).attr('target'),'_blank');equal(bodyLinkPublicDom('.prose a').eq(0).attr('rel'),'tag noopener');equal(bodyLinkPublicDom('.prose a').eq(1).attr('rel'),'nofollow noopener');equal(bodyLinkPublicDom('.prose a').eq(2).attr('target'),undefined);equal(bodyLinkPublicDom('.prose figure a').attr('target'),'_blank');
+equal(bodyLinkPublicDom('.post-header__meta a').attr('target'),undefined);equal(bodyLinkPublicDom('.post-tags a').attr('target'),undefined);
+assert.deepEqual(adminDatabase.sqlite.prepare('SELECT * FROM native_posts WHERE id=?').get(adminDraft.id),bodyLinkPublicSeed);assert.deepEqual(adminDatabase.sqlite.prepare('SELECT * FROM editor_working_copies WHERE post_id=?').all(adminDraft.id),bodyLinkWorkingSeed);
+adminDatabase.sqlite.prepare('UPDATE native_posts SET body_html=? WHERE id=?').run(bodyLinkPublicBefore.body_html,adminDraft.id);
 const nativePostResponse = await publicWorker(new Request(`https://dwnc.me/posts/${publicPost.globalSequence}?from=test`), publicEnv, {});
 const nativePostHtml = await nativePostResponse.text();
 equal(nativePostResponse.status, 200); equal(nativePostResponse.headers.get('x-dwnc-staging-version'), versionId);

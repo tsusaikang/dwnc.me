@@ -158,5 +158,6 @@ export async function preparePublicPostHtml(post: PostEntry, registry: PublicLin
       canonicalPath: publicAddressForPost(post).canonicalPath,
     },
     registry,
+    preserveLinkAttributes: true,
   }).html;
 }

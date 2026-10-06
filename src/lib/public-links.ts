@@ -31,6 +31,8 @@ export interface PublicLinkRegistry {
 export interface PublicLinkTransformContext {
   post: Pick<PublicLinkRegistryEntry, 'source' | 'sourceId' | 'canonicalPath'>;
   registry: PublicLinkRegistry;
+  // Final body presentation preserves authored rel tokens before its new-tab policy.
+  preserveLinkAttributes?: boolean;
 }
 
 export interface PublicLinkTransformReport {
@@ -402,7 +404,7 @@ export function transformPublicPostLinks(
       report.displayTextRewritten += 1;
     }
     anchor.attr('href', canonicalHref);
-    removeExternalLinkAttributes(anchor);
+    if (!context.preserveLinkAttributes) removeExternalLinkAttributes(anchor);
     report.rewritten += 1;
   });
 

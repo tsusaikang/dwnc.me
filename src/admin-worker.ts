@@ -1,3 +1,4 @@
+import { prepareBodyLinkTargets } from './lib/body-link-targets.ts';
 import { prepareUrlLinkCards, resolveCardHtml } from './lib/url-link-cards.ts';
 import { categoryDisplayId } from './lib/category-display.ts';
 import { prepareHtmlSourcePaste } from './lib/html-source-paste.ts';
@@ -214,7 +215,7 @@ async function route(request: Request, env: AdminEnvironment, identityEmail: str
     const post = await store.getForAdmin(id);
     if (!post) return json({ error: '찾을 수 없습니다.' }, 404);
     const editorHtml = await prepareUrlLinkCards((await store.normalizeInput(body.input, post)).bodyHtml,await store.listPublished(false));
-    const html = prepareImportedPresentation(editorHtml,post.source&&post.sourceId?{source:post.source,sourceId:post.sourceId}:undefined);
+    const html = prepareBodyLinkTargets(prepareImportedPresentation(editorHtml,post.source&&post.sourceId?{source:post.source,sourceId:post.sourceId}:undefined),{baseUrl:new URL(post.publicPath ?? '/', 'https://dwnc.me').href,absoluteRelativeLinks:true});
     return json({ html, editorHtml, css: IMPORTED_PRESENTATION_CSS + (html.includes('data-engine-diagram') ? ENGINE_DIAGRAM_CSS : '') });
   }
   if (request.method === 'POST' && action === 'publish') {

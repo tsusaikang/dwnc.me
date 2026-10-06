@@ -1,3 +1,4 @@
+import { prepareBodyLinkTargets } from './body-link-targets.ts';
 import { IMAGE_LAYOUT_BOOTSTRAP } from './image-layout.ts';
 import { prepareUrlLinkCards } from './url-link-cards.ts';
 import { renderArchiveRow, renderRecentJournal } from './post-listing.ts';
@@ -251,7 +252,7 @@ async function postDocument(response: Response, post: NativePost, canonical: str
   const index=categoryPosts.findIndex((item)=>item.path===new URL(canonical).pathname), previous=index>=0?categoryPosts[index+1]:null, next=index>0?categoryPosts[index-1]:null;
   const related=renderPostCategoryPagination(posts,post.categoryId,new URL(canonical).pathname,`/category/${encodeURIComponent(category.slug)}`);
   const neighbor=(item:DiscoveryPost|null|undefined,rel:string,label:string)=>item?`<a rel="${rel}" href="${escapeHtml(item.path)}"><span>${label}</span><strong>${escapeHtml(item.title)}</strong><time datetime="${escapeHtml(item.publishedAt)}">${item.date}</time></a>`:'<span></span>';
-  const bodyHtml=prepareImportedPresentation(await prepareUrlLinkCards(post.bodyHtml,posts),post.source&&post.sourceId?{source:post.source,sourceId:post.sourceId}:undefined);
+  const bodyHtml=prepareBodyLinkTargets(prepareImportedPresentation(await prepareUrlLinkCards(post.bodyHtml,posts),post.source&&post.sourceId?{source:post.source,sourceId:post.sourceId}:undefined),{baseUrl:canonical});
   const photoData=await store.photoDataForSnapshot({...post,bodyHtml});
   const photoSummary=renderPostPhotoSummary(photoData.summary);
   const presentation=`${renderPostPhotoMetadata(photoData.files)}${bodyHtml.includes('dwnc-image-layout')?`<script>${IMAGE_LAYOUT_BOOTSTRAP}</script>`:''}<style>${IMPORTED_PRESENTATION_CSS}${bodyHtml.includes('data-engine-diagram')?ENGINE_DIAGRAM_CSS:''}</style>${bodyHtml.includes('data-engine-diagram')?`<script>${ENGINE_DIAGRAM_BOOTSTRAP}</script>`:''}<script>${PUBLIC_PHOTO_INFO_BOOTSTRAP}</script><script>${PUBLIC_PHOTO_WINDOW_BOOTSTRAP}</script>`;
