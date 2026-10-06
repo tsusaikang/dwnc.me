@@ -25,7 +25,7 @@ const branchId = `category-branch-${node.id}`;
   <div class="category-branch__row">
     {interactive && children.length > 0 ? (
       <button type="button" data-category-branch-toggle aria-controls={branchId} aria-expanded={isExpanded ? 'true' : 'false'}>
-        <span>{node.label}</span>
+        <span class="category-branch__label">{node.label}</span>
         <span class="category-branch__chevron" aria-hidden="true">⌄</span>
         <span class="visually-hidden"> 하위 카테고리 {isExpanded ? '접기' : '펼치기'}</span>
       </button>
