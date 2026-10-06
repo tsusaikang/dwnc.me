@@ -106,16 +106,25 @@ function autoCardCandidates(block){
   return autoCardLines(block);
 }
 function autoCardCandidate(block){const candidates=autoCardCandidates(block);return candidates.length===1?candidates[0].href:null}
-function autoCardRefreshEditedLink(block){
-  if(!block?.querySelectorAll)return;if(block.closest('figure,pre,code,[contenteditable="false"],[data-dwnc-no-autolink]')||block.querySelector('p,div,figure,pre,code,ul,ol,table,img,video,iframe,[data-dwnc-no-autolink]'))return;const candidates=autoCardLines(block,false);
-  // Refresh each confirmed URL line without collecting the paragraph's prose
-  // into its anchor. A retyped suffix outside an anchor remains usable text.
-  const lines=candidates;
-  for(const link of block.querySelectorAll('a')){const label=link.textContent.trim(),match=autoLinkMatches(label);if(match.length===1&&match[0].label===label){const line=lines.find(candidate=>candidate.anchors.includes(link)&&candidate.label.startsWith(label));if(line)link.setAttribute('href',line.href)}}
-  if(candidates.length!==1)return;
-  const label=block.textContent.trim(),links=block.querySelectorAll('a');if(candidates[0].label!==label||links.length!==1)return;
-  const link=links[0];link.setAttribute('href',candidates[0].href);
-  if(link.textContent.trim()!==label){link.replaceWith(...link.childNodes);link.append(...block.childNodes);block.append(link)}
+function autoCardEditableLinks(block,snapshot=null,start=null,end=null){
+  if(!block?.querySelectorAll)return [];const result=[];
+  for(const line of autoCardLines(block,false))if(line.anchors.length===1&&(!snapshot||snapshot.nodes.get(block)&&end>=snapshot.nodes.get(block).start+line.start&&start<=snapshot.nodes.get(block).start+line.lineEnd)){const link=line.anchors[0],label=link.textContent.trim(),matches=autoLinkMatches(label);try{const href=new URL(link.getAttribute('href'),location.origin).href;if(href===new URL(line.href).href||matches.length===1&&matches[0].label===label&&href===new URL(matches[0].href).href)result.push(link)}catch{}}
+  return result;
+}
+function autoCardRefreshEditedLink(block,intents=autoCardEditableLinks(block)){
+  if(!block?.querySelectorAll||!intents.length||block.closest('figure,pre,code,[contenteditable="false"],[data-dwnc-no-autolink]')||block.querySelector('p,div,figure,pre,code,ul,ol,table,img,video,iframe,[data-dwnc-no-autolink]'))return;
+  const lines=autoCardLines(block,false).filter(line=>line.anchors.length===1&&intents.includes(line.anchors[0]));
+  if(!lines.length)return;
+  const snapshot=autoLinkSnapshot(),entry=snapshot.nodes.get(block),selection=bodyRange(),start=selection?autoLinkOffset(snapshot,selection.startContainer,selection.startOffset):null,end=selection?autoLinkOffset(snapshot,selection.endContainer,selection.endOffset):null;
+  const spans=lines.filter(line=>line.anchors[0].textContent.trim()!==line.label),saved=selection&&entry&&!spans.some(line=>start<=entry.start+line.end&&end>=entry.start+line.start)?selection.cloneRange():null;let repaired=false;
+  for(const line of lines.reverse()){
+    const link=line.anchors[0];link.setAttribute('href',line.href);
+    if(link.textContent.trim()===line.label||!entry)continue;
+    // Only this URL line is collected into its existing anchor. Range preserves
+    // inline elements while the surrounding prose, BRs and spaces stay outside.
+    link.replaceWith(...link.childNodes);const currentSnapshot=autoLinkSnapshot(),range=document.createRange();range.setStart(...autoLinkPoint(currentSnapshot,entry.start+line.start));range.setEnd(...autoLinkPoint(currentSnapshot,entry.start+line.end,true));const container=range.commonAncestorContainer;let branch=container?.nodeType===1&&range.startContainer!==container?range.startContainer:null;if(branch)while(branch.parentNode&&branch.parentNode!==container)branch=branch.parentNode;link.append(range.extractContents());if(branch?.parentNode===container)branch.after(link);else range.insertNode(link);repaired=true;
+  }
+  if(repaired&&selection){if(saved){const live=window.getSelection();live.removeAllRanges();live.addRange(saved);captureFormatRange()}else autoLinkRestore(autoLinkSnapshot(),start,end)}
 }
 function autoCardMarkPaste(before){
   for(const block of $('bodyHtml').querySelectorAll('p,div')){
@@ -176,12 +185,13 @@ $('bodyHtml').addEventListener('paste',event=>{
 $('bodyHtml').addEventListener('beforeinput',event=>{
   autoLinkBefore=null;if(busy||!current||!['insertText','insertCompositionText','insertFromPaste','insertParagraph','insertLineBreak','deleteContentBackward','deleteContentForward','deleteByCut'].includes(event.inputType))return;
   const snapshot=autoLinkSnapshot(),range=bodyRange();if(autoLinkText!==snapshot.text)autoLinkFresh=[];if(!range)return;
-  autoLinkBefore={snapshot,start:autoLinkOffset(snapshot,range.startContainer,range.startOffset),end:autoLinkOffset(snapshot,range.endContainer,range.endOffset),type:event.inputType,data:event.data||'',block:autoCardEditBlock(range.startContainer),node:range.startContainer,preview:autoCardPreviousPreview(autoCardEditBlock(range.startContainer)),confirmed: (()=>{const block=autoCardEditBlock(range.startContainer),entry=snapshot.nodes.get(block),offset=autoLinkOffset(snapshot,range.startContainer,range.startOffset);return entry&&offset!==null?autoCardLines(block,false).find(candidate=>offset>=entry.start+candidate.end&&offset<=entry.start+candidate.lineEnd)?.href:null})()};
+  autoLinkBefore={snapshot,start:autoLinkOffset(snapshot,range.startContainer,range.startOffset),end:autoLinkOffset(snapshot,range.endContainer,range.endOffset),type:event.inputType,data:event.data||'',block:autoCardEditBlock(range.startContainer),node:range.startContainer,preview:autoCardPreviousPreview(autoCardEditBlock(range.startContainer)),links:autoCardEditableLinks(autoCardEditBlock(range.startContainer),snapshot,autoLinkOffset(snapshot,range.startContainer,range.startOffset),autoLinkOffset(snapshot,range.endContainer,range.endOffset)),confirmed: (()=>{const block=autoCardEditBlock(range.startContainer),entry=snapshot.nodes.get(block),offset=autoLinkOffset(snapshot,range.startContainer,range.startOffset);return entry&&offset!==null?autoCardLines(block,false).find(candidate=>offset>=entry.start+candidate.end&&offset<=entry.start+candidate.lineEnd)?.href:null})()};
 });
 $('bodyHtml').addEventListener('input',event=>{
   const before=autoLinkBefore,pasted=autoLinkPaste;autoLinkBefore=null;autoLinkPaste=null;if(busy||!current)return;
+  if(before?.block&&!autoLinkComposing&&!event.isComposing)autoCardRefreshEditedLink(before.block,before.links);
   autoCardRemoveStale(before?.preview);
-  if(before?.block&&['insertParagraph','insertLineBreak'].includes(before.type)){if(before.block===$('bodyHtml'))autoCardLooseNode=before.node;autoCardRefreshEditedLink(before.block);if(before.type==='insertParagraph')autoCardKeepAdjacent(before.preview);autoCardMark(before.block,before.confirmed)}
+  if(before?.block&&['insertParagraph','insertLineBreak'].includes(before.type)){if(before.block===$('bodyHtml'))autoCardLooseNode=before.node;if(before.type==='insertParagraph')autoCardKeepAdjacent(before.preview);autoCardMark(before.block,before.confirmed)}
   if(pasted?.postId===current.id){autoCardMarkPaste(pasted.blocks);Promise.resolve().then(()=>autoCardQueue())}
   // Native paste may replace an empty block's BR or normalize DIV/P wrappers.
   // The clipboard text immediately before the resulting caret identifies only
@@ -204,9 +214,10 @@ $('bodyHtml').addEventListener('input',event=>{
   if(!autoLinkComposing&&!event.isComposing)autoLinkReleaseSpace();
   if(!autoLinkComposing&&!event.isComposing&&(before.type==='insertFromPaste'||before.type==='insertParagraph'||before.type==='insertLineBreak'||before.type==='insertText'&&/\s/u.test(before.data)))autoLinkApply();
 });
-$('bodyHtml').addEventListener('compositionstart',()=>{autoLinkComposing=true;const text=autoLinkSnapshot().text;autoLinkComposition={text,fresh:autoLinkText===text?autoLinkFresh.map(range=>[...range]):[],postId:current?.id}});
+$('bodyHtml').addEventListener('compositionstart',()=>{autoLinkComposing=true;const snapshot=autoLinkSnapshot(),text=snapshot.text,range=bodyRange(),block=autoCardEditBlock(range?.startContainer);autoLinkComposition={text,fresh:autoLinkText===text?autoLinkFresh.map(range=>[...range]):[],postId:current?.id,block,links:range?autoCardEditableLinks(block,snapshot,autoLinkOffset(snapshot,range.startContainer,range.startOffset),autoLinkOffset(snapshot,range.endContainer,range.endOffset)):[]}});
 $('bodyHtml').addEventListener('compositionend',()=>{
   autoLinkComposing=false;const before=autoLinkComposition;autoLinkComposition=null;autoLinkBefore=null;if(!before||before.postId!==current?.id)return;
+  if(before.block)autoCardRefreshEditedLink(before.block,before.links);
   const text=autoLinkSnapshot().text;let start=0,end=before.text.length,tail=text.length;
   while(start<end&&start<tail&&before.text[start]===text[start])start++;
   while(end>start&&tail>start&&before.text[end-1]===text[tail-1]){end--;tail--}

@@ -4,7 +4,8 @@ import { autoLinkScript } from '../src/lib/admin-autolink.ts';
 
 // Deliberately small DOM adapter: checks qualification and asynchronous stale
 // response guards, not browser layout or native selection behavior.
-const root={nodeType:1,tagName:'DIV',childNodes:[],addEventListener(){},contains(node){return node?.attached},querySelectorAll(){return []}};
+const autoCardHandlers=new Map();
+const root={nodeType:1,tagName:'DIV',childNodes:[],addEventListener(type,listener){autoCardHandlers.set(type,listener)},contains(node){return node?.attached},querySelectorAll(){return []}};
 const context=vm.createContext({URL,Map,Set,WeakMap,console,location:{origin:'https://admin.dwnc.me'},$:()=>root});
 vm.runInContext('let current={id:"one"},busy=false,editorComposing=false;',context);
 vm.runInContext(autoLinkScript,context);
@@ -50,15 +51,47 @@ vm.runInContext('autoCardMarkPaste(beforeBlocks)',context);
 assert.equal(vm.runInContext('autoCardEligible.has(old)',context),false);
 assert.equal(vm.runInContext('autoCardEligible.get(pasted).has("https://new.test")',context),true);
 root.querySelectorAll=()=>[];
-// Real-browser regression: editing the suffix can leave it outside its anchor.
-let linkHref='https://dwnc.me/posts/1';
-const prefix=textNode('https://dwnc.me/posts/'),suffix=textNode('2');
-const partialLink={nodeType:1,tagName:'A',getAttribute:()=>linkHref,textContent:prefix.textContent,childNodes:[prefix],setAttribute(name,value){if(name==='href')linkHref=value},replaceWith(...nodes){edited.childNodes=[...nodes,suffix]},append(...nodes){this.childNodes=nodes;this.textContent=nodes.map(node=>node.textContent).join('')}};
-const edited={nodeType:1,tagName:'P',textContent:'https://dwnc.me/posts/2',childNodes:[partialLink,suffix],querySelectorAll:()=>[partialLink],querySelector:()=>null,closest:()=>null,append(node){this.childNodes=[node]}};
-context.edited=edited;vm.runInContext('autoCardRefreshEditedLink(edited)',context);
-assert.equal(linkHref,'https://dwnc.me/posts/2');
-assert.equal(edited.childNodes.length,1);assert.equal(partialLink.textContent,edited.textContent);
-assert.deepEqual(partialLink.childNodes,[prefix,suffix],'Retyping preserves the existing inline nodes');
+// Range adapter for the repair boundary: validates the selected URL offsets
+// and preserves the fragment's inline markup. Native Range is also exercised
+// by the main browser fixture; this adapter makes no layout claims.
+function repairFixture({formatted=false,trailing='  \n뒤 본문',href='https://dwnc.me/posts/606',manual=false}={}){
+  function detach(node){if(node.parentNode){const siblings=node.parentNode.childNodes;siblings.splice(siblings.indexOf(node),1);node.parentNode=null}}
+  function text(data){return {nodeType:3,data,get textContent(){return this.data},get parentElement(){return this.parentNode},after(child){const parent=this.parentNode;detach(child);parent.childNodes.splice(parent.childNodes.indexOf(this)+1,0,child);child.parentNode=parent}}}
+  function element(tag,children=[],attrs={}){const node={nodeType:1,tagName:tag,childNodes:[],attrs,attached:true,get textContent(){return this.childNodes.map(child=>child.textContent||'').join('')},get parentElement(){return this.parentNode},getAttribute:name=>attrs[name]??null,setAttribute(name,value){attrs[name]=value},matches:selector=>selector==='p,div'&&['P','DIV'].includes(tag),closest(selector){if(selector==='a'||selector==='p,div'){for(let current=this;current;current=current.parentNode)if(selector==='a'?current.tagName==='A':['P','DIV'].includes(current.tagName))return current}return null},querySelector(){return null},querySelectorAll(selector){const all=[];function visit(parent){for(const child of parent.childNodes||[]){if(child.tagName==='A'&&selector==='a')all.push(child);visit(child)}}visit(this);return all},append(...nodes){for(const child of nodes){if(child.nodeType===11){this.append(...child.childNodes.slice());continue}detach(child);this.childNodes.push(child);child.parentNode=this}},replaceWith(...nodes){const parent=this.parentNode,index=parent.childNodes.indexOf(this);detach(this);for(const [offset,child] of nodes.entries()){detach(child);parent.childNodes.splice(index+offset,0,child);child.parentNode=parent}},after(child){const parent=this.parentNode;detach(child);parent.childNodes.splice(parent.childNodes.indexOf(this)+1,0,child);child.parentNode=parent}};node.append(...children);return node}
+  const prefix=text('https://dwnc.me/posts/60'),suffix=text('6'+trailing),inline=formatted?element('STRONG',[prefix],{style:'color:red'}):prefix,link=element('A',[inline],{href:manual?'https://different.test':href,target:'_blank',rel:'noopener noreferrer'}),description=text('설명'),br1=element('BR'),br2=element('BR'),paragraph=element('P',[description,br1,br2,link,suffix]);
+  root.childNodes=[paragraph];paragraph.parentNode=root;root.querySelectorAll=selector=>selector==='p,div'?[paragraph]:[];let selection=null,restored=null,extractions=0;
+  context.bodyRange=()=>selection;context.window={getSelection:()=>({removeAllRanges(){},addRange(range){restored=range}})};context.captureFormatRange=()=>{};
+  context.document={createRange(){return {commonAncestorContainer:paragraph,setStart(node,offset){this.startContainer=node;this.startOffset=offset},setEnd(node,offset){this.endContainer=node;this.endOffset=offset},setStartAfter(node){this.setStart(node.parentNode,node.parentNode.childNodes.indexOf(node)+1)},collapse(){this.endContainer=this.startContainer;this.endOffset=this.startOffset},extractContents(){extractions++;assert.equal(this.startContainer,prefix);assert.equal(this.startOffset,0);assert.equal(this.endContainer,suffix);assert.equal(this.endOffset,1,'Only the retyped URL digit may be captured, excluding spaces and the following line');const selectedPrefix=text(prefix.data),selectedSuffix=text(suffix.data.slice(0,this.endOffset));prefix.data='';suffix.data=suffix.data.slice(this.endOffset);const selected=formatted?element('STRONG',[selectedPrefix],{style:'color:red'}):selectedPrefix;return {nodeType:11,childNodes:[selected,selectedSuffix]}},insertNode(node){paragraph.append(node)}}}};
+  context.edited=paragraph;
+  return {paragraph,link,prefix,suffix,inline,description,br1,br2,get extractions(){return extractions},setSelection(range){selection=range},get restored(){return restored},element,text};
+}
+for(const formatted of [false,true]){
+  const fixture=repairFixture({formatted});const original=fixture.paragraph.textContent;context.repairLink=fixture.link;
+  fixture.setSelection({startContainer:fixture.suffix,startOffset:1,endContainer:fixture.suffix,endOffset:1,collapsed:true,cloneRange(){return this}});
+  vm.runInContext('autoCardRefreshEditedLink(edited)',context);
+  assert.equal(fixture.link.textContent,'https://dwnc.me/posts/606');assert.equal(fixture.link.getAttribute('href'),'https://dwnc.me/posts/606');assert.equal(fixture.paragraph.textContent,original);
+  assert.equal(fixture.link.parentNode,fixture.paragraph,'The repaired A must not inherit the prefix-only STRONG style');assert.equal(fixture.link.childNodes.at(-1).tagName,undefined,'The suffix keeps its original plain style');
+  if(formatted){assert.equal(fixture.link.childNodes[0].tagName,'STRONG');assert.equal(fixture.link.childNodes[0].attrs.style,'color:red')}
+  assert.equal(fixture.paragraph.childNodes[0],fixture.description);assert.equal(fixture.paragraph.childNodes[1],fixture.br1);assert.equal(fixture.paragraph.childNodes[2],fixture.br2);assert.equal(fixture.suffix.data,'  \n뒤 본문');
+  assert.equal(fixture.restored.startContainer,fixture.paragraph);assert.equal(fixture.restored.startOffset,fixture.paragraph.childNodes.indexOf(fixture.link)+1,'URL-end caret remains at the same logical text position');
+  vm.runInContext('autoCardRefreshEditedLink(edited)',context);assert.equal(fixture.extractions,1,'Repair is idempotent');
+}
+const manualFixture=repairFixture({manual:true});vm.runInContext('autoCardRefreshEditedLink(edited)',context);assert.equal(manualFixture.extractions,0);assert.equal(manualFixture.link.getAttribute('href'),'https://different.test','A deliberate URL-label/href mismatch remains manual');
+const outsideFixture=repairFixture();const outsideRange={startContainer:outsideFixture.description,startOffset:1,endContainer:outsideFixture.description,endOffset:1,cloneRange(){return this}};outsideFixture.setSelection(outsideRange);vm.runInContext('autoCardRefreshEditedLink(edited)',context);assert.equal(outsideFixture.restored,outsideRange,'Selection outside the URL keeps its DOM Range');
+// Input provenance qualifies only the line being edited, even when another
+// split URL happens to sit in the same paragraph.
+const snapshot=vm.runInContext('autoLinkSnapshot()',context);context.testSnapshot=snapshot;context.testStart=snapshot.nodes.get(outsideFixture.description).start+1;
+assert.equal(vm.runInContext('autoCardEditableLinks(edited,testSnapshot,testStart,testStart).length',context),0);
+// Ordinary suffix input repairs only the user's edited URL row and does not
+// turn a merely syntactically complete address into an immediate card request.
+const typingFixture=repairFixture({trailing:''});typingFixture.suffix.data='';typingFixture.link.setAttribute('href','https://dwnc.me/posts/60');
+let typingRange={collapsed:true,startContainer:typingFixture.suffix,startOffset:0,endContainer:typingFixture.suffix,endOffset:0,cloneRange(){return this}};typingFixture.setSelection(typingRange);let repairApiCalls=0;context.api=async()=>{repairApiCalls++;throw new Error('Ordinary URL character must not fetch a card')};vm.runInContext('current={id:"one"};busy=false;editorComposing=false;resetAutoLinks()',context);
+autoCardHandlers.get('beforeinput')({inputType:'insertText',data:'6'});typingFixture.suffix.data='6';typingRange.startOffset=typingRange.endOffset=1;autoCardHandlers.get('input')({inputType:'insertText',data:'6'});
+assert.equal(typingFixture.link.textContent,'https://dwnc.me/posts/606');assert.equal(typingFixture.link.getAttribute('href'),'https://dwnc.me/posts/606');assert.equal(repairApiCalls,0);
+const unrelatedFixture=repairFixture();typingRange={collapsed:true,startContainer:unrelatedFixture.description,startOffset:1,endContainer:unrelatedFixture.description,endOffset:1,cloneRange(){return this}};unrelatedFixture.setSelection(typingRange);
+autoCardHandlers.get('beforeinput')({inputType:'insertText',data:'!'});unrelatedFixture.description.data='설!명';typingRange.startOffset=typingRange.endOffset=2;autoCardHandlers.get('input')({inputType:'insertText',data:'!'});assert.equal(unrelatedFixture.extractions,0,'Editing the description cannot normalize another URL row');
+const sentenceFixture=repairFixture({trailing:' 추가 설명'});vm.runInContext('autoCardRefreshEditedLink(edited)',context);assert.equal(sentenceFixture.extractions,0,'A URL embedded in a prose sentence remains outside the standalone-line repair scope');assert.equal(sentenceFixture.suffix.data,'6 추가 설명');
+root.childNodes=[];root.querySelectorAll=()=>[];context.bodyRange=()=>null;
 // URL remains in place, preview is adjacent, and repeats cannot duplicate it.
 const urlBlock=block('https://example.test');let inserted=null,scheduled=0;
 urlBlock.hasAttribute=()=>false;urlBlock.contains=()=>false;urlBlock.after=card=>{inserted=card;urlBlock.nextElementSibling=card};
@@ -111,7 +144,7 @@ oldLink.childNodes[0].data=oldLink.textContent='https://dwnc.me/posts/607';order
 vm.runInContext('autoCardRemoveStale(previous)',context);assert.equal(siblings.length,2);assert.equal(siblings[1].getAttribute('data-og-url'),'https://dwnc.me/posts/606');
 assert.equal(vm.runInContext('autoCardEligible.get(node).has("https://dwnc.me/posts/607")',context),true);
 assert.equal(vm.runInContext('autoCardEligible.get(node).has("https://dwnc.me/posts/606")',context),false);
-vm.runInContext('autoCardRefreshEditedLink(node)',context);assert.equal(oldLink.getAttribute('href'),'https://dwnc.me/posts/607');
+context.oldLink=oldLink;vm.runInContext('autoCardRefreshEditedLink(node,[oldLink])',context);assert.equal(oldLink.getAttribute('href'),'https://dwnc.me/posts/607');
 assert.deepEqual(Array.from(vm.runInContext('autoCardCandidates(node)',context),item=>item.href),['https://dwnc.me/posts/607','https://dwnc.me/posts/606']);
 
 // Pasting a new line into an existing paragraph qualifies only that new URL.
