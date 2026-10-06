@@ -21,7 +21,9 @@ const EXPECTED_TAGS = 660;
 const EXPECTED_TAG_ASSIGNMENTS = 740;
 const EXPECTED_CATEGORY_ROUTES = 40;
 const EXPECTED_SITEMAP_ROUTES = 1054;
-const EXPECTED_HTML_FILES = 1404;
+const EXPECTED_HTML_FILES = 1405;
+// Utility screens are built, but do not enter public post discovery/sitemaps.
+const NON_SITEMAP_UTILITY_FILES = ['404.html', 'photo-viewer/index.html'];
 const issues = new Map();
 
 function issue(code, message) {
@@ -654,11 +656,14 @@ if (sitemapRoutes.size !== expectedSitemap.size) issue('sitemap.count', `Sitemap
 
 const htmlFiles = (await walk(DIST)).filter((file) => path.extname(file) === '.html');
 const legacyAliasCount = publicProjection.reduce((sum, entry) => sum + entry.legacyPaths.length, 0);
-if (EXPECTED_HTML_FILES !== EXPECTED_SITEMAP_ROUTES + 1 + EXPECTED_IMPORTED_POSTS) {
+for (const file of NON_SITEMAP_UTILITY_FILES) {
+  if (!htmlFiles.includes(path.join(DIST, file))) issue('route.utility-missing', `${file} is missing.`);
+}
+if (EXPECTED_HTML_FILES !== EXPECTED_SITEMAP_ROUTES + NON_SITEMAP_UTILITY_FILES.length + EXPECTED_IMPORTED_POSTS) {
   issue('route.html-baseline', 'Imported HTML/sitemap/alias baseline constants are inconsistent.');
 }
-if (htmlFiles.length !== expectedSitemap.size + 1 + legacyAliasCount) {
-  issue('route.html-count', `Built HTML count is ${htmlFiles.length}; expected ${expectedSitemap.size + 1 + legacyAliasCount}.`);
+if (htmlFiles.length !== expectedSitemap.size + NON_SITEMAP_UTILITY_FILES.length + legacyAliasCount) {
+  issue('route.html-count', `Built HTML count is ${htmlFiles.length}; expected ${expectedSitemap.size + NON_SITEMAP_UTILITY_FILES.length + legacyAliasCount}.`);
 }
 const canonicalPostPaths = new Set(publicPosts.map((post) => post.canonicalPath));
 const legacyAliasPaths = new Set(publicProjection.flatMap((entry) => entry.legacyPaths));

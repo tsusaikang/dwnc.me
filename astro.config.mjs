@@ -26,7 +26,7 @@ export default defineConfig({
     sitemap({
       filter: (page) => {
         const pathname = new URL(page).pathname.replace(/\/$/, '') || '/';
-        return !page.endsWith('/search-index.json') && !legacyPaths.has(pathname);
+        return !page.endsWith('/search-index.json') && pathname !== '/photo-viewer' && !legacyPaths.has(pathname);
       },
     }),
   ],

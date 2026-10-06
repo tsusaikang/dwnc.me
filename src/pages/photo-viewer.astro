@@ -1,0 +1,24 @@
+---
+import { PHOTO_VIEWER_BOOTSTRAP } from '../lib/public-photo-window';
+---
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>사진 원본 크기로 보기</title>
+    <style is:inline>
+      html { color-scheme: dark; background: #171717; }
+      body { margin: 0; overflow: auto; }
+      #photo { display: block; width: auto; height: auto; max-width: none; max-height: none; }
+      #photo[hidden], #status[hidden] { display: none; }
+      #status { margin: 24px; color: #eee; font: 16px/1.5 system-ui, sans-serif; }
+    </style>
+  </head>
+  <body>
+    <p id="status" role="status">사진을 불러오고 있습니다.</p>
+    <img id="photo" alt="원본 크기 사진" hidden />
+    <script is:inline set:html={PHOTO_VIEWER_BOOTSTRAP} />
+  </body>
+</html>

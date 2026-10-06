@@ -1,5 +1,10 @@
 @layer components {
   .public-photo-info-controls { position: absolute; inset: 0 0 auto; height: 0; z-index: 15; pointer-events: none; }
+  .prose img[data-public-photo-window] { cursor: zoom-in; }
+  .prose img[data-public-photo-window]:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+  .public-photo-window-fallback { position: fixed; right: 16px; bottom: 16px; z-index: 30; max-width: calc(100vw - 32px); padding: 12px 16px; border-radius: 8px; background: #141b26; color: #fff; box-shadow: 0 4px 20px rgb(0 0 0 / 30%); font: 14px/1.5 var(--sans); }
+  .public-photo-window-fallback p { margin: 0 0 6px; }
+  .public-photo-window-fallback a { color: #fff; text-decoration: underline; }
   .public-photo-info-card,
   .public-photo-info-panel {
     position: absolute;
