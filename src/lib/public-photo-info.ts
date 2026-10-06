@@ -14,7 +14,7 @@ try{const seed=JSON.parse(document.getElementById('publicPhotoMetadata')?.textCo
 const layer=document.createElement('div');layer.className='public-photo-info-controls';
 const panel=document.createElement('div');panel.className='public-photo-info-panel';panel.hidden=true;
 const popover=document.createElement('section');popover.id='publicPhotoInfoPopover';popover.className='public-photo-info-popover';popover.hidden=true;popover.setAttribute('aria-label','사진 정보');
-popover.innerHTML='<button class="public-photo-info-close" type="button" data-photo-info-close aria-label="사진 정보 닫기">×</button><div data-photo-info-content aria-live="polite"></div>';
+popover.innerHTML='<div data-photo-info-content aria-live="polite"></div><button class="public-photo-info-close" type="button" data-photo-info-close aria-label="사진 정보 닫기">×</button>';
 document.body.append(layer);layer.append(panel);panel.append(popover);
 const content=popover.querySelector('[data-photo-info-content]');
 let active=null,reason='',requestVersion=0,frame=0,hoverTimer=null,closeTimer=null;
