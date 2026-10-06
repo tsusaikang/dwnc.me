@@ -5,7 +5,7 @@ import { load } from 'cheerio';
 import { PUBLIC_PHOTO_INFO_BOOTSTRAP } from '../src/lib/public-photo-info.ts';
 
 const $=load('<body><article class="article-page"><img class="post-cover" src="/media/cover.jpg"><div class="prose"><p>앞 문단</p><div class="dwnc-image-layout"><figure><a href="https://example.test"><img src="/media/native/first.jpg"></a><figcaption>첫 설명</figcaption></figure><figure><img src="/media/native/second.jpg"><figcaption>둘째 설명</figcaption></figure></div><img src="https://external.example/media/native/first.jpg"><img src="/media/native/failure.jpg"><figure data-ke-type="opengraph"><img src="/media/card.jpg"></figure><p>뒤 문단</p></div></article><dialog id="otherDialog"></dialog></body>');
-const wrappers=new WeakMap(),listeners=new Map(),requests=[],frames=[],timers=new Map(),mutationObservers=[];let timerId=0;
+const wrappers=new WeakMap(),listeners=new Map(),requests=[],frames=[],timers=new Map(),mutationObservers=[],idleCallbacks=[];let timerId=0;
 const setTimeout=(callback,delay)=>{timers.set(++timerId,{callback,delay});return timerId},clearTimeout=id=>timers.delete(id);
 const advanceTimers=delay=>{for(const [id,timer] of [...timers])if(timer.delay<=delay){timers.delete(id);timer.callback()}};
 class Element {
@@ -22,6 +22,7 @@ class Element {
   contains(node){return Boolean(node&&(node===this||$(node.node).parents().toArray().includes(this.node)))}
   append(...nodes){for(const node of nodes)$(this.node).append(node.node)}
   replaceChildren(...nodes){$(this.node).empty();this.append(...nodes)}
+  remove(){$(this.node).remove()}
   addEventListener(name,handler){this.listeners.set(name,handler)}
   getBoundingClientRect(){return this.rect}
   focus(options){const previous=document.activeElement;document.activeElement=this;this.focusOptions=options;if(previous!==this){previous?.event('blur',{relatedTarget:this});this.event('focus')}}
@@ -32,7 +33,7 @@ class Element {
 }
 function wrap(node){if(!node)return null;if(!wrappers.has(node))wrappers.set(node,new Element(node));return wrappers.get(node)}
 const document={body:wrap($('body')[0]),getElementById:id=>wrap($('#'+id)[0]),querySelector:selector=>wrap($(selector)[0]),createElement:tag=>wrap($('<'+tag+'>')[0]),activeElement:null,addEventListener:(name,handler)=>listeners.set('document:'+name,handler)};
-const window={innerWidth:1024,innerHeight:900,scrollX:0,scrollY:0,requestAnimationFrame:handler=>{frames.push(handler);return frames.length},addEventListener:(name,handler)=>listeners.set(name,handler)};
+const window={innerWidth:1024,innerHeight:900,scrollX:0,scrollY:0,requestIdleCallback:callback=>idleCallbacks.push(callback),requestAnimationFrame:handler=>{frames.push(handler);return frames.length},addEventListener:(name,handler)=>listeners.set(name,handler)};
 const paint=()=>{for(const callback of frames.splice(0))callback()};
 const fetch=(url,options)=>new Promise((resolve,reject)=>requests.push({url,options,resolve,reject}));
 class MutationObserver {
@@ -119,4 +120,18 @@ second.setAttribute('src','/media/native/stored-formats.jpg');refresh();buttons[
 const layout=await readFile(new URL('../src/layouts/PostLayout.astro',import.meta.url),'utf8');assert.match(layout,/set:html=\{PUBLIC_PHOTO_INFO_BOOTSTRAP\}/);
 const css=await readFile(new URL('../src/styles/photo-info.css',import.meta.url),'utf8');assert.match(css,/text-shadow: [^;]*rgb\(0 0 0 \/ 95%\)/);assert.ok(!css.includes('::backdrop')&&!css.includes('backdrop-filter'));assert.match(css,/\.public-photo-info-close\s*\{[^}]*min-width: 44px[^}]*min-height: 44px/);assert.ok(!css.includes('opacity: 0'),'Expanded information does not hide the basic text');assert.match(css,/\[data-tail="top"\]\[data-direction="up"\]::after\s*\{[^}]*top: auto[^}]*bottom: -20px[^}]*border-bottom-color: transparent[^}]*border-top-color: rgb\(20 27 38 \/ 94%\)/,'A popup above its photo points downward from its bottom edge');
 assert.ok(!PUBLIC_PHOTO_INFO_BOOTSTRAP.includes('mediaManifest')&&!PUBLIC_PHOTO_INFO_BOOTSTRAP.includes('cheerio'));
+assert.match(css,/\[data-presentation="plain"\] \.public-photo-info-popover\s*\{\s*scrollbar-width: none/,'Scrollable plain details retain the same right text edge');assert.match(css,/\[data-presentation="plain"\] \.public-photo-info-popover::-webkit-scrollbar\s*\{\s*display: none/);
+// Fixed right offsets resolve against the scrollbar-excluding client width.
+// Match the retained summary edge when a classic 17px scrollbar is present.
+document.documentElement={clientWidth:1263};window.innerWidth=1280;window.innerHeight=900;header.rect={left:0,right:260,top:0,bottom:900,width:260,height:900};first.rect={left:350,right:1060,top:200,bottom:800,width:710,height:600};resize();buttons[0].click();
+assert.equal(panel.getAttribute('data-presentation'),'plain');assert.equal(panel.style.right,'207px');assert.equal(1263-parseFloat(panel.style.right),1060-4,'Plain detail and summary outer right edges remain equal with a scrollbar');close();delete document.documentElement;
+
+// Idle loading prepares only nearby desktop photos, two requests at a time.
+const idle=()=>{for(const callback of idleCallbacks.splice(0))callback()};
+first.setAttribute('src','/media/native/preload-a.jpg');second.setAttribute('src','/media/native/preload-b.jpg');last.setAttribute('src','/media/native/preload-c.jpg');last.rect={left:350,right:1060,top:2000,bottom:2400,width:710,height:400};
+resize();const preloadStart=requests.length;assert.equal(popover.hidden,true);idle();assert.equal(requests.length,preloadStart+2);assert.equal(requests[preloadStart].options.credentials,'same-origin');
+buttons[0].click();assert.equal(requests.length,preloadStart+2,'Hover/click shares the pending speculative request');requests[preloadStart].resolve(Response.json({info}));await tick();close();buttons[0].click();assert.match(content.textContent,/Display P3/);assert.ok(!content.textContent.includes('확인하고'),'Prepared details render synchronously without a loading row');close();
+requests[preloadStart+1].resolve(new Response('',{status:503}));await tick();idle();assert.equal(requests.length,preloadStart+2,'A failed background read is not repeatedly retried by layout refreshes');buttons[1].click();assert.equal(requests.length,preloadStart+3);requests.at(-1).resolve(Response.json({info}));await tick();close();
+last.rect={...last.rect,top:1100,bottom:1500};refresh();window.innerWidth=390;resize();idle();assert.equal(requests.length,preloadStart+3,'Switching to mobile cancels queued desktop work before it starts');window.innerWidth=1280;resize();idle();assert.equal(requests.length,preloadStart+4,'Scrolling close to a photo prepares it before it is visible');requests.at(-1).resolve(Response.json({info}));await tick();
+const added=document.createElement('img');added.setAttribute('src','/media/native/preload-added.jpg');added.naturalWidth=100;added.naturalHeight=100;added.rect={left:350,right:1060,top:300,bottom:700,width:710,height:400};body.append(added);refresh();idle();assert.equal(requests.length,preloadStart+5,'New photo nodes join the same bounded preloader');const addedButton=$('.public-photo-info-button').toArray().map(wrap).at(-1);addedButton.click();added.setAttribute('src','/media/native/preload-replaced.jpg');refresh();assert.equal(popover.hidden,true,'A changed source closes the old details');requests.at(-1).resolve(Response.json({info:{...info,colorSpace:'OLD SOURCE'}}));await tick();assert.equal(popover.hidden,true);idle();assert.equal(requests.length,preloadStart+6);requests.at(-1).resolve(Response.json({info}));await tick();addedButton.click();assert.match(content.textContent,/Display P3/);assert.ok(!content.textContent.includes('OLD SOURCE'));const cardCount=$('.public-photo-info-card').length;added.remove();refresh();assert.equal(popover.hidden,true);assert.equal($('.public-photo-info-card').length,cardCount-1,'Removing the active image removes exactly its own detached card');assert.equal($('.public-photo-info-button').length,buttons.length);
 console.log(JSON.stringify({suite:'public-photo-info',status:'PASS',behavior:'stable one-line basic information, visible ICC/XMP/ISO and auxiliary JPEG storage, no invented ratios, narrow and bottom-edge callouts, no mobile metadata requests or header row, preserved body and interactions'}));

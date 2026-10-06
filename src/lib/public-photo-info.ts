@@ -1,9 +1,10 @@
 import { canonicalPhotoSource, formatPhotoBytes } from './photo-media-summary.ts';
 import { photoColorRows, photoHdrRows } from './photo-info-presentation.ts';
+import { createPhotoInfoPreloader } from './photo-info-preload.ts';
 
 // Detached controls preserve the article's groups, links and captions. Desktop
 // details open on interaction; mobile displays each photo's basic information.
-export const PUBLIC_PHOTO_INFO_BOOTSTRAP = '(function(){\nconst canonicalPhotoSource=' + canonicalPhotoSource.toString() + ';\nconst formatPhotoBytes=' + formatPhotoBytes.toString() + ';\nconst photoColorRows=' + photoColorRows.toString() + ';\nconst photoHdrRows=' + photoHdrRows.toString() + ';\n' + String.raw`
+export const PUBLIC_PHOTO_INFO_BOOTSTRAP = '(function(){\nconst canonicalPhotoSource=' + canonicalPhotoSource.toString() + ';\nconst formatPhotoBytes=' + formatPhotoBytes.toString() + ';\nconst photoColorRows=' + photoColorRows.toString() + ';\nconst photoHdrRows=' + photoHdrRows.toString() + ';\nconst createPhotoInfoPreloader=' + createPhotoInfoPreloader.toString() + ';\n' + String.raw`
 const body=document.querySelector('.article-page .prose');
 if(!body||document.getElementById('publicPhotoInfoPopover'))return;
 const photos=Array.from(body.querySelectorAll('img[src]')).filter(image=>!image.closest('[data-ke-type="opengraph"],.se_component.se_oglink,.se-component.se-oglink'));
@@ -17,8 +18,12 @@ popover.innerHTML='<button class="public-photo-info-close" type="button" data-ph
 document.body.append(layer);layer.append(panel);panel.append(popover);
 const content=popover.querySelector('[data-photo-info-content]');
 let active=null,reason='',requestVersion=0,frame=0,hoverTimer=null,closeTimer=null;
-const cache=new Map(),positive=value=>Number.isSafeInteger(value)&&value>0;
+const cache=new Map(),ready=new Map(),positive=value=>Number.isSafeInteger(value)&&value>0;
 const mobileMode=()=>window.innerWidth<=767;
+const preloader=createPhotoInfoPreloader(()=>{
+  if(mobileMode())return [];
+  return controls.filter(({image})=>{const rect=image.getBoundingClientRect();return image.isConnected&&rect.width>0&&rect.height>0&&rect.bottom>-600&&rect.top<window.innerHeight+600&&rect.right>0&&rect.left<window.innerWidth}).map(({image})=>sourcePath(image)).filter(path=>path&&!ready.has(path));
+},readInfo);
 function sourcePath(image){
   let source=image.getAttribute('src')||'';
   try{const url=new URL(source,location.href);if(/^https?:\/\//i.test(source)&&url.origin===location.origin){url.protocol='https:';url.host='dwnc.me';url.port='';source=url.href}}catch{}
@@ -34,7 +39,7 @@ function basicInfo(image){
 }
 function readInfo(path){
   if(!cache.has(path)){
-    const pending=fetch('/api/photo-info?path='+encodeURIComponent(path),{credentials:'same-origin',headers:{accept:'application/json'}}).then(async response=>{if(!response.ok)throw new Error('unavailable');const payload=await response.json();if(!payload.info||typeof payload.info!=='object')throw new Error('unavailable');return payload.info});
+    const pending=fetch('/api/photo-info?path='+encodeURIComponent(path),{credentials:'same-origin',headers:{accept:'application/json'}}).then(async response=>{if(!response.ok)throw new Error('unavailable');const payload=await response.json();if(!payload.info||typeof payload.info!=='object')throw new Error('unavailable');ready.set(path,payload.info);return payload.info});
     cache.set(path,pending);pending.catch(()=>{if(cache.get(path)===pending)cache.delete(path)});
   }
   return cache.get(path);
@@ -54,7 +59,7 @@ function closeInfo(restoreFocus=false){
 function inInfo(target){return Boolean(active&&(active.card.contains(target)||panel.contains(target)))}
 function positionPopover(){
   if(!active||popover.hidden)return;
-  const {image,button,summary}=active,rect=image.getBoundingClientRect(),viewportWidth=window.innerWidth,viewportHeight=window.innerHeight;
+  const {image,button,summary}=active,rect=image.getBoundingClientRect(),viewportWidth=document.documentElement?.clientWidth||window.innerWidth,viewportHeight=window.innerHeight;
   const anchorHeight=button.offsetHeight||44,visualHeight=summary.offsetHeight||14*1.45,small=rect.height<128;
   const anchorTop=small?rect.top-anchorHeight:rect.top+4;
   if(!image.isConnected||anchorTop+anchorHeight<=0||anchorTop>=viewportHeight){closeInfo();return}
@@ -106,14 +111,17 @@ async function openInfo(control,trigger){
   if(active===control&&!popover.hidden){if(trigger!=='hover')reason=trigger;return}
   if(active){active.button.setAttribute('aria-expanded','false');active.card.setAttribute('data-expanded','false')}
   active=control;reason=trigger;const {image,index,button}=control,version=++requestVersion;
-  control.card.setAttribute('data-expanded','true');popover.setAttribute('aria-label',(index+1)+'번 사진 정보');button.setAttribute('aria-expanded','true');popover.hidden=false;panel.hidden=false;position();if(active!==control||popover.hidden)return;message('사진 정보를 확인하고 있습니다.');
-  const path=sourcePath(image);if(!path){message('외부 사진의 파일 정보는 확인할 수 없습니다.');return}
+  const path=sourcePath(image);control.detailPath=path;
+  control.card.setAttribute('data-expanded','true');popover.setAttribute('aria-label',(index+1)+'번 사진 정보');button.setAttribute('aria-expanded','true');popover.hidden=false;panel.hidden=false;position();if(active!==control||popover.hidden)return;
+  if(!path){message('외부 사진의 파일 정보는 확인할 수 없습니다.');return}
+  if(ready.has(path)){renderInfo(ready.get(path));return}
+  message('사진 정보를 확인하고 있습니다.');
   try{
-    const info=await readInfo(path);if(!popover.hidden&&active===control&&version===requestVersion)renderInfo(info);
-  }catch{if(!popover.hidden&&active===control&&version===requestVersion)message('사진 정보를 불러오지 못했습니다. 잠시 뒤 다시 확인해 주세요.')}
+    const info=await readInfo(path);if(!popover.hidden&&active===control&&version===requestVersion&&sourcePath(image)===path)renderInfo(info);
+  }catch{if(!popover.hidden&&active===control&&version===requestVersion&&sourcePath(image)===path)message('사진 정보를 불러오지 못했습니다. 잠시 뒤 다시 확인해 주세요.')}
 }
 function leaveHover(event){clearTimeout(hoverTimer);if(inInfo(event?.relatedTarget)){clearTimeout(closeTimer);return}if(reason==='hover'){clearTimeout(closeTimer);closeTimer=setTimeout(()=>closeInfo(),180)}}
-const controls=photos.map((image,index)=>{
+function createControl(image,index){
   const card=document.createElement('div');card.className='public-photo-info-card';card.setAttribute('data-expanded','false');
   const button=document.createElement('button');button.type='button';button.className='public-photo-info-button';button.setAttribute('aria-controls',popover.id);button.setAttribute('aria-expanded','false');
   const summary=document.createElement('span');summary.className='public-photo-info-summary';button.append(summary);
@@ -127,11 +135,18 @@ const controls=photos.map((image,index)=>{
   button.addEventListener('blur',event=>{if(reason==='focus'&&active===control&&!popover.contains(event.relatedTarget))closeInfo()});
   button.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();if(active===control&&!popover.hidden&&reason==='click')closeInfo();else openInfo(control,'click')});
   card.append(button);layer.append(card);return control;
-});
+}
+const controls=photos.map(createControl);
 function position(){
   frame=0;
   const mobile=mobileMode();layer.setAttribute('data-mobile',String(mobile));
   if(mobile&&active){closeInfo();return}
+  const currentPhotos=Array.from(body.querySelectorAll('img[src]')).filter(image=>!image.closest('[data-ke-type="opengraph"],.se_component.se_oglink,.se-component.se-oglink'));
+  let removedActive=false;
+  for(let index=controls.length-1;index>=0;index--){const control=controls[index];if(!currentPhotos.includes(control.image)){removedActive||=active===control;control.card.remove();controls.splice(index,1)}}
+  if(removedActive){closeInfo();return}
+  for(const [index,image] of currentPhotos.entries()){let control=controls.find(item=>item.image===image);if(!control){control=createControl(image,index);controls.push(control)}control.index=index}
+  if(active&&sourcePath(active.image)!==active.detailPath){closeInfo();return}
   for(const control of controls){
     const {image,index,button,card,summary}=control,rect=image.getBoundingClientRect();card.hidden=!image.isConnected||rect.width<=0||rect.height<=0;button.hidden=card.hidden;if(card.hidden)continue;
     const basic=basicInfo(image),text=[basic.format,basic.dimensions,basic.size].join(' · ');if(summary.textContent!==text)summary.textContent=text;
@@ -142,6 +157,7 @@ function position(){
   }
   if(mobile)return;
   positionPopover();
+  preloader.schedule();
 }
 function schedule(){if(!frame)frame=window.requestAnimationFrame(position)}
 popover.querySelector('[data-photo-info-close]').addEventListener('click',()=>closeInfo(true));

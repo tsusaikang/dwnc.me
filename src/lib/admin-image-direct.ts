@@ -1,5 +1,6 @@
 import { canonicalPhotoSource, formatPhotoBytes } from './photo-media-summary.ts';
 import { photoHdrRows, photoColorRows } from './photo-info-presentation.ts';
+import { createPhotoInfoPreloader } from './photo-info-preload.ts';
 
 // Editing controls and drop indicators live outside bodyHtml. Only the existing
 // saved layout vocabulary is moved into the post, so saving and history remain
@@ -22,6 +23,7 @@ body[data-photo-info="open"] #imageTools,body[data-photo-info="open"] #photoOrde
 .photo-drop-indicator{position:fixed;z-index:70;pointer-events:none;background:#1769d2;border-radius:2px;box-shadow:0 0 0 2px #ffffffd9}.photo-drop-indicator span{position:absolute;left:6px;top:7px;white-space:nowrap;border-radius:4px;background:#1769d2;color:#fff;font:12px/1.4 system-ui;padding:4px 7px;box-shadow:0 2px 8px #0002}.photo-drop-indicator[data-mode="group"] span{top:-28px;left:0}.photo-drop-indicator[data-mode="blocked"]{background:#a43434}.photo-drop-indicator[data-mode="blocked"] span{background:#a43434}
 .photo-text-hint{position:fixed;z-index:65;pointer-events:none;transform:translateY(-50%);border:1px solid #bfd2ec;border-radius:4px;background:#f5f9ff;color:#285c9a;padding:2px 7px;font:12px/1.4 system-ui;white-space:nowrap}
 .photo-info-panel[data-presentation="overlay"] .photo-info-dialog{width:fit-content;max-width:100%;align-self:flex-end;padding:8px 12px 8px 52px}.photo-info-panel[data-presentation="overlay"] .photo-info-dialog #photoInfoDetails{width:max-content;max-width:100%;margin-left:auto}.photo-info-panel[data-presentation="overlay"] .photo-info-dialog :is(p,.photo-info-row){text-align:right}.photo-info-panel[data-presentation="overlay"] .photo-info-heading button{left:2px;right:auto}
+.photo-info-panel[data-presentation="overlay"] .photo-info-dialog{scrollbar-width:none}.photo-info-panel[data-presentation="overlay"] .photo-info-dialog::-webkit-scrollbar{display:none}
 .photo-info-panel[data-expanded="true"][data-presentation="bubble"]{overflow:visible;text-shadow:none}.photo-info-panel[data-presentation="bubble"] .photo-info-dialog{background:rgb(20 27 38 / 94%);border-radius:8px;box-shadow:0 3px 16px rgb(0 0 0 / 28%);margin-top:8px}.photo-info-panel[data-presentation="bubble"][data-direction="up"] .photo-info-dialog{margin-top:0;margin-bottom:8px}.photo-info-panel[data-expanded="true"][data-presentation="bubble"]::after{content:"";position:absolute;left:var(--photo-tail-left,50%);top:0;width:16px;height:8px;transform:translateX(-50%);clip-path:polygon(50% 0,0 100%,100% 100%);background:rgb(20 27 38 / 94%);pointer-events:none}.photo-info-panel[data-presentation="bubble"][data-direction="up"]::after{top:auto;bottom:0;clip-path:polygon(0 0,100% 0,50% 100%)}.photo-info-panel[data-presentation="bubble"] .photo-info-heading{justify-content:space-between}.photo-info-panel[data-presentation="bubble"] .photo-info-dialog .photo-info-row,.photo-info-panel[data-presentation="bubble"] .photo-info-dialog p{text-align:right}.photo-info-panel[data-presentation="bubble"] .photo-file-info{text-shadow:1px 0 1px rgb(0 0 0 / 95%),-1px 0 1px rgb(0 0 0 / 95%),0 1px 1px rgb(0 0 0 / 95%),0 -1px 1px rgb(0 0 0 / 95%),0 2px 3px rgb(0 0 0 / 90%)}
 .photo-info-panel[data-expanded="true"][data-presentation="bubble"]::before{content:"";position:absolute;left:var(--photo-bridge-left,0);top:var(--photo-bridge-top,0);width:var(--photo-bridge-width,0);height:var(--photo-bridge-height,0);background:transparent;pointer-events:auto}
 @media(max-width:767px){.photo-info-panel,.photo-info-panel .photo-file-info{pointer-events:none}.photo-info-panel .photo-file-info{min-height:0;min-width:0;padding:3px 6px;font-size:13px;line-height:1.5;text-align:left;cursor:default}}
@@ -32,12 +34,17 @@ export const imageDirectScript = String.raw`
 let photoDrag=null,photoScrollFrame=null,photoPointer=null,photoCapture=null;
 let photoTextPointer=null;
 let photoNumberFrame=null;
-let photoInfoOwner=null,photoInfoImage=null,photoInfoFocus=null,photoInfoMessage='',photoInfoSerial=0,photoInfoPinned=false,photoInfoCloseTimer=null,photoFileDetailsByPath=new Map(),photoFilePendingByPath=new Map();
+let photoInfoOwner=null,photoInfoImage=null,photoInfoFocus=null,photoInfoPath=null,photoInfoMessage='',photoInfoSerial=0,photoInfoPinned=false,photoInfoCloseTimer=null,photoFileDetailsByPath=new Map(),photoFilePendingByPath=new Map();
 let photoMetadataOwner=null,photoMetadataSerial=0,photoMetadataState='idle',photoMetadataByPath=new Map();
 const formatDirectPhotoBytes=${formatPhotoBytes.toString()};
 const directPhotoHdrRows=${photoHdrRows.toString()};
 const directPhotoColorRows=${photoColorRows.toString()};
 const canonicalDirectPhotoSource=${canonicalPhotoSource.toString()};
+const createDirectPhotoInfoPreloader=${createPhotoInfoPreloader.toString()};
+const directPhotoInfoPreloader=createDirectPhotoInfoPreloader(()=>{
+  if(directPhotoInfoIsMobile()||busy||photoDrag||!current||photoMetadataOwner!==current.id)return [];
+  return directBodyPhotos().filter(image=>{const rect=image.getBoundingClientRect();return rect.width>0&&rect.height>0&&rect.bottom>-600&&rect.top<window.innerHeight+600&&rect.right>0&&rect.left<window.innerWidth}).map(image=>directPhotoMediaPath(image.currentSrc||image.getAttribute('src')||'')).filter(path=>path&&!photoFileDetailsByPath.has(path));
+},path=>requestDirectPhotoDetails(current.id,path));
 function directPhotoMediaPath(value){
   try{
     if(typeof value!=='string'||!value.startsWith('/')&&!/^https?:\/\//i.test(value))return null;
@@ -53,7 +60,7 @@ function rememberDirectPhotoMetadata(postId,media){
 }
 async function loadDirectPhotoMetadata(postId){
   if(current?.id!==postId)return;
-  closeDirectPhotoInfo();const serial=++photoMetadataSerial;photoMetadataOwner=postId;photoMetadataByPath=new Map();photoFileDetailsByPath=new Map();photoFilePendingByPath=new Map();photoMetadataState='loading';scheduleDirectPhotoNumbers();
+  closeDirectPhotoInfo();const serial=++photoMetadataSerial;photoMetadataOwner=postId;photoMetadataByPath=new Map();photoFileDetailsByPath=new Map();photoFilePendingByPath=new Map();photoMetadataState='loading';directPhotoInfoPreloader.reset();scheduleDirectPhotoNumbers();
   try{
     const result=await api('/posts/'+encodeURIComponent(postId)+'/media');
     if(serial!==photoMetadataSerial||current?.id!==postId||photoMetadataOwner!==postId)return;
@@ -112,7 +119,7 @@ function resetDirectPhotoInfoPanel(panel){
   const trigger=panel.querySelector('.photo-file-info');trigger.style.left=box.left+'px';trigger.style.top=box.top+'px';trigger.style.width=box.width+'px';trigger.style.marginRight='0';panel.parentElement.dataset.infoOpen='false';
 }
 function closeDirectPhotoInfo(){
-  cancelDirectPhotoInfoClose();const dialog=$('photoInfoDialog'),trigger=photoInfoFocus,panel=directPhotoInfoArea();photoInfoSerial++;photoInfoOwner=null;photoInfoImage=null;photoInfoFocus=null;photoInfoPinned=false;photoInfoMessage='';
+  cancelDirectPhotoInfoClose();const dialog=$('photoInfoDialog'),trigger=photoInfoFocus,panel=directPhotoInfoArea();photoInfoSerial++;photoInfoOwner=null;photoInfoImage=null;photoInfoFocus=null;photoInfoPath=null;photoInfoPinned=false;photoInfoMessage='';
   if(trigger)trigger.setAttribute('aria-expanded','false');if(dialog.open)dialog.close();
   $('photoInfoHost').append(dialog);resetDirectPhotoInfoPanel(panel);$('photoNumberOverlay').style.zIndex='';delete document.body.dataset.photoInfo;
 }
@@ -150,6 +157,7 @@ function renderDirectPhotoInfo(message){
   if(current?.id!==photoInfoOwner||!photoInfoImage||!$('bodyHtml').contains(photoInfoImage)){closeDirectPhotoInfo();return}
   if(typeof message==='string')photoInfoMessage=message;
   const image=photoInfoImage,path=directPhotoMediaPath(image.currentSrc||image.getAttribute('src')||''),details=path?photoFileDetailsByPath.get(path):null;
+  if(path!==photoInfoPath){closeDirectPhotoInfo();return}
   $('photoInfoHeading').textContent='사진 '+(directBodyPhotos().indexOf(image)+1)+' 정보';
   const list=$('photoInfoDetails');list.replaceChildren();
   const lines=[...directPhotoColorRows(details),...directPhotoHdrRows(details)];
@@ -163,13 +171,13 @@ async function openDirectPhotoInfo(image,focus,pinned=false){
   if(!focus){refreshDirectPhotoNumbers();focus=Array.from($('photoNumberOverlay').querySelectorAll('.photo-file-info')).find(node=>node.photoInfoImage===image)}if(!focus)return;
   if(dialog.open&&photoInfoImage===image&&photoInfoOwner===current.id){photoInfoPinned||=pinned;if(focus)photoInfoFocus=focus;positionDirectPhotoInfo();return}
   if(photoInfoFocus)closeDirectPhotoInfo();
-  const postId=current.id,serial=++photoInfoSerial,path=directPhotoMediaPath(image.currentSrc||image.getAttribute('src')||'');photoInfoOwner=postId;photoInfoImage=image;photoInfoFocus=focus;photoInfoPinned=pinned;
-  focus.setAttribute('aria-expanded','true');focus.parentElement.append(dialog);dialog.open=true;renderDirectPhotoInfo(path?'파일에 기록된 정보를 확인하는 중…':'외부 사진의 파일 정보는 확인하지 않습니다.');
+  const postId=current.id,serial=++photoInfoSerial,path=directPhotoMediaPath(image.currentSrc||image.getAttribute('src')||'');photoInfoOwner=postId;photoInfoImage=image;photoInfoFocus=focus;photoInfoPath=path;photoInfoPinned=pinned;
+  focus.setAttribute('aria-expanded','true');focus.parentElement.append(dialog);dialog.open=true;renderDirectPhotoInfo(path?(photoFileDetailsByPath.has(path)?'':'파일에 기록된 정보를 확인하는 중…'):'외부 사진의 파일 정보는 확인하지 않습니다.');
   if(!path||!dialog.open)return;
   if(photoFileDetailsByPath.has(path)){renderDirectPhotoInfo('');return}
   try{
     const result=await requestDirectPhotoDetails(postId,path);
-    if(serial!==photoInfoSerial||current?.id!==postId||photoInfoOwner!==postId||photoInfoImage!==image||!dialog.open||!$('bodyHtml').contains(image))return;
+    if(serial!==photoInfoSerial||current?.id!==postId||photoInfoOwner!==postId||photoInfoImage!==image||!dialog.open||!$('bodyHtml').contains(image)||directPhotoMediaPath(image.currentSrc||image.getAttribute('src')||'')!==path)return;
     renderDirectPhotoInfo('');
   }catch{
     if(serial!==photoInfoSerial||current?.id!==postId||photoInfoOwner!==postId||photoInfoImage!==image||!dialog.open)return;
@@ -211,7 +219,7 @@ function refreshDirectPhotoNumbers(){
     if(photoInfoImage!==image)resetDirectPhotoInfoPanel(panel);
   });
   for(const marker of existing.values()){if(marker.photoImage===photoInfoImage)closeDirectPhotoInfo();marker.remove()}
-  updateDirectPhotoNumberControls();refreshDirectPhotoOrder();if(directPhotoInfoIsMobile()&&$('photoInfoDialog').open)closeDirectPhotoInfo();renderDirectPhotoInfo();
+  updateDirectPhotoNumberControls();refreshDirectPhotoOrder();if(directPhotoInfoIsMobile()&&$('photoInfoDialog').open)closeDirectPhotoInfo();renderDirectPhotoInfo();directPhotoInfoPreloader.schedule();
 }
 function scheduleDirectPhotoNumbers(){if(photoNumberFrame===null&&typeof window.requestAnimationFrame==='function')photoNumberFrame=window.requestAnimationFrame(refreshDirectPhotoNumbers)}
 function closeDirectPhotoOrder(){

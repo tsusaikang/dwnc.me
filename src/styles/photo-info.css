@@ -43,6 +43,8 @@
   .public-photo-info-popover p { margin: 0; font-size: 14px; line-height: 1.45; text-align: right; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
   .public-photo-info-row + .public-photo-info-row { margin-top: 4px; }
   .public-photo-info-panel[data-presentation="plain"] .public-photo-info-close { left: 2px; right: auto; }
+  .public-photo-info-panel[data-presentation="plain"] .public-photo-info-popover { scrollbar-width: none; }
+  .public-photo-info-panel[data-presentation="plain"] .public-photo-info-popover::-webkit-scrollbar { display: none; }
   .public-photo-info-panel[data-presentation="callout"] { overflow: visible; border-radius: 8px; background: rgb(20 27 38 / 94%); text-shadow: none; box-shadow: 0 8px 26px rgb(0 0 0 / 30%), inset 0 0 0 1px rgb(255 255 255 / 16%); }
   .public-photo-info-panel[data-presentation="callout"] .public-photo-info-popover { width: 100%; padding: 8px 52px 10px 12px; }
   .public-photo-info-panel[data-presentation="callout"] p { text-align: left; }
