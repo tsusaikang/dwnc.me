@@ -14,7 +14,8 @@ try{const seed=JSON.parse(document.getElementById('publicPhotoMetadata')?.textCo
 const layer=document.createElement('div');layer.className='public-photo-info-controls';
 const panel=document.createElement('div');panel.className='public-photo-info-panel';panel.hidden=true;
 const popover=document.createElement('section');popover.id='publicPhotoInfoPopover';popover.className='public-photo-info-popover';popover.hidden=true;popover.setAttribute('aria-label','사진 정보');
-popover.innerHTML='<div data-photo-info-content aria-live="polite"></div><button class="public-photo-info-close" type="button" data-photo-info-close aria-label="사진 정보 닫기">×</button>';
+popover.innerHTML='<div data-photo-info-content aria-live="polite"></div>';
+popover.setAttribute('tabindex','-1');
 document.body.append(layer);layer.append(panel);panel.append(popover);
 const content=popover.querySelector('[data-photo-info-content]');
 let active=null,reason='',requestVersion=0,frame=0,hoverTimer=null,closeTimer=null;
@@ -93,7 +94,7 @@ function positionPopover(){
   const height=Math.min(desiredHeight,availableHeight);
   const panelTop=callout?Math.max(panelFloor,Math.min(viewportHeight-height-8,direction==='up'?top+anchorHeight-height:top)):panelFloor;
   panel.setAttribute('data-direction',direction);panel.style.top=panelTop+'px';panel.style.maxHeight=height+'px';
-  const limited=height<desiredHeight;popover.style.maxHeight=limited?height+'px':'none';popover.style.overflow=limited?'auto':'visible';
+  const limited=height<desiredHeight;popover.style.maxHeight=limited?height+'px':'none';popover.style.overflow=limited?'auto':'visible';popover.setAttribute('tabindex',limited?'0':'-1');
   if(callout){
     panel.setAttribute('data-tail',side);
     panel.style.setProperty('--photo-info-tail-x',Math.max(18,Math.min(width-18,rect.left+rect.width/2-left))+'px');
@@ -160,7 +161,6 @@ function position(){
   preloader.schedule();
 }
 function schedule(){if(!frame)frame=window.requestAnimationFrame(position)}
-popover.querySelector('[data-photo-info-close]').addEventListener('click',()=>closeInfo(true));
 panel.addEventListener('pointerenter',()=>clearTimeout(closeTimer));panel.addEventListener('pointerleave',leaveHover);
 popover.addEventListener('pointerenter',()=>clearTimeout(closeTimer));popover.addEventListener('pointerleave',leaveHover);
 popover.addEventListener('focusin',()=>{reason='focus';clearTimeout(closeTimer)});
