@@ -13,7 +13,7 @@ const root = { nodeType: 1, tagName: 'DIV', childNodes: [], addEventListener(typ
 function textNode(data, excluded = false) { return { nodeType: 3, data, parentElement: { closest(selector) { return selector === 'p,div' ? null : excluded ? {} : null; } } }; }
 let node = textNode(''), caret = 0, selectionEnd = 0;
 root.childNodes = [node];
-const context = vm.createContext({ URL, Map, Set, console, $: () => root, bodyRange: () => ({ startContainer: node, startOffset: caret, endContainer: node, endOffset: selectionEnd, collapsed: caret === selectionEnd }) });
+const context = vm.createContext({ URL, Map, Set, console, $: () => root, bodyRange: () => ({ startContainer: node, startOffset: caret, endContainer: node, endOffset: selectionEnd, collapsed: caret === selectionEnd, cloneRange() { return { ...this }; } }) });
 vm.runInContext('let busy=false,current={id:"synthetic"},editorTyping=null;', context);
 vm.runInContext(autoLinkScript, context);
 const run = source => vm.runInContext(source, context);
@@ -92,6 +92,17 @@ root.childNodes = [a, b];
 context.boundary = url.length;
 assert.equal(run('autoLinkPoint(autoLinkSnapshot(),boundary)[0]'), b, 'A new URL starts outside the preceding text/anchor/formatting node');
 assert.equal(run('autoLinkPoint(autoLinkSnapshot(),boundary,true)[0]'), a, 'A URL end stays in its final text node');
+// Shift+Enter leaves the caret at a BR boundary, which is not represented by
+// snapshot.texts. Mapping it back must retain the next line in root and P DOM.
+for(const inParagraph of [false,true]){
+  const urlText=textNode(url),br={nodeType:1,tagName:'BR',childNodes:[]},container=inParagraph?{nodeType:1,tagName:'P',childNodes:[urlText,br]}:root;
+  if(!inParagraph)root.childNodes=[urlText,br];else root.childNodes=[container];br.parentNode=container;urlText.parentElement=container;
+  context.testOffset=url.length+1;context.testContainer=container;
+  assert.equal(run('autoLinkPoint(autoLinkSnapshot(),testOffset)[0]'),container,'A trailing BR caret stays outside the URL');
+  assert.equal(run('autoLinkPoint(autoLinkSnapshot(),testOffset)[1]'),2,'The caret remains after the BR');
+}
+root.childNodes=[a,b];
+
 
 // Reapplying and removing a manual link reuses its existing intent marker.
 let replacement = null, selectedMarker = null;

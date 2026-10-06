@@ -1,13 +1,38 @@
 import { load } from 'cheerio';
 import { createNativePublicWorker } from '../src/lib/native-public-worker.ts';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { createEditorDatabase, seedLegacy } from './fixtures/editor-database.mjs';
 import { CmsConfigurationStore } from '../src/lib/cms-configuration.ts';
 import { NativePostStore } from '../src/lib/native-post-store.ts';
+import { managementScript } from '../src/lib/admin-management.ts';
 import { verifyAccessIdentity, clearAccessKeyCacheForTests } from '../src/lib/access-auth.ts';
 import adminWorker from '../src/admin-worker.ts';
 import manifest from '../src/data/public-media-r2-v1.json' with { type: 'json' };
+// Exercise recommendation rendering and selection without a real editor or writes.
+const tagInput={value:'',focusCount:0,focus(){this.focusCount++}},tagSuggestions={children:[],replaceChildren(){this.children=[]},append(button){this.children.push(button)}};
+let tagSchedules=0;
+const tagContext=vm.createContext({tagChoices:[], $:id=>({tags:tagInput,tagSuggestions}[id]),document:{createElement:()=>({})},schedule:()=>tagSchedules++});
+const tagScript=managementScript.slice(managementScript.indexOf('function tagSuggestionName('),managementScript.indexOf("$('tags').addEventListener('input'"));
+vm.runInContext(tagScript,tagContext);
+const tagLabels=()=>tagSuggestions.children.map(button=>button.textContent);
+const renderTags=(input,labels)=>{tagInput.value=input;tagContext.tagChoices=labels.map(label=>({label}));vm.runInContext('renderTagSuggestions()',tagContext)};
+const mixedTags=['#냉각수보충','냉각수보충','##블루핸즈',' 블루핸즈 ','1080P','#1080p','C#','#C#','F#','###',''];
+const untouchedLabels=[...mixedTags];
+renderTags('',mixedTags);
+assert.deepEqual(tagLabels(),['#냉각수보충','#블루핸즈','#1080P','#C#','#F#']);
+assert.equal(tagInput.value,'');assert.equal(tagSchedules,0);assert.deepEqual(tagContext.tagChoices.map(tag=>tag.label),untouchedLabels);
+for(const query of ['블루',' #블루 ','##블루']){renderTags(query,mixedTags);assert.deepEqual(tagLabels(),['#블루핸즈']);assert.equal(tagInput.value,query)}
+for(const selected of ['냉각수보충','#냉각수보충','##냉각수보충']){renderTags(selected+', ',mixedTags);assert.ok(!tagLabels().includes('#냉각수보충'))}
+renderTags(' #1080p, #C#, ##F#, ',mixedTags);assert.deepEqual(tagLabels(),['#냉각수보충','#블루핸즈']);
+// Latest operating recommendation labels contain both #KA4카니발 and ka4카니발.
+renderTags('카니발, ka4, 카니발냉각수, ka4카니발',['#KA4카니발','ka4카니발']);assert.deepEqual(tagLabels(),['#KA4카니발']);
+renderTags('카니발, ka4, 카니발냉각수, ka4카니발, ',['#KA4카니발','ka4카니발']);assert.deepEqual(tagLabels(),[]);
+renderTags('직접 쓴 #값, ##블루',mixedTags);tagSuggestions.children[0].onclick();
+assert.equal(tagInput.value,'직접 쓴 #값, 블루핸즈, ');assert.equal(tagSchedules,1);assert.equal(tagInput.focusCount,1);assert.ok(!tagLabels().includes('#블루핸즈'));
+for(const name of ['C#','F#']){renderTags(name,mixedTags);tagSuggestions.children[0].onclick();assert.equal(tagInput.value,name+', ')}
+renderTags('',Array.from({length:10},(_,index)=>['#태그'+index,'태그'+index]).flat());assert.equal(tagLabels().length,8);assert.deepEqual(tagLabels(),Array.from({length:8},(_,index)=>'#태그'+index));
 const db=await createEditorDatabase();seedLegacy(db); const config=new CmsConfigurationStore(db), store=new NativePostStore(db);
 const original={...db.sqlite.prepare('SELECT * FROM legacy_posts').get()};
 const baseline=await config.categories();assert.equal(baseline.revision,0);assert.equal(baseline.value.length,18);
@@ -122,4 +147,4 @@ assert.equal(defaultList.posts[0].updatedAt,'2026-05-01T00:00:00Z');
 for(const sort of ['title-asc','title-desc','unexpected','created_at DESC; DROP TABLE native_posts'])assert.equal((await api('/api/posts?sort='+encodeURIComponent(sort))).status,400);
 assert.equal(sortDb.sqlite.prepare('SELECT COUNT(*) AS count FROM native_posts').get().count,3);
 env.NATIVE_DB=db;
-console.log(JSON.stringify({suite:'cms-management',status:'PASS',behavior:'taxonomy CAS and constraints, settings, search/filter pagination, native/legacy cover ownership and publication isolation, sanitized preview'}));
+console.log(JSON.stringify({suite:'cms-management',status:'PASS',behavior:'normalized tag recommendations and selection, taxonomy CAS and constraints, settings, search/filter pagination, native/legacy cover ownership and publication isolation, sanitized preview'}));
