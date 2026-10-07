@@ -285,45 +285,47 @@ ok(uiScript.includes("node.closest('figure.imageblock,.se_component.se_image,.se
 ok(uiScript.includes("event.key==='Delete'||event.key==='Backspace'"));
 ok(uiScript.includes("event.key==='Escape'&&selectedMedia"));
 ok(uiScript.includes("if(link)event.preventDefault()"));
-ok(uiScript.includes("target.remove();if(group)normalizeDirectLayout(group);placeCaret(parent,next);schedule()"));
-// The photo tools stay in the editor area beside the desktop array or above
-// the compact array. Exercise geometry instead of pinning an old expression.
+equal(uiDocument('#imageTools').attr('tabindex'),'-1');
+// Desktop tools remain beside the array. Compact tools use one viewport-bound
+// sheet, including the visible area left by an on-screen keyboard.
 const positionToolsSource=uiScript.slice(uiScript.indexOf('function positionImageTools('),uiScript.indexOf('function positionMediaSelection('));
 const photoViewportSource=uiScript.slice(uiScript.indexOf('function directPhotoViewport('),uiScript.indexOf('function revealDirectPhotoInBody('));
-const toolsPosition=({width,height=900,panelHidden,panelLeft,panelTop,toolWidth,toolHeight=200,imageTop=600,imageBottom=1000,imageRight=1150,imageLeft=12,selectedRect=null,dragging=false,previouslyHidden=false})=>{
+const compactToolsSource=uiScript.slice(uiScript.indexOf('let compactPhotoPanel='),uiScript.indexOf('function clearMediaSelection('));
+const toolsPosition=({width,height=900,panelHidden,panelLeft,panelTop,toolWidth,toolHeight=200,imageTop=600,imageBottom=1000,imageRight=1150,imageLeft=12,selectedRect=null,dragging=false,previouslyHidden=false,mode=null,visualViewport=null})=>{
   const style={},fields={
-    imageTools:{style,hidden:previouslyHidden,getBoundingClientRect:()=>({width:Math.min(toolWidth,Number.parseFloat(style.maxWidth)||toolWidth),height:Math.min(toolHeight,Number.isFinite(Number.parseFloat(style.maxHeight))?Number.parseFloat(style.maxHeight):toolHeight)})},
+    imageTools:{style,dataset:{},hidden:previouslyHidden,getBoundingClientRect:()=>({width:Math.min(toolWidth,Number.parseFloat(style.maxWidth)||toolWidth),height:Math.min(Number.parseFloat(style.height)||toolHeight,Number.isFinite(Number.parseFloat(style.maxHeight))?Number.parseFloat(style.maxHeight):toolHeight)})},
+    togglePhotoSettings:{setAttribute(){}},togglePhotoMove:{setAttribute(){}},compactPhotoLabel:{},
     photoOrderPanel:{hidden:panelHidden,getBoundingClientRect:()=>({left:panelLeft,top:panelTop})},
     editorHeader:{getBoundingClientRect:()=>({bottom:80})},
     editorFooter:{hidden:false,getBoundingClientRect:()=>({top:height-80})},
   };
   const imageRect={left:imageLeft,right:imageRight,top:imageTop,bottom:imageBottom,width:imageRight-imageLeft,height:imageBottom-imageTop};
-  new Script(photoViewportSource+'\n'+positionToolsSource+'\npositionImageTools(target)').runInNewContext({$:id=>fields[id],window:{innerWidth:width,innerHeight:height},positionDirectPhotoOrder(){},selectedMedia:selectedRect?{image:{getBoundingClientRect:()=>selectedRect}}:null,photoDrag:dragging?{}:null,target:{getBoundingClientRect:()=>imageRect}});
+  const selectedImage={getBoundingClientRect:()=>selectedRect||imageRect};
+  new Script(compactToolsSource+'\n'+photoViewportSource+'\n'+positionToolsSource+'\ncompactPhotoPanel=mode;positionImageTools(target)').runInNewContext({$:id=>fields[id],document:{body:{dataset:{}}},window:{innerWidth:width,innerHeight:height,visualViewport},directBodyPhotos:()=>[selectedImage],positionDirectPhotoOrder(){},selectedMedia:{image:selectedImage},photoDrag:dragging?{}:null,mode,target:selectedImage});
   return{...style,hidden:fields.imageTools.hidden,height:fields.imageTools.getBoundingClientRect().height};
 };
 const withoutArray=toolsPosition({width:1200,panelHidden:true,toolWidth:660});
 equal(withoutArray.left,'490px');equal(withoutArray.top,'392px');
 const besideArray=toolsPosition({width:1200,panelHidden:false,panelLeft:868,panelTop:88,toolWidth:660});
 equal(besideArray.left,'200px');equal(besideArray.top,'392px');ok(Number.parseFloat(besideArray.left)+660<868);
-const aboveCompactArray=toolsPosition({width:390,height:844,panelHidden:false,panelLeft:12,panelTop:520,toolWidth:366,toolHeight:240,imageTop:480,imageBottom:680,imageRight:378});
-equal(aboveCompactArray.left,'12px');equal(aboveCompactArray.top,'232px');equal(aboveCompactArray.maxWidth,'366px');ok(Number.parseFloat(aboveCompactArray.top)+240<520);
-const nearHeader=toolsPosition({width:1200,panelHidden:true,toolWidth:660,imageTop:90,imageBottom:180});
-equal(nearHeader.top,'188px');
+const compactSettings=toolsPosition({width:390,height:844,panelHidden:true,toolWidth:366,toolHeight:240,imageTop:480,imageBottom:680,imageRight:378,mode:'settings'});
+equal(compactSettings.left,'12px');equal(compactSettings.top,'88px');equal(compactSettings.maxWidth,'366px');equal(compactSettings.height,668);
+const keyboardSheet=toolsPosition({width:390,height:844,panelHidden:true,toolWidth:366,toolHeight:240,imageTop:600,imageBottom:800,imageRight:378,mode:'settings',visualViewport:{width:390,height:250,offsetTop:40}});
+equal(keyboardSheet.hidden,false);ok(Number.parseFloat(keyboardSheet.top)>=40);ok(Number.parseFloat(keyboardSheet.top)+keyboardSheet.height<=290,'Keyboard-height sheet stays within the actual visible viewport');
+const tinySheet=toolsPosition({width:390,height:844,panelHidden:true,toolWidth:366,mode:'settings',visualViewport:{width:390,height:120,offsetTop:0}});
+ok(Number.parseFloat(tinySheet.top)>=0);ok(Number.parseFloat(tinySheet.top)+tinySheet.height<=120,'A very short viewport keeps the sheet and close control visible');
 // An offscreen source must not leave its toolbar floating over another photo.
 equal(toolsPosition({width:1200,panelHidden:true,toolWidth:660,imageTop:850,imageBottom:1050}).hidden,true);
 equal(toolsPosition({width:1200,panelHidden:true,toolWidth:660,imageTop:-500,imageBottom:70}).hidden,true);
 equal(toolsPosition({width:1200,panelHidden:false,panelLeft:868,panelTop:88,toolWidth:660,imageLeft:900,imageRight:1100}).hidden,true);
-equal(toolsPosition({width:390,height:844,panelHidden:false,panelLeft:12,panelTop:520,toolWidth:366,imageTop:530,imageBottom:700,imageRight:378}).hidden,true);
+equal(toolsPosition({width:390,height:844,panelHidden:true,toolWidth:366,toolHeight:48,imageTop:530,imageBottom:700,imageRight:378}).hidden,false,'Compact actions do not reserve space for a second automatic panel');
 equal(toolsPosition({width:1200,panelHidden:true,toolWidth:660,imageTop:100,imageBottom:700,selectedRect:{left:12,right:712,width:700,top:-500,bottom:50,height:550}}).hidden,true,'A visible group container cannot stand in for its offscreen selected image');
 equal(toolsPosition({width:1200,panelHidden:true,toolWidth:660,imageTop:100,imageBottom:700,dragging:true}).hidden,true);
 equal(toolsPosition({width:1200,panelHidden:true,toolWidth:660,imageTop:100,imageBottom:700,previouslyHidden:true}).hidden,false,'Tools return when the selected photo re-enters view');
-// Explicit reveal aligns a short selected photo to the usable top. Its tools
-// must leave that photo visible even when the compact panel makes space tight.
-const shortCompactPhoto=toolsPosition({width:390,height:844,panelHidden:false,panelLeft:12,panelTop:350,toolWidth:366,toolHeight:176,imageTop:88,imageBottom:168,imageRight:378});
-equal(shortCompactPhoto.hidden,false);ok(Number.parseFloat(shortCompactPhoto.top)>=168);ok(Number.parseFloat(shortCompactPhoto.top)+shortCompactPhoto.height<=342);
-const minimalViewport=toolsPosition({width:390,height:844,panelHidden:false,panelLeft:12,panelTop:128,toolWidth:366,toolHeight:176,imageTop:88,imageBottom:108,imageRight:378});
-ok(Number.parseFloat(minimalViewport.top)>88,'A very short viewport still leaves part of the selected photo visible');ok(Number.parseFloat(minimalViewport.top)+minimalViewport.height<=120);
-equal(toolsPosition({width:390,height:844,panelHidden:false,panelLeft:12,panelTop:80,toolWidth:366,imageTop:50,imageBottom:150,imageRight:378}).hidden,true,'No available body area hides the toolbar');
+// Compact selection controls remain visible even when the body photo is hidden
+// behind an open sheet; a closed sheet follows ordinary offscreen selection rules.
+equal(toolsPosition({width:390,height:844,panelHidden:true,toolWidth:366,toolHeight:48,imageTop:88,imageBottom:168,imageRight:378}).hidden,false);
+equal(toolsPosition({width:390,height:844,panelHidden:true,toolWidth:366,toolHeight:48,imageTop:-300,imageBottom:-200,imageRight:378}).hidden,true);
 ok(uiScript.includes("window.addEventListener('scroll',positionMediaSelection,true)"));
 ok(uiScript.includes("selectedMedia.kind==='markdown-image'"));
 ok(uiScript.includes("$('body').setRangeText('',start,end,'end')"));

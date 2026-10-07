@@ -3,6 +3,7 @@ import vm from 'node:vm';
 import { load } from 'cheerio';
 import { extrasHtml, extrasScript } from '../src/lib/admin-extras.ts';
 import { imageLayoutHtml, imageLayoutScript } from '../src/lib/admin-image-layout.ts';
+import { adminHtml } from '../src/lib/admin-ui.ts';
 import { editorHistoryScript } from '../src/lib/admin-editor-history.ts';
 import { sanitizeNativeHtml, sanitizeLegacyHtml } from '../src/lib/native-content.ts';
 import { NativePostStore } from '../src/lib/native-post-store.ts';
@@ -11,9 +12,9 @@ import { createEditorDatabase, seedLegacy } from './fixtures/editor-database.mjs
 // A DOM adapter exercises the real dialog/apply/history code. Browser fixture
 // verification covers native selection; insertHTML is deliberately unavailable.
 const $=load('<div id="bodyHtml"></div>'+extrasHtml+imageLayoutHtml+'<button id="moreTools"></button><select id="fontFamily"></select><button id="editSelectedMedia"></button><div id="uploadPanel"></div>');
-const wrappers=new WeakMap();
+const wrappers=new WeakMap(),documentListeners=new Map();
 class Element {
-  constructor(node){this.node=node;this.dataset=new Proxy({}, {get:(_,key)=>this.getAttribute('data-'+key.replace(/[A-Z]/g,c=>'-'+c.toLowerCase())),set:(_,key,value)=>{this.setAttribute('data-'+key.replace(/[A-Z]/g,c=>'-'+c.toLowerCase()),value);return true}});const style={getPropertyValue:key=>this.styles()[key]||'',getPropertyPriority:key=>/!important$/.test(this.styles()[key]||'')?'important':'',removeProperty:key=>{const values=this.styles();delete values[key];this.writeStyles(values)},setProperty:(key,value)=>this.writeStyles({...this.styles(),[key]:value})};this.style=new Proxy(style,{get:(target,key)=>key in target?target[key]:this.styles()[key.replace(/[A-Z]/g,c=>'-'+c.toLowerCase())]||'',set:(_,key,value)=>{style.setProperty(key.replace(/[A-Z]/g,c=>'-'+c.toLowerCase()),value);return true}});this.classList={add:(...v)=>$(node).addClass(v.join(' ')),remove:(...v)=>$(node).removeClass(v.join(' ')),contains:v=>$(node).hasClass(v)}}
+  constructor(node){this.node=node;this.listeners=new Map();this.dataset=new Proxy({}, {get:(_,key)=>this.getAttribute('data-'+key.replace(/[A-Z]/g,c=>'-'+c.toLowerCase())),set:(_,key,value)=>{this.setAttribute('data-'+key.replace(/[A-Z]/g,c=>'-'+c.toLowerCase()),value);return true}});const style={getPropertyValue:key=>this.styles()[key]||'',getPropertyPriority:key=>/!important$/.test(this.styles()[key]||'')?'important':'',removeProperty:key=>{const values=this.styles();delete values[key];this.writeStyles(values)},setProperty:(key,value)=>this.writeStyles({...this.styles(),[key]:value})};this.style=new Proxy(style,{get:(target,key)=>key in target?target[key]:this.styles()[key.replace(/[A-Z]/g,c=>'-'+c.toLowerCase())]||'',set:(_,key,value)=>{style.setProperty(key.replace(/[A-Z]/g,c=>'-'+c.toLowerCase()),value);return true}});this.classList={add:(...v)=>$(node).addClass(v.join(' ')),remove:(...v)=>$(node).removeClass(v.join(' ')),contains:v=>$(node).hasClass(v)}}
   styles(){return Object.fromEntries((this.getAttribute('style')||'').split(';').filter(v=>v.includes(':')).map(v=>{const i=v.indexOf(':');return[v.slice(0,i).trim(),v.slice(i+1).trim()]}))}
   writeStyles(v){this.setAttribute('style',Object.entries(v).map(([k,v])=>k+':'+v).join(';'))}
   get id(){return this.getAttribute('id')}set id(v){this.setAttribute('id',v)}
@@ -31,19 +32,24 @@ class Element {
   contains(node){while(node){if(node===this)return true;node=node.parentNode}return false}
   cloneNode(){return wrap($(this.node).clone()[0])}append(...nodes){for(const node of nodes)$(this.node).append(typeof node==='string'?node:node.node)}replaceChildren(){this.innerHTML=''}
   replaceWith(node){$(this.node).replaceWith(node.nodeType===11?[...node.node.children]:node.node)}after(node){$(this.node).after(node.node)}before(node){$(this.node).before(node.node)}remove(){$(this.node).remove()}
-  addEventListener(){}focus(){}showModal(){this.open=true}close(){this.open=false}
+  addEventListener(name,callback){this.listeners.set(name,callback)}focus(){context.document.activeElement=this}blur(){if(context.document.activeElement===this)context.document.activeElement=null}
+  showModal(){this.open=true;this.setAttribute('open','')}close(){const wasOpen=this.open;this.open=false;this.removeAttribute('open');if(wasOpen)this.listeners.get('close')?.()}
+  click(){const event={target:this,preventDefault(){this.prevented=true},stopPropagation(){this.stopped=true}};const result=this.onclick?.(event);documentListeners.get('click')?.(event);return result}
 }
 function wrap(node){if(!node)return null;if(!wrappers.has(node))wrappers.set(node,new Element(node));return wrappers.get(node)}
 const field=id=>wrap($('#'+id)[0]),body=field('bodyHtml');
 let activeRange=null;
 class Range {
   setStart(node,offset){this.startContainer=node;this.startOffset=offset}setEnd(node,offset){this.endContainer=node;this.endOffset=offset}
+  setStartBefore(node){this.setStart(node.parentNode,node.parentNode.childNodes.indexOf(node))}setEndAfter(node){this.setEnd(node.parentNode,node.parentNode.childNodes.indexOf(node)+1)}
+  deleteContents(){assert.equal(this.startContainer,this.endContainer);for(const node of this.startContainer.childNodes.slice(this.startOffset,this.endOffset))node.remove();this.collapse(true)}
+  insertNode(fragment){const before=this.startContainer.childNodes[this.startOffset],nodes=[...fragment.node.children];if(before)$(before.node).before(nodes);else $(this.startContainer.node).append(nodes)}
   selectNode(node){const i=node.parentNode.childNodes.indexOf(node);this.setStart(node.parentNode,i);this.setEnd(node.parentNode,i+1)}
   selectNodeContents(node){this.setStart(node,0);this.setEnd(node,node.childNodes.length)}setStartAfter(node){this.setStart(node.parentNode,node.parentNode.childNodes.indexOf(node)+1)}
   collapse(start){if(start)this.setEnd(this.startContainer,this.startOffset);else this.setStart(this.endContainer,this.endOffset);this.collapsed=true}
   createContextualFragment(html){return wrap(load(html,null,false).root()[0])}cloneRange(){return Object.assign(new Range(),this)}toString(){return''}
 }
-const context=vm.createContext({console,Promise,Date,JSON,URL,Element,$:field,bodyRange:()=>activeRange,document:{activeElement:null,createElement:tag=>wrap($('<'+tag+'>')[0]),addEventListener(){},createRange:()=>new Range()},window:{getSelection:()=>({removeAllRanges(){activeRange=null},addRange(range){activeRange=range}})}});
+const context=vm.createContext({console,Promise,Date,JSON,URL,Element,$:field,bodyRange:()=>activeRange,document:{activeElement:null,createElement:tag=>wrap($('<'+tag+'>')[0]),addEventListener(name,callback){documentListeners.set(name,callback)},querySelector:selector=>wrap($(selector)[0]),createRange:()=>new Range()},window:{getSelection:()=>({removeAllRanges(){activeRange=null},addRange(range){activeRange=range}})}});
 const run=s=>vm.runInContext(s,context),tick=()=>new Promise(resolve=>setImmediate(resolve));
 run("let current={id:'media-synthetic'},busy=false,selectedMedia=null,formatRange=null,pendingFontSpans=null,pastedImageNodes=null,uploadRange=null,saves=0;function captureFormatRange(){formatRange=bodyRange()?.cloneRange()||null}function closeFormatPanels(){}function clearMediaSelection(){selectedMedia=null}function restoreFormatRange(){}function updateFormatState(){}function status(){}function schedule(){saves++;rememberEditorChange()}function formatCommand(){throw new Error('Existing media must never use native rich-text insertion')}function validLink(v){return /^https?:/.test(v)}function escapeFormatText(v){return v.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('\"','&quot;')}");
 run(editorHistoryScript);run(extrasScript);
@@ -94,4 +100,29 @@ for(const sanitize of [sanitizeNativeHtml,sanitizeLegacyHtml]){const clean=sanit
 for(const sanitize of [sanitizeNativeHtml,sanitizeLegacyHtml]){const clean=sanitize(edited),parsed=load(clean);assert.equal(parsed('figure').length,1);assert.equal(parsed('figure p').length,0);assert.equal(parsed('figure > a').attr('href'),'https://example.com/photo');assert.equal(sanitize(clean),clean)}
 const db=await createEditorDatabase();seedLegacy(db);const store=new NativePostStore(db),draft=await store.createDraft({id:'daily',slug:'일상',label:'일상'});
 for(const source of [draft,await store.getForAdmin('legacy-1')]){let post=await store.update(source.id,source.revision,{title:'Media replacement fixture',description:'Synthetic',bodyFormat:'html',bodyMarkdown:original,categoryId:'daily',tags:[],coverMediaId:null});post=await store.publish(post.id,post.revision);const publicBefore=(await store.getPublishedBySequence(post.globalSequence)).bodyHtml;post=await store.update(post.id,post.revision,{...post,bodyMarkdown:edited});const reopened=await store.getForAdmin(post.id);assert.equal(load(reopened.bodyHtml)('figure').length,1);assert.equal(load(reopened.bodyHtml)('figure p').length,0);assert.equal((await store.getPublishedBySequence(post.globalSequence)).bodyHtml,publicBefore);post=await store.update(post.id,post.revision,{...post,bodyMarkdown:groupedEdited});const groupedReopened=load((await store.getForAdmin(post.id)).bodyHtml);assert.equal(groupedReopened('.dwnc-image-layout > .dwnc-image-caption').text(),'두 사진의 공통 설명');assert.equal(groupedReopened('.dwnc-image-item figcaption').length,0);assert.equal((await store.getPublishedBySequence(post.globalSequence)).bodyHtml,publicBefore)}
+
+// Mobile image/card dialogs must return to non-editable photo controls. Run
+// their real close/apply code and the document click/Escape handlers together.
+const compactUi=load(adminHtml('fixture@example.test')),compactScript=compactUi('script').text();
+field('editSelectedMedia').remove();$('body').append(compactUi('#imageTools').prop('outerHTML'));
+for(const id of ['attachPhoto','mediaSelectionOutline','markdownMedia','photoOrderPanel','photoInfoDialog','linkPanel','tablePanel','formatToolbar'])if(!field(id))$('body').append('<div id="'+id+'"></div>');
+context.document.body=wrap($('body')[0]);context.window.innerWidth=390;context.window.innerHeight=844;
+run("function directBodyPhotos(){return Array.from($('bodyHtml').querySelectorAll('img'))}function updateDirectPhotoTools(){}function positionMediaSelection(){}function closeDirectPhotoOrder(){}");
+run(compactScript.slice(compactScript.indexOf('let compactPhotoPanel='),compactScript.indexOf('function positionImageTools(')));
+run(compactScript.slice(compactScript.indexOf('function mediaTarget('),compactScript.indexOf('function markdownImageRanges(')));
+for(const line of compactScript.split('\n').filter(line=>line.startsWith("document.addEventListener('click',event=>{const element=")||line.startsWith("document.addEventListener('keydown',event=>{if($('photoInfoDialog').open")))run(line);
+const modalEscape=()=>{const event={key:'Escape',target:context.document.activeElement,preventDefault(){this.prevented=true}};documentListeners.get('keydown')(event);return event};
+const selectPhoto=()=>{context.target=body.querySelector('img');run('selectMedia(target)')};
+setup(original);selectPhoto();openImage();const selectedBeforeClose=run('selectedMedia.image');field('closeExtra').click();assert.equal(run('selectedMedia.image'),selectedBeforeClose);assert.equal(context.document.activeElement,field('imageTools'));assert.equal(activeRange,null);assert.equal(body.innerHTML,original,'Close click bubbling preserves the selected photo and body');
+openImage();const cancelSelection=run('selectedMedia.image');assert.equal(modalEscape().prevented,undefined,'Document Escape leaves native dialog cancellation alone');assert.equal(run('selectedMedia.image'),cancelSelection);const cancel={preventDefault(){this.prevented=true}};field('extraDialog').listeners.get('cancel')(cancel);assert.equal(cancel.prevented,true);assert.equal(field('extraDialog').open,false);assert.equal(context.document.activeElement,field('imageTools'));assert.equal(body.innerHTML,original);
+openImage();field('extraCaption').value='모바일 사진 설명';await field('applyExtra').click();await tick();const mobileCaption=body.innerHTML;assert.equal(field('extraError').textContent,'');assert.equal(body.querySelector('figcaption').textContent,'모바일 사진 설명');assert.equal(run('selectedMedia.image'),body.querySelector('img'));assert.equal(context.document.activeElement,field('imageTools'));assert.equal(activeRange,null);await roundTrip(original,mobileCaption);
+setup('<p>앞</p>'+card+'<p>뒤</p>');context.target=body.querySelector('figure');run("selectMedia(target);openExtra('card',target)");field('extraCardTitle').value='모바일 카드';await field('applyExtra').click();await tick();assert.equal(field('extraError').textContent,'');assert.equal(body.querySelector('.og-title').textContent,'모바일 카드');assert.equal(run('selectedMedia.node'),body.querySelector('figure'));assert.equal(context.document.activeElement,field('imageTools'));assert.equal(activeRange,null);
+// Text dialogs retain ordinary body-focus behavior on mobile.
+run("clearMediaSelection();function restoreFormatRange(){ $('bodyHtml').focus() }openExtra('code')");field('closeExtra').click();assert.equal(context.document.activeElement,body);
+// Restore the real layout replacement, rather than the serialization stub above.
+run(imageLayoutScript.split('\n').find(line=>line.startsWith('function layoutReplace(')));
+run(imageLayoutScript.split('\n').find(line=>line.startsWith("$('imageLayoutDialog').addEventListener('close'")));
+setup(original);selectPhoto();field('imageLayoutDialog').showModal();assert.equal(modalEscape().prevented,undefined);field('imageLayoutDialog').close();assert.equal(context.document.activeElement,field('imageTools'));assert.equal(body.innerHTML,original);assert.equal(run('selectedMedia.image'),body.querySelector('img'));
+context.layoutImages=body.querySelectorAll('img');field('imageLayoutColumns').value='1';field('imageLayoutSize').value='original';field('imageLayoutAlign').value='center';field('imageLayoutDialog').showModal();field('applyImageLayout').onclick=()=>run('applyImageLayout()');field('applyImageLayout').click();await tick();assert.equal(field('imageLayoutError').textContent,'');assert.equal(field('imageLayoutDialog').open,false);assert.equal(body.querySelectorAll('img').length,1);assert.equal(run('selectedMedia.image'),body.querySelector('img'));assert.equal(context.document.activeElement,field('imageTools'));assert.equal(activeRange,null);const mobileLayout=body.innerHTML;await roundTrip(original,mobileLayout);
+console.log(JSON.stringify({suite:'mobile-media-dialogs',status:'PASS',behavior:'photo/card close/apply with click bubbling, native Escape/cancel preserved, layout close/apply non-editable focus, text dialog body focus, whole-content undo/redo'}));
 console.log(JSON.stringify({suite:'media-edit-replacement',status:'PASS',behavior:'repeated image/card edits do not nest or duplicate blocks; unchanged rich captions preserved; caret outside photos/groups; pre-existing wrappers/body retained; table replacement, undo/redo, native/legacy save/reopen'}));
