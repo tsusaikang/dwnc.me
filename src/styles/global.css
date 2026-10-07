@@ -1885,8 +1885,9 @@
     font-family: inherit;
   }
 
-  .article-page--photo .prose {
-    width: min(calc(100% - 96px), var(--media-reading));
+  .article-page--photo .prose,
+  .article-page--photo .post-cover {
+    width: min(calc(100% - 96px), var(--reading));
   }
 
   .article-page--photo .prose > :is(p, h2, h3, h4, ul, ol, blockquote),
@@ -2282,6 +2283,11 @@
     .article-page--photo .prose,
     .post-footer__inner {
       width: min(calc(100% - 40px), var(--media-reading));
+    }
+
+    .article-page--photo .prose,
+    .article-page--photo .post-cover {
+      width: min(calc(100% - 40px), var(--reading));
     }
   }
 }
